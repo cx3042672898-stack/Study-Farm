@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>🌾 学习农场</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+:root{
+  --bg:#fdf6ee;--panel:#fffcf7;--green:#6aaa6a;--dgreen:#3d7a3d;
+  --gold:#e8a020;--brown:#9b6a3c;--ink:#1e1814;--muted:#9a8a72;
+  --red:#e05555;--border:rgba(100,160,100,0.18);--shadow:rgba(60,110,60,0.09);
+  --tab-h:58px;--purple:#a07ad0;--sidebar-w:200px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg);color:var(--ink)}
+
+/* ══ LOGIN ══ */
+#login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:100vh;padding:20px;background:linear-gradient(135deg,#e8f5e8,#f5f0e8)}
+.ls-logo{font-size:3rem;margin-bottom:6px}
+.ls-title{font-family:'Ma Shan Zheng',cursive;font-size:2rem;color:var(--dgreen);margin-bottom:2px}
+.ls-sub{font-size:.78rem;color:var(--muted);margin-bottom:18px}
+.ls-subject-bar{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;margin-bottom:18px;max-width:420px}
+.ls-sub-btn{padding:5px 14px;border-radius:99px;border:1.5px solid var(--border);font-size:.72rem;
+  cursor:pointer;background:var(--panel);transition:all .18s;font-family:'Noto Sans SC',sans-serif}
+.ls-sub-btn.on{color:#fff;border-color:transparent}
+.account-list{width:100%;max-width:420px;display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.acc-card{background:var(--panel);border-radius:14px;border:1.5px solid var(--border);
+  padding:12px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;
+  transition:all .18s;box-shadow:0 2px 8px var(--shadow)}
+.acc-card:hover{border-color:var(--green);background:rgba(100,160,100,.06)}
+.acc-avatar{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#d4f0d4,#a0d0a0);
+  display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0}
+.acc-info{flex:1;min-width:0}
+.acc-name{font-weight:600;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acc-meta{font-size:.66rem;color:var(--muted);margin-top:2px}
+.acc-arrow{color:var(--muted)}
+.new-acc-btn{width:100%;max-width:420px;padding:12px;border-radius:14px;
+  border:1.5px dashed rgba(100,160,100,.4);background:rgba(100,160,100,.04);
+  cursor:pointer;font-size:.85rem;color:var(--dgreen);transition:all .18s;
+  display:flex;align-items:center;justify-content:center;gap:8px;font-family:'Noto Sans SC',sans-serif}
+.new-acc-btn:hover{background:rgba(100,160,100,.1)}
+.ls-import-link{margin-top:10px;font-size:.7rem;color:var(--muted);cursor:pointer;text-decoration:underline}
+
+/* PIN */
+.pin-wrap{display:flex;gap:10px;justify-content:center;margin:12px 0}
+.pin-dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--border);transition:all .2s}
+.pin-dot.filled{background:var(--dgreen);border-color:var(--dgreen)}
+.numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%;max-width:280px;margin:0 auto}
+.npbtn{padding:14px;border-radius:12px;border:1.5px solid var(--border);background:var(--panel);
+  font-size:1.15rem;font-weight:500;cursor:pointer;font-family:'Noto Sans SC',sans-serif;
+  transition:all .15s;text-align:center}
+.npbtn:active{transform:scale(.9);background:rgba(100,160,100,.12)}
+.npbtn.del{color:var(--red)}
+
+/* ══ APP ══ */
+#app{display:none;height:100%}
+#app.active{display:flex;flex-direction:column}
+
+/* ── MOBILE topbar ── */
+#topbar{background:var(--panel);border-bottom:1.5px solid var(--border);
+  padding:7px 12px 6px;display:flex;align-items:center;gap:8px;flex-shrink:0;
+  box-shadow:0 2px 8px var(--shadow)}
+#avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:1.1rem;cursor:pointer;flex-shrink:0;
+  border:2px solid rgba(100,160,100,.3);background:linear-gradient(135deg,#d4f0d4,#b0d8b0)}
+#pname{font-family:'Ma Shan Zheng',cursive;font-size:.9rem;color:var(--dgreen);
+  flex:1;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topchips{display:flex;gap:5px}
+.tc{font-size:.68rem;color:var(--muted);background:rgba(100,160,100,.07);
+  padding:2px 7px;border-radius:99px;border:1px solid var(--border);white-space:nowrap}
+.tc b{color:var(--dgreen)}
+
+#expbar{background:var(--panel);padding:4px 12px 6px;flex-shrink:0;border-bottom:1px solid var(--border)}
+.exprow{display:flex;align-items:center;gap:6px}
+.lvtag{background:linear-gradient(135deg,var(--gold),#c87010);color:#fff;font-size:.6rem;
+  font-weight:700;padding:2px 7px;border-radius:99px;flex-shrink:0}
+.exptrack{flex:1;height:5px;background:rgba(100,160,100,.1);border-radius:99px;overflow:hidden}
+.expfill{height:100%;background:linear-gradient(90deg,var(--green),var(--gold));
+  border-radius:99px;transition:width .6s cubic-bezier(.34,1.56,.64,1)}
+.exphint{font-size:.58rem;color:var(--muted);flex-shrink:0}
+
+/* 科目条（手机） */
+#subject-bar-mobile{background:var(--panel);padding:5px 10px 6px;flex-shrink:0;
+  border-bottom:1px solid var(--border);display:flex;gap:5px;overflow-x:auto;scrollbar-width:none}
+#subject-bar-mobile::-webkit-scrollbar{display:none}
+.sub-pill{padding:3px 12px;border-radius:99px;border:1.5px solid var(--border);
+  font-size:.66rem;cursor:pointer;background:var(--panel);transition:all .15s;
+  white-space:nowrap;font-family:'Noto Sans SC',sans-serif;flex-shrink:0}
+.sub-pill.on{color:#fff;border-color:transparent}
+
+#pages{flex:1;overflow:hidden;position:relative}
+.page{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;
+  padding:10px 10px 12px;display:none;background:var(--bg)}
+.page.active{display:block}
+.page::-webkit-scrollbar{width:3px}
+.page::-webkit-scrollbar-thumb{background:rgba(100,160,100,.2);border-radius:9px}
+
+#tabbar{height:var(--tab-h);display:flex;background:var(--panel);
+  border-top:1.5px solid var(--border);flex-shrink:0;box-shadow:0 -2px 8px var(--shadow)}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:1px;cursor:pointer;transition:all .18s;position:relative}
+.tab .tico{font-size:1.25rem;transition:transform .2s}
+.tab .tlbl{font-size:.54rem;color:var(--muted)}
+.tab.on .tico{transform:translateY(-2px) scale(1.12)}
+.tab.on .tlbl{color:var(--dgreen);font-weight:700}
+.tbadge{position:absolute;top:5px;right:calc(50% - 18px);background:var(--red);
+  color:#fff;font-size:.46rem;font-weight:700;padding:1px 4px;border-radius:99px;
+  display:none;min-width:13px;text-align:center}
+.tbadge.on{display:block}
+
+/* ══ DESKTOP ≥900px ══ */
+@media(min-width:900px){
+  body{background:#c8d8c8}
+  #app.active{flex-direction:row;height:100vh;max-width:100%}
+  #topbar,#expbar,#tabbar,#subject-bar-mobile{display:none!important}
+  #sidebar{display:flex!important}
+  /* pages区域：可滚动，非绝对定位 */
+  #pages{flex:1;overflow-y:auto;overflow-x:hidden;position:static}
+  .page{position:static;overflow:visible;padding:20px 22px;display:none;background:transparent}
+  .page.active{display:block}
+  /* 两栏布局 */
+  .dtwo{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  /* 宠物页：左列固定宽度 */
+  .dpet{display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start}
+  /* 商店三列 */
+  .shop-grid{grid-template-columns:repeat(3,1fr)!important}
+  /* 成就四列 */
+  .achgrid{grid-template-columns:repeat(4,1fr)!important}
+  .card{padding:14px}
+  .cttl{font-size:.95rem}
+  .qtxt{font-size:.94rem}
+  .opt{font-size:.86rem;padding:8px 11px}
+  /* 宠物画布桌面放大 */
+  #pet-canvas{width:180px!important;height:180px!important}
+  /* 缩放按钮显示 */
+  #zoom-ctrl{display:flex!important}
+}
+
+/* ── SIDEBAR ── */
+#sidebar{display:none;width:var(--sidebar-w);flex-shrink:0;
+  background:linear-gradient(180deg,#2a5a2a,#163016);flex-direction:column;overflow-y:auto}
+.sb-logo{padding:16px 14px 10px;border-bottom:1px solid rgba(255,255,255,.1)}
+.sb-logo-ico{font-size:1.4rem}
+.sb-logo-ttl{font-family:'Ma Shan Zheng',cursive;font-size:1rem;color:#fff;margin-top:2px}
+.sb-logo-sub{font-size:.55rem;color:rgba(255,255,255,.35)}
+.sb-player{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.1);
+  display:flex;align-items:center;gap:8px}
+.sb-av{width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.15);
+  display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0}
+.sb-pname{font-size:.78rem;color:#fff;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.sb-pmeta{font-size:.56rem;color:rgba(255,255,255,.4)}
+.sb-switch{font-size:.6rem;color:rgba(255,255,255,.5);cursor:pointer;flex-shrink:0;
+  padding:2px 7px;border:1px solid rgba(255,255,255,.2);border-radius:99px}
+.sb-nav{display:flex;flex-direction:column;padding:5px 0;flex:1}
+.sb-item{display:flex;align-items:center;gap:8px;padding:9px 14px;cursor:pointer;
+  transition:all .18s;border-left:3px solid transparent;font-size:.78rem;color:rgba(255,255,255,.7)}
+.sb-item:hover{background:rgba(255,255,255,.06);color:#fff}
+.sb-item.on{background:rgba(255,255,255,.12);color:#fff;border-left-color:var(--green)}
+.sb-item .si-ico{font-size:.95rem;width:18px;text-align:center}
+.sb-item .si-badge{margin-left:auto;background:var(--red);color:#fff;font-size:.46rem;
+  padding:1px 4px;border-radius:99px;display:none}
+.sb-item .si-badge.on{display:block}
+.sb-subjects{border-top:1px solid rgba(255,255,255,.1);padding:6px 0}
+.sb-sec-lbl{font-size:.55rem;color:rgba(255,255,255,.3);padding:3px 14px;letter-spacing:1px}
+.sb-sub-item{display:flex;align-items:center;gap:7px;padding:6px 14px;cursor:pointer;
+  transition:all .18s;font-size:.72rem;color:rgba(255,255,255,.6)}
+.sb-sub-item:hover{background:rgba(255,255,255,.06);color:#fff}
+.sb-sub-item.on{color:#fff;font-weight:600}
+.sb-sub-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.25);flex-shrink:0}
+.sb-sub-item.on .sb-sub-dot{background:#7af07a}
+.sb-stats{padding:10px 14px;border-top:1px solid rgba(255,255,255,.1)}
+.sb-lv-txt{font-size:.6rem;color:rgba(255,255,255,.4);margin-bottom:3px}
+.sb-expbar{height:3px;background:rgba(255,255,255,.12);border-radius:99px;overflow:hidden;margin-bottom:7px}
+.sb-expfill{height:100%;background:linear-gradient(90deg,var(--green),var(--gold));border-radius:99px;transition:width .5s}
+.sb-bottom-row{display:flex;gap:7px;align-items:center}
+.sb-stat-chip{font-size:.65rem;color:rgba(255,255,255,.65)}
+/* 缩放按钮 */
+#zoom-ctrl{display:none;position:fixed;bottom:16px;right:16px;z-index:100;
+  background:rgba(42,90,42,.85);border-radius:99px;padding:4px 6px;gap:2px;
+  backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,.15)}
+.zoom-btn{width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;border-radius:50%;font-size:.9rem;color:rgba(255,255,255,.8);
+  transition:all .15s}
+.zoom-btn:hover{background:rgba(255,255,255,.15);color:#fff}
+
+/* ── COMMON ── */
+.card{background:var(--panel);border-radius:14px;border:1.5px solid var(--border);
+  padding:11px;margin-bottom:9px;box-shadow:0 2px 10px var(--shadow)}
+.cttl{font-family:'Ma Shan Zheng',cursive;font-size:.9rem;color:var(--dgreen);
+  margin-bottom:8px;display:flex;align-items:center;gap:5px}
+
+/* ── FARM ── */
+.farm-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:9px}
+.plot{aspect-ratio:1;border-radius:11px;border:2px solid rgba(139,94,60,.2);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  cursor:pointer;transition:all .18s;position:relative;overflow:hidden}
+.plot:active{transform:scale(.92)}
+.plot.empty{background:linear-gradient(145deg,#c4a070,#a07840)}
+.plot.s0{background:linear-gradient(145deg,#b0c870,#90a850)}
+.plot.s1{background:linear-gradient(145deg,#80c060,#58a038)}
+.plot.s2{background:linear-gradient(145deg,#60b048,#409028)}
+.plot.s3{background:linear-gradient(145deg,#f0d840,#d8b020);animation:glow .9s ease-in-out infinite alternate}
+.plot.locked{background:linear-gradient(145deg,#c8c0b0,#aaa090);cursor:default}
+.plot.cracked{filter:saturate(.4)}
+.plot.bugged::after{content:'🐛';position:absolute;top:2px;right:3px;font-size:.7rem}
+@keyframes glow{0%{box-shadow:0 0 4px rgba(240,180,20,.3)}100%{box-shadow:0 0 14px rgba(240,180,20,.8)}}
+.plot-ico{font-size:1.45rem;line-height:1}
+.plot-lbl{font-size:.44rem;color:rgba(255,255,255,.9);text-shadow:0 1px 2px rgba(0,0,0,.4);text-align:center;margin-top:1px}
+.plot-pg{position:absolute;bottom:3px;left:3px;right:3px;height:3px;
+  background:rgba(255,255,255,.25);border-radius:99px;overflow:hidden}
+.plot-pg-f{height:100%;background:#fff;border-radius:99px;transition:width .4s}
+.plot-timer{position:absolute;top:2px;left:3px;font-size:.38rem;
+  color:rgba(255,255,255,.85);text-shadow:0 1px 1px rgba(0,0,0,.5);line-height:1.2}
+.actgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.act{padding:9px 6px;border-radius:11px;border:1.5px solid var(--border);
+  background:var(--panel);cursor:pointer;text-align:center;transition:all .18s;font-family:'Noto Sans SC',sans-serif}
+.act:active{transform:scale(.93);background:rgba(100,160,100,.08)}
+.act.dim{opacity:.35;pointer-events:none}
+.aico{font-size:1.15rem;display:block;margin-bottom:1px}
+.anm{font-size:.7rem;font-weight:500;color:var(--ink)}
+.acost{font-size:.58rem;color:var(--muted);margin-top:1px}
+
+/* ── PET ── */
+.pet-wrap{text-align:center;padding:4px 0 2px}
+#pet-canvas{width:150px;height:150px;cursor:pointer}
+.pet-lv-badge{display:inline-block;font-size:.6rem;background:linear-gradient(135deg,var(--gold),#c87010);
+  color:#fff;padding:2px 10px;border-radius:99px;margin-bottom:3px;font-weight:700}
+.pet-ttl{font-family:'Ma Shan Zheng',cursive;font-size:1.1rem;color:var(--brown);margin-bottom:1px}
+.pet-stage-name{font-size:.68rem;color:var(--muted);margin-bottom:2px}
+.pet-mood{display:inline-block;font-size:.7rem;color:#fff;background:var(--green);
+  padding:3px 12px;border-radius:99px;margin-bottom:8px}
+.pet-talk-bubble{background:#fff;border:1.5px solid rgba(100,160,100,.2);
+  border-radius:12px 12px 12px 2px;padding:7px 12px;font-size:.76rem;color:var(--ink);
+  margin:0 auto 9px;max-width:240px;min-height:32px;text-align:left;line-height:1.5;
+  box-shadow:0 2px 8px var(--shadow);display:none}
+.pet-talk-bubble.show{display:block;animation:fadeIn .3s}
+/* 行走开关 */
+.pet-walk-toggle{display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+  font-size:.68rem;color:var(--muted);margin-bottom:8px;padding:3px 10px;
+  border:1px solid var(--border);border-radius:99px;background:var(--panel)}
+.pet-walk-toggle.on{color:var(--dgreen);border-color:var(--green);background:rgba(100,160,100,.08)}
+.slist{display:flex;flex-direction:column;gap:6px;margin-bottom:9px}
+.srow{display:flex;align-items:center;gap:6px}
+.sico{font-size:.8rem;width:16px;text-align:center;flex-shrink:0}
+.slbl{font-size:.64rem;color:var(--muted);width:38px;flex-shrink:0}
+.strk{flex:1;height:7px;background:rgba(100,160,100,.1);border-radius:99px;overflow:hidden}
+.sfill{height:100%;border-radius:99px;transition:width .5s cubic-bezier(.34,1.56,.64,1)}
+.sf-food{background:linear-gradient(90deg,#f0a030,#e08020)}
+.sf-happy{background:linear-gradient(90deg,#f07898,#e05070)}
+.sf-clean{background:linear-gradient(90deg,#70c8f0,#48a8d0)}
+.sf-energy{background:linear-gradient(90deg,#90e060,#60c030)}
+.sf-learn{background:linear-gradient(90deg,var(--purple),#8050b0)}
+.sval{font-size:.62rem;color:var(--muted);width:22px;text-align:right;flex-shrink:0}
+.pet-acts{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+
+/* ── SHOP ── */
+.shop-tabs{display:flex;gap:5px;margin-bottom:9px;flex-wrap:wrap}
+.stab{padding:3px 11px;border-radius:99px;border:1.5px solid var(--border);
+  font-size:.68rem;cursor:pointer;background:var(--panel);transition:all .18s}
+.stab.on{background:var(--dgreen);color:#fff;border-color:var(--dgreen)}
+.shop-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.shop-item{background:var(--panel);border-radius:12px;border:1.5px solid var(--border);
+  padding:10px;text-align:center;cursor:pointer;transition:all .18s}
+.shop-item:active{transform:scale(.95)}
+.shop-item.owned{border-color:var(--gold);background:rgba(232,160,32,.05)}
+.shop-item.equipped{border-color:var(--green);background:rgba(100,160,100,.08)}
+.shop-item.soldout{opacity:.55;cursor:not-allowed}
+.si-ico{font-size:1.9rem;margin-bottom:4px}
+.si-nm{font-size:.74rem;font-weight:600;margin-bottom:2px}
+.si-desc{font-size:.6rem;color:var(--muted);line-height:1.4;margin-bottom:5px}
+.si-price{font-size:.7rem;font-weight:700;color:var(--gold)}
+.si-tag{font-size:.56rem;margin-top:2px;font-weight:500}
+.si-tag.gold{color:var(--gold)}.si-tag.green{color:var(--dgreen)}
+.si-tag.red{color:var(--red)}
+
+/* ── ACH ── */
+.achgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.ach{background:var(--panel);border-radius:12px;border:1.5px solid var(--border);padding:9px;text-align:center}
+.ach.got{border-color:var(--gold);background:rgba(232,160,32,.05)}
+.ach.no{opacity:.45;filter:grayscale(.4)}
+.aico2{font-size:1.6rem;margin-bottom:4px}
+.anm2{font-size:.72rem;font-weight:700;margin-bottom:2px}
+.adesc{font-size:.58rem;color:var(--muted);line-height:1.4}
+.atag{font-size:.55rem;color:var(--gold);margin-top:3px;font-weight:500}
+
+/* ── PROFILE ── */
+.prof-av{width:72px;height:72px;border-radius:50%;margin:0 auto 10px;
+  display:flex;align-items:center;justify-content:center;font-size:2.2rem;
+  border:3px solid rgba(100,160,100,.3);background:linear-gradient(135deg,#d4f0d4,#b0d8b0)}
+.prof-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+.ps{background:rgba(100,160,100,.06);border-radius:9px;padding:7px;text-align:center;border:1px solid var(--border)}
+.psv{font-family:'Ma Shan Zheng',cursive;font-size:1.25rem;color:var(--dgreen)}
+.psl{font-size:.58rem;color:var(--muted);margin-top:1px}
+.rank-list{display:flex;flex-direction:column;gap:6px}
+.rank-item{display:flex;align-items:center;gap:10px;padding:8px 10px;
+  background:var(--panel);border-radius:10px;border:1px solid var(--border);cursor:pointer;transition:all .18s}
+.rank-item:hover{border-color:var(--green);background:rgba(100,160,100,.05)}
+.rank-item.highlighted{border-color:var(--gold)!important;background:rgba(232,160,32,.08)!important;animation:rankhl .6s ease}
+@keyframes rankhl{0%,100%{transform:scale(1)}50%{transform:scale(1.02)}}
+.rank-num{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:.7rem;font-weight:700;background:rgba(100,160,100,.1);
+  color:var(--dgreen);flex-shrink:0}
+.rank-num.top1{background:#ffd700;color:#806000}
+.rank-num.top2{background:#c0c0c0;color:#505050}
+.rank-num.top3{background:#cd7f32;color:#503010}
+.rank-name{flex:1;font-size:.78rem;font-weight:500}
+.rank-score{font-size:.72rem;color:var(--muted)}
+.rank-self{background:rgba(100,160,100,.06);border-color:var(--green)}
+.ci-label{font-size:.72rem;color:var(--muted);margin-bottom:3px;display:block}
+.ci{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;
+  font-family:'Noto Sans SC',sans-serif;font-size:.88rem;color:var(--ink);
+  background:#fff;outline:none}
+.ci:focus{border-color:var(--green)}
+.import-area{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:9px 12px;
+  font-family:'Noto Sans SC',sans-serif;font-size:.82rem;height:100px;resize:vertical;
+  color:var(--ink);background:#fff;outline:none;user-select:text}
+.import-area:focus{border-color:var(--green)}
+
+/* ── MODALS ── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:200;
+  display:flex;align-items:center;justify-content:center;padding:14px;
+  opacity:0;pointer-events:none;transition:opacity .22s}
+.overlay.on{opacity:1;pointer-events:auto}
+.modal{background:var(--panel);border-radius:18px;width:100%;max-width:400px;
+  padding:18px 16px;box-shadow:0 16px 50px rgba(0,0,0,.18);
+  transform:scale(.92) translateY(16px);transition:all .28s cubic-bezier(.34,1.56,.64,1);
+  max-height:88vh;overflow-y:auto}
+.overlay.on .modal{transform:scale(1) translateY(0)}
+.mttl{font-family:'Ma Shan Zheng',cursive;font-size:1.1rem;color:var(--dgreen);
+  margin-bottom:10px;text-align:center}
+.qcat{font-size:.62rem;padding:2px 9px;border-radius:99px;margin-bottom:7px;display:inline-block;font-weight:500}
+.ct-疆域,.ct-行政,.ct-人口,.ct-地形,.ct-气候,.ct-河流,.ct-资源,.ct-经济,.ct-区域,.ct-环境,.ct-港澳台,.ct-亚洲,.ct-日本,.ct-东南亚,.ct-印度,.ct-俄罗斯,.ct-中东,.ct-欧洲,.ct-非洲{background:rgba(40,140,220,.12);color:#2060a0}
+.ct-词汇,.ct-语法,.ct-出国,.ct-阅读{background:rgba(120,60,200,.12);color:#6030a0}
+.ct-建国,.ct-建设,.ct-改革,.ct-统一,.ct-科技{background:rgba(180,80,40,.12);color:#803020}
+.ct-基础{background:rgba(100,160,100,.12);color:var(--dgreen)}
+.ct-人物{background:rgba(100,180,220,.18);color:#3a70a0}
+.ct-属性{background:rgba(232,140,154,.15);color:#a04050}
+.ct-形态{background:rgba(220,160,40,.12);color:#806010}
+.ct-心理{background:rgba(160,120,200,.12);color:#705090}
+.ct-教师{background:rgba(100,160,200,.12);color:#3060a0}
+.ct-课程{background:rgba(100,180,140,.12);color:#206040}
+.ct-德育{background:rgba(240,160,80,.12);color:#804010}
+.qprog{font-size:.62rem;color:var(--muted);text-align:right;margin-bottom:5px}
+.qhint{font-size:.64rem;color:#7a6a50;background:rgba(100,160,100,.07);
+  padding:5px 9px;border-radius:8px;margin-bottom:8px;line-height:1.5}
+.qtxt{font-size:.88rem;line-height:1.75;color:var(--ink);margin-bottom:11px;word-break:break-all}
+.qopts-wrap{display:flex;flex-direction:column;gap:6px}
+.opt{width:100%;padding:9px 11px;border-radius:10px;border:1.5px solid var(--border);
+  background:#fff;font-size:.82rem;font-family:'Noto Sans SC',sans-serif;color:var(--ink);
+  cursor:pointer;text-align:left;transition:all .18s;line-height:1.55;display:block;word-break:break-all}
+.opt.ok{background:rgba(61,122,61,.1);border-color:var(--dgreen);color:var(--dgreen);font-weight:500}
+.opt.no{background:rgba(224,85,85,.07);border-color:var(--red);color:var(--red)}
+.opt:disabled{cursor:default}
+.explain{background:rgba(100,160,100,.07);border-left:3px solid var(--green);
+  border-radius:0 9px 9px 0;padding:8px 11px;font-size:.74rem;
+  line-height:1.65;color:#4a5a40;margin:8px 0;display:none;word-break:break-all}
+.explain.on{display:block;animation:fadeIn .25s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.mbrow{display:flex;gap:7px;margin-top:9px}
+.mbtn{flex:1;padding:10px;border-radius:10px;border:none;font-family:'Noto Sans SC',sans-serif;
+  font-size:.82rem;font-weight:500;cursor:pointer;transition:all .18s}
+.mb-ok{background:linear-gradient(135deg,var(--green),var(--dgreen));color:#fff;
+  box-shadow:0 3px 10px rgba(61,122,61,.28);display:none}
+.mb-ok.on{display:block}
+.mb-cancel{background:rgba(100,160,100,.1);color:var(--muted)}
+.mb-danger{background:rgba(224,85,85,.1);color:var(--red)}
+
+/* 进化提示弹窗 */
+.evo-modal{text-align:center;padding:4px 0}
+.evo-modal-pet{font-size:3.5rem;margin-bottom:6px;animation:petBounce .6s ease infinite alternate}
+@keyframes petBounce{0%{transform:translateY(0)}100%{transform:translateY(-8px)}}
+.evo-modal-msg{font-size:.88rem;color:var(--ink);line-height:1.8;margin-bottom:4px}
+.evo-modal-sub{font-size:.72rem;color:var(--muted)}
+
+/* PLOT POPUP */
+.plot-popup{position:fixed;z-index:250;background:var(--panel);border-radius:14px;
+  border:1.5px solid var(--border);padding:12px;box-shadow:0 8px 24px rgba(0,0,0,.15);
+  min-width:180px;display:none}
+.plot-popup.on{display:block;animation:fadeIn .2s}
+.pp-title{font-size:.8rem;font-weight:700;color:var(--dgreen);margin-bottom:8px;text-align:center}
+.pp-actions{display:flex;flex-direction:column;gap:5px}
+.pp-act{padding:7px 12px;border-radius:8px;border:1.5px solid var(--border);
+  background:#fff;font-size:.76rem;cursor:pointer;text-align:left;transition:all .18s;
+  font-family:'Noto Sans SC',sans-serif}
+.pp-act:active{background:rgba(100,160,100,.1)}
+.pp-close{text-align:center;font-size:.65rem;color:var(--muted);margin-top:6px;cursor:pointer}
+
+/* CONFIRM */
+.confirm-modal .confirm-ico{font-size:2.5rem;text-align:center;margin-bottom:8px}
+.confirm-modal .confirm-msg{font-size:.82rem;line-height:1.75;color:var(--muted);text-align:center;
+  margin-bottom:12px;word-break:break-all;white-space:pre-line}
+/* RESULT */
+.res-ico{font-size:3rem;text-align:center;margin-bottom:6px}
+.res-ttl{font-family:'Ma Shan Zheng',cursive;font-size:1.2rem;text-align:center;margin-bottom:5px}
+.res-body{font-size:.78rem;line-height:1.85;color:var(--muted);text-align:center;
+  background:rgba(100,160,100,.05);border-radius:10px;padding:9px;margin-bottom:10px;white-space:pre-line}
+/* SEED */
+.seed-list{display:flex;flex-direction:column;gap:7px;margin:8px 0}
+.seed-item{display:flex;align-items:center;gap:9px;padding:8px 11px;
+  border-radius:11px;border:1.5px solid var(--border);background:#fff;cursor:pointer;transition:all .18s}
+.seed-item.sel{border-color:var(--green);background:rgba(100,160,100,.07)}
+.seed-ico{font-size:1.5rem;flex-shrink:0}
+.seed-info{flex:1}.seed-nm{font-size:.8rem;font-weight:600}
+.seed-desc{font-size:.6rem;color:var(--muted);margin-top:1px}
+.seed-price{font-size:.76rem;font-weight:700;color:var(--gold);flex-shrink:0;text-align:right}
+/* CLOTH */
+.cloth-preview-wrap{text-align:center;margin:10px 0}
+#cloth-preview-canvas{width:120px;height:120px;border-radius:50%;
+  background:linear-gradient(135deg,#d4f0d4,#b0d8b0);border:2px solid rgba(100,160,100,.2)}
+/* NAME */
+.name-input{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;
+  font-family:'Noto Sans SC',sans-serif;font-size:.9rem;color:var(--ink);
+  background:var(--panel);outline:none;margin-bottom:8px}
+.name-input:focus{border-color:var(--green)}
+/* QTY */
+.qty-row{display:flex;align-items:center;justify-content:center;gap:14px;margin:10px 0}
+.qty-btn{width:34px;height:34px;border-radius:50%;border:2px solid var(--border);
+  background:var(--panel);font-size:1.2rem;cursor:pointer;display:flex;
+  align-items:center;justify-content:center;transition:all .18s;color:var(--dgreen);font-weight:700}
+.qty-btn:active{transform:scale(.9)}
+.qty-val{font-family:'Ma Shan Zheng',cursive;font-size:1.6rem;color:var(--dgreen);min-width:40px;text-align:center}
+/* TOAST */
+.toast{position:fixed;bottom:calc(var(--tab-h)+12px);left:50%;
+  transform:translateX(-50%) translateY(8px);background:rgba(30,24,20,.86);
+  color:#fff;font-size:.75rem;padding:7px 16px;border-radius:99px;
+  z-index:500;opacity:0;transition:all .25s;pointer-events:none;white-space:nowrap;backdrop-filter:blur(4px)}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+@media(min-width:900px){.toast{bottom:20px}}
+/* ACH POP */
+.achpop{position:fixed;bottom:calc(var(--tab-h)+10px);left:50%;
+  transform:translateX(-50%) translateY(20px);
+  background:linear-gradient(135deg,#fdf8e0,#fff6d0);border:1.5px solid var(--gold);
+  border-radius:12px;padding:8px 16px;display:flex;align-items:center;gap:8px;
+  box-shadow:0 8px 24px rgba(220,160,30,.25);z-index:350;
+  opacity:0;transition:all .35s cubic-bezier(.34,1.56,.64,1);pointer-events:none}
+.achpop.on{opacity:1;transform:translateX(-50%) translateY(0)}
+@media(min-width:900px){.achpop{bottom:20px}}
+/* PARTICLES */
+.ptcl{position:fixed;pointer-events:none;z-index:600;font-size:1.1rem;animation:pf 1.3s ease-out forwards}
+@keyframes pf{0%{opacity:1;transform:translateY(0)scale(1)}100%{opacity:0;transform:translateY(-85px)scale(.5)rotate(15deg)}}
+.shake{animation:shk .38s ease}
+@keyframes shk{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(4px)}}
+</style>
+</head>
+<body>
+
+<!-- ══ 登录 ══ -->
+<div id="login-screen">
+  <div class="ls-logo">🌾</div>
+  <div class="ls-title">学习农场</div>
+  <div class="ls-sub">选择账号开始学习</div>
+  <div class="ls-subject-bar" id="ls-subject-bar"></div>
+  <div class="account-list" id="account-list"></div>
+  <div class="new-acc-btn" onclick="startCreateAccount()">➕ 新建账号</div>
+  <div class="ls-import-link" onclick="openImportClass()">🏫 批量导入班级名单</div>
+</div>
+
+<!-- PIN -->
+<div class="overlay" id="pin-ov">
+  <div class="modal" style="text-align:center">
+    <div class="mttl" id="pin-mttl">输入密码</div>
+    <div style="font-size:.72rem;color:var(--muted);margin-bottom:12px" id="pin-acc-name"></div>
+    <div class="pin-wrap" id="pin-dots"></div>
+    <div class="numpad" id="numpad"></div>
+    <div style="margin-top:14px;font-size:.7rem;color:var(--muted);cursor:pointer"
+      onclick="document.getElementById('pin-ov').classList.remove('on');pinInput=''">取消</div>
+  </div>
+</div>
+
+<!-- 新建账号 -->
+<div class="overlay" id="new-acc-ov">
+  <div class="modal">
+    <div class="mttl">新建账号</div>
+    <div style="margin-bottom:10px"><label class="ci-label">姓名 *</label>
+      <input class="ci" id="na-name" placeholder="最多8个字" maxlength="8" style="user-select:text"></div>
+    <div style="margin-bottom:10px"><label class="ci-label">4位数字密码（选填）</label>
+      <input class="ci" id="na-pin" placeholder="如：1234" maxlength="4" type="password" inputmode="numeric" style="user-select:text"></div>
+    <div style="margin-bottom:10px"><label class="ci-label">班级（选填）</label>
+      <input class="ci" id="na-class" placeholder="如：高三2班" maxlength="20" style="user-select:text"></div>
+    <div class="mbrow">
+      <button class="mbtn mb-cancel" onclick="document.getElementById('new-acc-ov').classList.remove('on')">取消</button>
+      <button class="mbtn mb-ok on" onclick="createAccount()">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 批量导入 -->
+<div class="overlay" id="import-class-ov">
+  <div class="modal">
+    <div class="mttl">🏫 批量导入班级名单</div>
+    <div style="font-size:.73rem;color:var(--muted);margin-bottom:8px;line-height:1.7">每行一个名字，可加密码：<br>
+      <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:.66rem">张三<br>李四,1234</code></div>
+    <div style="margin-bottom:8px"><label class="ci-label">班级名称 *</label>
+      <input class="ci" id="ic-class" placeholder="如：高三2班" maxlength="20" style="user-select:text"></div>
+    <textarea class="import-area" id="ic-names" placeholder="粘贴名单，每行一个名字"></textarea>
+    <div class="mbrow">
+      <button class="mbtn mb-cancel" onclick="document.getElementById('import-class-ov').classList.remove('on')">取消</button>
+      <button class="mbtn mb-ok on" onclick="importClassList()">批量创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 主应用 ══ -->
+<div id="app">
+  <!-- 侧边栏 -->
+  <div id="sidebar">
+    <div class="sb-logo">
+      <div class="sb-logo-ico">🌾</div>
+      <div class="sb-logo-ttl">学习农场</div>
+      <div class="sb-logo-sub">答题养成游戏 v6</div>
+    </div>
+    <div class="sb-player">
+      <div class="sb-av" id="sb-av">🌾</div>
+      <div style="flex:1;min-width:0">
+        <div class="sb-pname" id="sb-pname">-</div>
+        <div class="sb-pmeta" id="sb-pmeta">Lv.1</div>
+      </div>
+      <div class="sb-switch" onclick="goToLogin()">切换</div>
+    </div>
+    <div class="sb-nav">
+      <div class="sb-item on" onclick="switchTab('farm')"><span class="si-ico">🌾</span>农场<span class="si-badge" id="sbd-farm"></span></div>
+      <div class="sb-item" onclick="switchTab('pet')"><span class="si-ico">🐾</span>宠物<span class="si-badge" id="sbd-pet"></span></div>
+      <div class="sb-item" onclick="switchTab('shop')"><span class="si-ico">🛍️</span>商店</div>
+      <div class="sb-item" onclick="switchTab('ach')"><span class="si-ico">🏆</span>成就<span class="si-badge" id="sbd-ach"></span></div>
+      <div class="sb-item" onclick="switchTab('profile')"><span class="si-ico">👤</span>我的</div>
+    </div>
+    <div class="sb-subjects">
+      <div class="sb-sec-lbl">题库科目</div>
+      <div id="sb-subjects"></div>
+    </div>
+    <div class="sb-stats">
+      <div class="sb-lv-txt" id="sb-lv">Lv.1 · 0/100 EXP</div>
+      <div class="sb-expbar"><div class="sb-expfill" id="sb-expfill" style="width:0%"></div></div>
+      <div class="sb-bottom-row">
+        <span class="sb-stat-chip">🪙<b id="sb-coins">0</b></span>
+        <span class="sb-stat-chip" style="margin-left:8px">⭐<b id="sb-score">0</b></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 手机顶栏 -->
+  <div id="topbar">
+    <div id="avatar" onclick="goToLogin()">🌾</div>
+    <div id="pname" onclick="switchTab('profile')">-</div>
+    <div class="topchips">
+      <div class="tc">🪙<b id="dc">0</b></div>
+      <div class="tc">⭐<b id="ds">0</b></div>
+    </div>
+  </div>
+  <div id="expbar">
+    <div class="exprow">
+      <div class="lvtag" id="dlv">Lv.1</div>
+      <div class="exptrack"><div class="expfill" id="dexp" style="width:0%"></div></div>
+      <div class="exphint" id="dexph">0/100</div>
+    </div>
+  </div>
+  <div id="subject-bar-mobile"></div>
+
+  <div id="pages">
+    <!-- FARM -->
+    <div class="page active" id="page-farm">
+      <div class="dtwo">
+        <div>
+          <div class="card">
+            <div class="cttl">🌱 我的农场</div>
+            <div class="farm-grid" id="farm-grid"></div>
+            <div id="farm-stat" style="font-size:.7rem;color:var(--muted);line-height:1.9"></div>
+          </div>
+        </div>
+        <div>
+          <div class="card">
+            <div class="cttl">⚡ 快捷操作</div>
+            <div class="actgrid" style="margin-bottom:7px">
+              <div class="act" onclick="farmBulk('auto_plant')"><span class="aico">🌱</span><div class="anm">一键播种</div><div class="acost">自动识别空地</div></div>
+              <div class="act" onclick="farmBulk('buy_seeds')"><span class="aico">🛒</span><div class="anm">购买种子</div><div class="acost">选种类·选数量</div></div>
+              <div class="act" onclick="farmBulk('water_all')"><span class="aico">🌊</span><div class="anm">全部浇水</div><div class="acost">答题×地块数</div></div>
+              <div class="act" onclick="farmBulk('harvest_all')"><span class="aico">🧺</span><div class="anm">全部收获</div><div class="acost">答题×成熟数</div></div>
+              <div class="act" onclick="farmBulk('fert_all')"><span class="aico">🪣</span><div class="anm">全部施肥</div><div class="acost">答2题×地块数</div></div>
+              <div class="act" onclick="farmBulk('pest_all')"><span class="aico">🧴</span><div class="anm">全部除虫</div><div class="acost">有虫时可用</div></div>
+            </div>
+            <div style="font-size:.62rem;color:var(--muted);text-align:center">💡 点击地块进行单格操作</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PET -->
+    <div class="page" id="page-pet">
+      <div class="dpet">
+        <div>
+          <div class="card">
+            <div class="pet-wrap">
+              <div class="pet-lv-badge" id="pet-lv-badge">Lv.1 小豆丁</div><br>
+              <canvas id="pet-canvas" width="150" height="150"></canvas>
+              <div class="pet-ttl" id="pet-name">小饼干</div>
+              <div class="pet-stage-name" id="pet-stage-name">仓鼠 · 普通形态</div>
+              <div class="pet-mood" id="pet-mood">😊 心情不错</div>
+              <!-- 行走开关 -->
+              <div class="pet-walk-toggle" id="walk-toggle" onclick="togglePetWalk()">
+                <span id="walk-ico">🧍</span><span id="walk-lbl">立正模式</span>
+              </div>
+              <div class="pet-talk-bubble" id="pet-talk"></div>
+            </div>
+            <div class="slist">
+              <div class="srow"><span class="sico">🍎</span><span class="slbl">饱腹</span><div class="strk"><div class="sfill sf-food" id="sf-food" style="width:65%"></div></div><span class="sval" id="sv-food">65</span></div>
+              <div class="srow"><span class="sico">🎵</span><span class="slbl">心情</span><div class="strk"><div class="sfill sf-happy" id="sf-happy" style="width:55%"></div></div><span class="sval" id="sv-happy">55</span></div>
+              <div class="srow"><span class="sico">🛁</span><span class="slbl">清洁</span><div class="strk"><div class="sfill sf-clean" id="sf-clean" style="width:72%"></div></div><span class="sval" id="sv-clean">72</span></div>
+              <div class="srow"><span class="sico">⚡</span><span class="slbl">体力</span><div class="strk"><div class="sfill sf-energy" id="sf-energy" style="width:80%"></div></div><span class="sval" id="sv-energy">80</span></div>
+              <div class="srow"><span class="sico">📖</span><span class="slbl">学习</span><div class="strk"><div class="sfill sf-learn" id="sf-learn" style="width:0%"></div></div><span class="sval" id="sv-learn">0</span></div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="card">
+            <div class="cttl">🐾 照顾宠物</div>
+            <div class="pet-acts" style="margin-bottom:7px">
+              <div class="act" onclick="petAct('feed')"><span class="aico">🍎</span><div class="anm">喂食</div><div class="acost">答1题</div></div>
+              <div class="act" onclick="petAct('play')"><span class="aico">🎾</span><div class="anm">玩耍</div><div class="acost">答1题</div></div>
+              <div class="act" onclick="petAct('bath')"><span class="aico">🛁</span><div class="anm">洗澡</div><div class="acost">答2题</div></div>
+              <div class="act" onclick="petAct('train')"><span class="aico">📖</span><div class="anm">学习</div><div class="acost">答2题·积经验</div></div>
+              <div class="act" onclick="petAct('sleep')"><span class="aico">💤</span><div class="anm">休息</div><div class="acost">答1题</div></div>
+              <div class="act" id="evolve-act" onclick="petAct('evolve')"><span class="aico">⬆️</span><div class="anm">进化</div><div class="acost">答5题+经验</div></div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <div class="act" style="flex:1" onclick="openNameModal('pet')"><span class="aico">✏️</span><div class="anm">改名</div></div>
+              <div class="act" style="flex:1" onclick="petAct('degrade')"><span class="aico">⬇️</span><div class="anm">退化</div><div class="acost">答1题</div></div>
+              <div class="act" style="flex:1" onclick="switchTab('shop')"><span class="aico">👗</span><div class="anm">换装</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="cttl">🐾 宠物档案</div>
+            <div id="pet-info" style="font-size:.74rem;color:var(--muted);line-height:2"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SHOP -->
+    <div class="page" id="page-shop">
+      <div class="card">
+        <div class="cttl">🛍️ 商店</div>
+        <div class="shop-tabs">
+          <div class="stab on" onclick="shopTab('seeds')">🌰 种子</div>
+          <div class="stab" onclick="shopTab('clothes')">👗 衣服</div>
+          <div class="stab" onclick="shopTab('pets')">🐾 宠物</div>
+          <div class="stab" onclick="shopTab('tools')">🔧 道具</div>
+        </div>
+        <div class="shop-grid" id="shop-grid"></div>
+      </div>
+    </div>
+
+    <!-- ACH -->
+    <div class="page" id="page-ach">
+      <div class="card">
+        <div class="cttl">🏆 成就大厅 <span style="font-size:.7rem;color:var(--muted);margin-left:auto" id="ach-count"></span></div>
+        <div class="achgrid" id="ach-grid"></div>
+      </div>
+    </div>
+
+    <!-- PROFILE -->
+    <div class="page" id="page-profile">
+      <div class="dtwo">
+        <div>
+          <div class="card" style="text-align:center;padding:16px 12px">
+            <div class="prof-av" id="prof-av">🌾</div>
+            <div style="font-family:'Ma Shan Zheng',cursive;font-size:1.1rem;color:var(--dgreen);margin-bottom:10px" id="prof-name">-</div>
+            <div class="prof-stats" id="prof-stats"></div>
+          </div>
+          <div class="card">
+            <div class="cttl">🔐 账号设置</div>
+            <div id="account-settings"></div>
+          </div>
+          <div class="card">
+            <div class="cttl">📊 学习统计</div>
+            <div id="study-stats" style="font-size:.74rem;color:var(--muted);line-height:2"></div>
+          </div>
+        </div>
+        <div>
+          <div class="card">
+            <div class="cttl">🏫 班级排名</div>
+            <div id="class-section"></div>
+          </div>
+          <div class="card">
+            <div class="cttl">💾 数据管理</div>
+            <div style="font-size:.72rem;color:var(--muted);margin-bottom:9px;line-height:1.7">
+              导出存档可在其他设备导入，实现数据转移。<br>
+              <span style="color:var(--red);font-size:.64rem">⚠️ 不支持自动云同步，请手动导入导出。</span>
+            </div>
+            <div style="display:flex;gap:7px;flex-wrap:wrap">
+              <button onclick="exportSave()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📤 导出存档</button>
+              <button onclick="document.getElementById('import-file').click()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📥 导入存档</button>
+              <input type="file" id="import-file" accept=".json" style="display:none" onchange="importSave(this)">
+            </div>
+          </div>
+          <div class="card" style="text-align:center">
+            <div class="cttl" style="justify-content:center">⚠️ 危险区</div>
+            <button onclick="confirmReset()" style="padding:7px 20px;border-radius:99px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">重置当前账号</button>
+            <span style="margin:0 6px;color:var(--muted)">|</span>
+            <button onclick="goToLogin()" style="padding:7px 20px;border-radius:99px;border:1.5px solid var(--border);background:transparent;font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">切换账号</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /pages -->
+
+  <!-- 手机底部Tab -->
+  <div id="tabbar">
+    <div class="tab on" id="tb-farm" onclick="switchTab('farm')"><span class="tico">🌾</span><span class="tlbl">农场</span><span class="tbadge" id="bd-farm"></span></div>
+    <div class="tab" id="tb-pet" onclick="switchTab('pet')"><span class="tico">🐾</span><span class="tlbl">宠物</span><span class="tbadge" id="bd-pet"></span></div>
+    <div class="tab" id="tb-shop" onclick="switchTab('shop')"><span class="tico">🛍️</span><span class="tlbl">商店</span></div>
+    <div class="tab" id="tb-ach" onclick="switchTab('ach')"><span class="tico">🏆</span><span class="tlbl">成就</span><span class="tbadge" id="bd-ach"></span></div>
+    <div class="tab" id="tb-profile" onclick="switchTab('profile')"><span class="tico">👤</span><span class="tlbl">我的</span></div>
+  </div>
+</div><!-- /app -->
+
+<!-- 缩放控件（桌面显示） -->
+<div id="zoom-ctrl">
+  <div class="zoom-btn" onclick="zoomPage(-0.1)" title="缩小">－</div>
+  <div class="zoom-btn" onclick="zoomReset()" title="重置" style="font-size:.6rem">100%</div>
+  <div class="zoom-btn" onclick="zoomPage(0.1)" title="放大">＋</div>
+</div>
+
+<!-- QUIZ -->
+<div class="overlay" id="quiz-ov"><div class="modal">
+  <div class="qprog" id="qprog"></div>
+  <div class="mttl" id="qttl">答题挑战</div>
+  <div id="sub-badge" style="display:inline-block;font-size:.6rem;padding:2px 9px;border-radius:99px;margin-bottom:5px;color:#fff;font-weight:500"></div>
+  <div class="qcat" id="qcat">基础</div>
+  <div class="qhint" id="qhint"></div>
+  <div class="qtxt" id="qtxt"></div>
+  <div class="qopts-wrap" id="qopts"></div>
+  <div class="explain" id="explain"></div>
+  <div class="mbrow">
+    <button class="mbtn mb-cancel" onclick="closeQuiz()">取消</button>
+    <button class="mbtn mb-ok" id="mb-next" onclick="quizNext()">继续 →</button>
+  </div>
+</div></div>
+
+<!-- RESULT -->
+<div class="overlay" id="res-ov"><div class="modal">
+  <div class="res-ico" id="res-ico"></div>
+  <div class="res-ttl" id="res-ttl"></div>
+  <div class="res-body" id="res-body"></div>
+  <button class="mbtn mb-ok on" onclick="closeResult()" style="width:100%">好的！</button>
+</div></div>
+
+<!-- CONFIRM -->
+<div class="overlay" id="confirm-ov"><div class="modal confirm-modal">
+  <div class="confirm-ico" id="confirm-ico">❓</div>
+  <div class="confirm-msg" id="confirm-msg"></div>
+  <div class="mbrow">
+    <button class="mbtn mb-cancel" onclick="confirmNo()">取消</button>
+    <button class="mbtn mb-ok on" id="confirm-yes-btn" onclick="confirmYes()">确定</button>
+  </div>
+</div></div>
+
+<!-- 进化提示弹窗 -->
+<div class="overlay" id="evo-tip-ov"><div class="modal">
+  <div class="evo-modal">
+    <div class="evo-modal-pet" id="evo-tip-ico">🐹</div>
+    <div class="evo-modal-msg" id="evo-tip-msg">经验不足！</div>
+    <div class="evo-modal-sub" id="evo-tip-sub"></div>
+  </div>
+  <div class="mbrow" style="margin-top:14px">
+    <button class="mbtn mb-ok on" onclick="document.getElementById('evo-tip-ov').classList.remove('on')" style="width:100%">知道了，继续加油！</button>
+  </div>
+</div></div>
+
+<!-- PLOT POPUP -->
+<div class="plot-popup" id="plot-popup">
+  <div class="pp-title" id="pp-title">第1块地</div>
+  <div class="pp-actions" id="pp-actions"></div>
+  <div class="pp-close" onclick="closePlotPopup()">✕ 关闭</div>
+</div>
+
+<!-- SEED -->
+<div class="overlay" id="seed-ov"><div class="modal">
+  <div class="mttl" id="seed-ov-title">选择种子</div>
+  <div class="seed-list" id="seed-list"></div>
+  <div id="qty-section" style="display:none">
+    <div style="text-align:center;font-size:.7rem;color:var(--muted);margin-bottom:3px">购买数量</div>
+    <div class="qty-row">
+      <div class="qty-btn" onclick="changeQty(-1)">−</div>
+      <div class="qty-val" id="qty-val">1</div>
+      <div class="qty-btn" onclick="changeQty(1)">+</div>
+    </div>
+    <div style="text-align:center;font-size:.66rem;color:var(--gold)" id="qty-cost"></div>
+  </div>
+  <div class="mbrow">
+    <button class="mbtn mb-cancel" onclick="closeSeedOv()">取消</button>
+    <button class="mbtn mb-ok on" onclick="confirmSeedAction()">确定</button>
+  </div>
+</div></div>
+
+<!-- CLOTH PREVIEW -->
+<div class="overlay" id="cloth-ov"><div class="modal">
+  <div class="mttl" id="cloth-ov-title">购买预览</div>
+  <div class="cloth-preview-wrap">
+    <canvas id="cloth-preview-canvas" width="120" height="120"></canvas>
+    <div style="font-size:.7rem;color:var(--muted);margin-top:6px" id="cloth-preview-name"></div>
+  </div>
+  <div style="text-align:center;font-size:.8rem;color:var(--gold);margin-bottom:8px" id="cloth-price-hint"></div>
+  <div class="mbrow">
+    <button class="mbtn mb-cancel" onclick="document.getElementById('cloth-ov').classList.remove('on')">取消</button>
+    <button class="mbtn mb-ok on" id="cloth-buy-btn">购买并穿上</button>
+  </div>
+</div></div>
+
+<!-- NAME -->
+<div class="overlay" id="name-ov"><div class="modal">
+  <div class="mttl" id="name-mttl">设置名字</div>
+  <input class="name-input" id="name-input" placeholder="输入名字" maxlength="10" style="user-select:text">
+  <div style="margin-bottom:8px">
+    <button class="mbtn mb-cancel" onclick="randomName()" style="font-size:.72rem;width:100%">🎲 随机命名</button>
+  </div>
+  <div class="mbrow">
+    <button class="mbtn mb-cancel" onclick="document.getElementById('name-ov').classList.remove('on')">取消</button>
+    <button class="mbtn mb-ok on" onclick="saveName()">保存</button>
+  </div>
+</div></div>
+
+<!-- 设置密码弹窗 -->
+<div class="overlay" id="setpin-ov"><div class="modal">
+  <div class="mttl">🔐 设置密码</div>
+  <div style="font-size:.74rem;color:var(--muted);margin-bottom:12px;text-align:center" id="setpin-hint"></div>
+  <div class="pin-wrap" id="setpin-dots"></div>
+  <div class="numpad" id="setpin-numpad"></div>
+  <div style="margin-top:12px;font-size:.7rem;color:var(--muted);cursor:pointer;text-align:center"
+    onclick="document.getElementById('setpin-ov').classList.remove('on');setpinInput=''">取消</div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+<div class="achpop" id="achpop">
+  <div style="font-size:1.5rem" id="ap-ico">🏆</div>
+  <div><div style="font-size:.6rem;color:var(--gold);font-weight:700">✨ 成就解锁</div>
+  <div style="font-size:.76rem;font-weight:500" id="ap-nm"></div></div>
+</div>
+
+<script src="questions.js"></script>
+<script src="subject_geo7.js"></script>
+<script src="subject_geo8.js"></script>
+<script src="subject_history8.js"></script>
+<script src="subject_english.js"></script>
+<script src="gamedata.js"></script>
+<script src="subjects.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

@@ -311,42 +311,15 @@ function startPetAnim(){
   if(cvs&&!cvs._petHandlersSet){
     cvs._petHandlersSet=true;
     const getPos=(e,touch)=>{const r=cvs.getBoundingClientRect();const src=touch?e.touches[0]:e;return{x:(src.clientX-r.left)*(cvs.width/r.width),y:(src.clientY-r.top)*(cvs.height/r.height)};};
-    // 鼠标事件
-    let _mouseDownOnPet=false,_mouseMoved=false;
-    cvs.addEventListener('mousedown',e=>{const pos=getPos(e,false);if(Math.abs(pos.x-petX)<45&&Math.abs(pos.y-petY)<45){petDragging=true;_mouseDownOnPet=true;_mouseMoved=false;petDragOx=pos.x-petX;petDragOy=pos.y-petY;cvs.style.cursor='grabbing';}});
-    document.addEventListener('mousemove',e=>{if(!petDragging)return;_mouseMoved=true;const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;petX=Math.max(20,Math.min(130,(e.clientX-r.left)*scale-petDragOx));petY=Math.max(20,Math.min(130,(e.clientY-r.top)*scale-petDragOy));});
-    document.addEventListener('mouseup',e=>{if(petDragging){petDragging=false;cvs.style.cursor='';if(_mouseMoved){S.dragCount=(S.dragCount||0)+1;checkAchs();persistAccount();}else if(_mouseDownOnPet){showPetTalk('tap');spawnP(['💕','✨','⭐']);}}_mouseDownOnPet=false;_mouseMoved=false;});
-    // 触摸事件 - 独立于click事件处理，防止preventDefault后click不触发
-    let _touchStartX=0,_touchStartY=0,_touchOnPet=false,_touchMoved=false;
-    cvs.addEventListener('touchstart',e=>{
-      e.preventDefault();
-      const pos=getPos(e,true);
-      _touchStartX=pos.x;_touchStartY=pos.y;_touchMoved=false;
-      if(Math.abs(pos.x-petX)<50&&Math.abs(pos.y-petY)<50){
-        _touchOnPet=true;
-        petDragging=true;petDragOx=pos.x-petX;petDragOy=pos.y-petY;
-      }else{_touchOnPet=false;}
-    },{passive:false});
-    document.addEventListener('touchmove',e=>{
-      if(!petDragging)return;
-      e.preventDefault();
-      const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;const t=e.touches[0];
-      const nx=(t.clientX-r.left)*scale,ny=(t.clientY-r.top)*scale;
-      if(Math.abs(nx-_touchStartX)>8||Math.abs(ny-_touchStartY)>8)_touchMoved=true;
-      petX=Math.max(20,Math.min(130,nx-petDragOx));
-      petY=Math.max(20,Math.min(130,ny-petDragOy));
-    },{passive:false});
-    document.addEventListener('touchend',e=>{
-      if(!_touchOnPet){_touchOnPet=false;return;}
-      if(petDragging){petDragging=false;}
-      if(_touchMoved){
-        S.dragCount=(S.dragCount||0)+1;checkAchs();persistAccount();
-      }else{
-        // 轻触 = tap
-        showPetTalk('tap');spawnP(['💕','✨','⭐']);
-      }
-      _touchOnPet=false;_touchMoved=false;
-    });
+    let _mouseDownOnPet=false;
+    cvs.addEventListener('mousedown',e=>{const pos=getPos(e,false);if(Math.abs(pos.x-petX)<45&&Math.abs(pos.y-petY)<45){petDragging=true;_mouseDownOnPet=true;petDragOx=pos.x-petX;petDragOy=pos.y-petY;cvs.style.cursor='grabbing';}});
+    let _touchStartX=0,_touchStartY=0,_touchMovedFar=false;
+    cvs.addEventListener('touchstart',e=>{e.preventDefault();const pos=getPos(e,true);_touchStartX=pos.x;_touchStartY=pos.y;_touchMovedFar=false;if(Math.abs(pos.x-petX)<50&&Math.abs(pos.y-petY)<50){petDragging=true;petDragOx=pos.x-petX;petDragOy=pos.y-petY;}},{passive:false});
+    document.addEventListener('mousemove',e=>{if(!petDragging)return;const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;petX=Math.max(20,Math.min(130,(e.clientX-r.left)*scale-petDragOx));petY=Math.max(20,Math.min(130,(e.clientY-r.top)*scale-petDragOy));});
+    document.addEventListener('touchmove',e=>{if(!petDragging)return;e.preventDefault();const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;const t=e.touches[0];const nx=Math.max(20,Math.min(130,(t.clientX-r.left)*scale-petDragOx));const ny=Math.max(20,Math.min(130,(t.clientY-r.top)*scale-petDragOy));if(Math.abs(nx-(_touchStartX-petDragOx+petX))>8||Math.abs(ny-(_touchStartY-petDragOy+petY))>8)_touchMovedFar=true;petX=nx;petY=ny;},{passive:false});
+    document.addEventListener('mouseup',e=>{if(petDragging){const moved=Math.abs(petX-(petDragOx+petX-petDragOx))>5;petDragging=false;cvs.style.cursor='';if(moved){S.dragCount=(S.dragCount||0)+1;checkAchs();persistAccount();}}else if(_mouseDownOnPet){const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;const x=(e.clientX-r.left)*scale,y=(e.clientY-r.top)*scale;if(Math.abs(x-petX)<45&&Math.abs(y-petY)<45){showPetTalk('tap');spawnP(['💕','✨','⭐']);}}_mouseDownOnPet=false;});
+    document.addEventListener('touchend',e=>{if(petDragging){petDragging=false;if(_touchMovedFar){S.dragCount=(S.dragCount||0)+1;checkAchs();persistAccount();}else{const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;const tx=_touchStartX,ty=_touchStartY;if(Math.abs(tx-petX)<50&&Math.abs(ty-petY)<50){showPetTalk('tap');spawnP(['💕','✨','⭐']);}}}});
+    cvs.addEventListener('click',e=>{if('ontouchstart' in window)return;const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;const x=(e.clientX-r.left)*scale,y=(e.clientY-r.top)*scale;if(Math.abs(x-petX)<45&&Math.abs(y-petY)<45){showPetTalk('tap');spawnP(['💕','✨','⭐']);}});
   }
   if(petAF)return;
   const loop=()=>{
@@ -416,11 +389,11 @@ function drawPetBreed(ctx,breed,cx,cy,stage){if(breed==="cat")drawCat(ctx,cx,cy,
 
 function drawPet(){
   const cvs=document.getElementById('pet-canvas');if(!cvs)return;
-  const ctx=cvs.getContext('2d');ctx.clearRect(0,0,cvs.width,cvs.height);
+  const ctx=cvs.getContext('2d');ctx.clearRect(0,0,150,150);
   const bob=petWalking?Math.sin(petT*3)*1.5:Math.sin(petT)*2;
   const stage=applySkinStage(getEvoStage());const breed=S.petBreed||'hamster';
-  try{drawPetBreed(ctx,breed,petX,petY+bob,stage);}catch(e){console.warn('drawPetBreed err',e);}
-  try{drawCloth(ctx,petX,petY+bob);}catch(e){console.warn('drawCloth err',e);}
+  drawPetBreed(ctx,breed,petX,petY+bob,stage);
+  drawCloth(ctx,petX,petY+bob);
 }
 
 // ── 商店宠物预览图：临时切换状态绘制缩略图 ──
@@ -437,6 +410,7 @@ function drawPetPreviewInCanvas(cvs,breed,level){
   try{drawPetBreed(ctx,breed,cx,cy,stage);}catch(e){}
   S.petBreed=_br;S.petLevel=_lv;S.petHappy=_hp;S.petEnergy=_en;
 }
+
 // ── 仓鼠（5阶，装饰贴合头部）──
 
 // ── 通用辅助：表情绘制 ──
@@ -529,8 +503,6 @@ function drawHamster(ctx, cx, cy, stage) {
     if (lv >= 3) { ctx.font = '14px sans-serif'; ctx.fillText(stage.crownIco || '🌱', cx - 7, cy - 32); }
     drawTears(ctx, cx, cy-5, h); if (S.petEnergy < 25) { ctx.font='12px sans-serif'; ctx.fillText('💤', cx+18, cy-25); }
 }
-
-
 
 // ── 猫咪（3/4侧面·优雅）──
 // ── 🐱猫咪 (正面乖巧坐姿，Lv越高尾巴越长、皇冠越华丽) ──
@@ -1421,8 +1393,7 @@ function renderShop(){
       if(!owned){openClothPreview(item);}
       else{
         S.equippedCloth=equipped?null:item.id;
-        saveCurPet();persistAccount();renderShop();updatePetUI();
-        drawPet();setTimeout(drawPet,50);setTimeout(drawPet,300);
+        saveCurPet();persistAccount();renderShop();updatePetUI();drawPet();
         showPetTalk(equipped?'tap':'cloth_on');
         showToast(equipped?`已脱下${item.name}`:`已穿上${item.name}！`);
       }
@@ -1674,17 +1645,15 @@ function openClothPreview(item){
   const cvs=document.getElementById('cloth-preview-canvas');
   if(cvs){
     const ctx=cvs.getContext('2d');
-    ctx.clearRect(0,0,cvs.width,cvs.height);
-    const _br=S.petBreed,_lv=S.petLevel,_hp=S.petHappy,_en=S.petEnergy,_ec=S.equippedCloth;
+    ctx.clearRect(0,0,120,120);
+    const _br=S.petBreed,_lv=S.petLevel,_hp=S.petHappy,_en=S.petEnergy;
     S.petHappy=75;S.petEnergy=75;
     try{
       const stage=applySkinStage(getEvoStage());
       drawPetBreed(ctx,S.petBreed||'hamster',60,62,stage);
-    }catch(e){console.warn('cloth preview breed err',e);}
-    try{
       drawCloth(ctx,60,62,item.id);
-    }catch(e){console.warn('cloth preview cloth err',e);}
-    S.petBreed=_br;S.petLevel=_lv;S.petHappy=_hp;S.petEnergy=_en;S.equippedCloth=_ec;
+    }catch(e){console.warn('cloth preview draw err',e);}
+    S.petBreed=_br;S.petLevel=_lv;S.petHappy=_hp;S.petEnergy=_en;
   }
   const btn=document.getElementById('cloth-buy-btn');
   if(btn){
@@ -1694,9 +1663,8 @@ function openClothPreview(item){
       S.coins-=item.price;
       S.ownedClothes.push(item.id);
       S.equippedCloth=item.id;
-      saveCurPet();persistAccount();renderShop();updatePetUI();updateTop();
+      saveCurPet();persistAccount();renderShop();updatePetUI();updateTop();drawPet();
       document.getElementById('cloth-ov').classList.remove('on');
-      drawPet();setTimeout(drawPet,50);setTimeout(drawPet,300);
       showPetTalk('cloth_on');
       showResult(item.ico,'购买成功！',item.name+'已购买并穿上！');
       checkAchs();
@@ -1831,7 +1799,7 @@ function showToast(msg){const t=document.getElementById('toast');t.textContent=m
 function spawnP(emojis){for(let i=0;i<5;i++){setTimeout(()=>{const p=document.createElement('div');p.className='ptcl';p.textContent=emojis[Math.floor(Math.random()*emojis.length)];p.style.left=(25+Math.random()*50)+'vw';p.style.top=(25+Math.random()*45)+'vh';document.body.appendChild(p);setTimeout(()=>p.remove(),1300);},i*90);}}
 
 // ─── TAB ──────────────────────────────────────────
-function switchTab(name){['farm','pet','shop','ach','profile'].forEach(n=>{document.getElementById('page-'+n)?.classList.toggle('active',n===name);const tb=document.getElementById('tb-'+n);if(tb)tb.classList.toggle('on',n===name);});const sbn=document.querySelector('.sb-nav');if(sbn){sbn.querySelectorAll('.sb-item').forEach((el,i)=>el.classList.toggle('on',['farm','pet','shop','ach','profile'][i]===name));}if(name==='ach'){S.newAch=[];persistAccount();['bd-ach','sbd-ach'].forEach(id=>{const el=document.getElementById(id);if(el){el.textContent='';el.classList.remove('on');}});}if(name==='shop')renderShop();if(name==='profile')updateProfile();if(name==='pet'){updatePetUI();if(!petAF)startPetAnim();drawPet();setTimeout(drawPet,50);setTimeout(drawPet,200);}}
+function switchTab(name){['farm','pet','shop','ach','profile'].forEach(n=>{document.getElementById('page-'+n)?.classList.toggle('active',n===name);const tb=document.getElementById('tb-'+n);if(tb)tb.classList.toggle('on',n===name);});const sbn=document.getElementById('sb-nav');if(sbn){sbn.querySelectorAll('.sb-item').forEach((el,i)=>el.classList.toggle('on',['farm','pet','shop','ach','profile'][i]===name));}if(name==='ach'){S.newAch=[];persistAccount();['bd-ach','sbd-ach'].forEach(id=>{const el=document.getElementById(id);if(el){el.textContent='';el.classList.remove('on');}});}if(name==='shop')renderShop();if(name==='profile')updateProfile();if(name==='pet'){updatePetUI();setTimeout(()=>drawPet(),50);}}
 
 // ─── EXPORT / IMPORT ──────────────────────────────
 function exportSave(){const data={version:6,playerName:S.playerName,save:S,exportTime:new Date().toISOString()};const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`学习农场_${S.playerName||'存档'}_${new Date().toLocaleDateString('zh-CN')}.json`;a.click();URL.revokeObjectURL(url);showToast('✅ 存档已导出！');}

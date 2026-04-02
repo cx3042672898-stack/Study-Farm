@@ -437,7 +437,6 @@ function drawPetPreviewInCanvas(cvs,breed,level){
   try{drawPetBreed(ctx,breed,cx,cy,stage);}catch(e){}
   S.petBreed=_br;S.petLevel=_lv;S.petHappy=_hp;S.petEnergy=_en;
 }
-
 // ── 仓鼠（5阶，装饰贴合头部）──
 
 // ── 通用辅助：表情绘制 ──
@@ -530,6 +529,8 @@ function drawHamster(ctx, cx, cy, stage) {
     if (lv >= 3) { ctx.font = '14px sans-serif'; ctx.fillText(stage.crownIco || '🌱', cx - 7, cy - 32); }
     drawTears(ctx, cx, cy-5, h); if (S.petEnergy < 25) { ctx.font='12px sans-serif'; ctx.fillText('💤', cx+18, cy-25); }
 }
+
+
 
 // ── 猫咪（3/4侧面·优雅）──
 // ── 🐱猫咪 (正面乖巧坐姿，Lv越高尾巴越长、皇冠越华丽) ──

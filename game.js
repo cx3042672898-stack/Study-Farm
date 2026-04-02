@@ -311,13 +311,15 @@ function startPetAnim(){
   if(cvs&&!cvs._petHandlersSet){
     cvs._petHandlersSet=true;
     const getPos=(e,touch)=>{const r=cvs.getBoundingClientRect();const src=touch?e.touches[0]:e;return{x:(src.clientX-r.left)*(cvs.width/r.width),y:(src.clientY-r.top)*(cvs.height/r.height)};};
-    cvs.addEventListener('mousedown',e=>{const pos=getPos(e,false);if(Math.abs(pos.x-petX)<45&&Math.abs(pos.y-petY)<45){petDragging=true;petDragOx=pos.x-petX;petDragOy=pos.y-petY;cvs.style.cursor='grabbing';}});
-    cvs.addEventListener('touchstart',e=>{e.preventDefault();const pos=getPos(e,true);if(Math.abs(pos.x-petX)<50&&Math.abs(pos.y-petY)<50){petDragging=true;petDragOx=pos.x-petX;petDragOy=pos.y-petY;}},{passive:false});
+    let _mouseDownOnPet=false;
+    cvs.addEventListener('mousedown',e=>{const pos=getPos(e,false);if(Math.abs(pos.x-petX)<45&&Math.abs(pos.y-petY)<45){petDragging=true;_mouseDownOnPet=true;petDragOx=pos.x-petX;petDragOy=pos.y-petY;cvs.style.cursor='grabbing';}});
+    let _touchStartX=0,_touchStartY=0,_touchMovedFar=false;
+    cvs.addEventListener('touchstart',e=>{e.preventDefault();const pos=getPos(e,true);_touchStartX=pos.x;_touchStartY=pos.y;_touchMovedFar=false;if(Math.abs(pos.x-petX)<50&&Math.abs(pos.y-petY)<50){petDragging=true;petDragOx=pos.x-petX;petDragOy=pos.y-petY;}},{passive:false});
     document.addEventListener('mousemove',e=>{if(!petDragging)return;const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;petX=Math.max(20,Math.min(130,(e.clientX-r.left)*scale-petDragOx));petY=Math.max(20,Math.min(130,(e.clientY-r.top)*scale-petDragOy));});
-    document.addEventListener('touchmove',e=>{if(!petDragging)return;e.preventDefault();const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;const t=e.touches[0];petX=Math.max(20,Math.min(130,(t.clientX-r.left)*scale-petDragOx));petY=Math.max(20,Math.min(130,(t.clientY-r.top)*scale-petDragOy));},{passive:false});
-    document.addEventListener('mouseup',()=>{if(petDragging){petDragging=false;cvs.style.cursor='';S.dragCount=(S.dragCount||0)+1;checkAchs();persistAccount();}});
-    document.addEventListener('touchend',()=>{if(petDragging){petDragging=false;S.dragCount=(S.dragCount||0)+1;checkAchs();persistAccount();}});
-    cvs.addEventListener('click',e=>{const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;const x=(e.clientX-r.left)*scale,y=(e.clientY-r.top)*scale;if(Math.abs(x-petX)<45&&Math.abs(y-petY)<45){showPetTalk('tap');spawnP(['💕','✨','⭐']);}});
+    document.addEventListener('touchmove',e=>{if(!petDragging)return;e.preventDefault();const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;const t=e.touches[0];const nx=Math.max(20,Math.min(130,(t.clientX-r.left)*scale-petDragOx));const ny=Math.max(20,Math.min(130,(t.clientY-r.top)*scale-petDragOy));if(Math.abs(nx-(_touchStartX-petDragOx+petX))>8||Math.abs(ny-(_touchStartY-petDragOy+petY))>8)_touchMovedFar=true;petX=nx;petY=ny;},{passive:false});
+    document.addEventListener('mouseup',e=>{if(petDragging){const moved=Math.abs(petX-(petDragOx+petX-petDragOx))>5;petDragging=false;cvs.style.cursor='';if(moved){S.dragCount=(S.dragCount||0)+1;checkAchs();persistAccount();}}else if(_mouseDownOnPet){const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;const x=(e.clientX-r.left)*scale,y=(e.clientY-r.top)*scale;if(Math.abs(x-petX)<45&&Math.abs(y-petY)<45){showPetTalk('tap');spawnP(['💕','✨','⭐']);}}_mouseDownOnPet=false;});
+    document.addEventListener('touchend',e=>{if(petDragging){petDragging=false;if(_touchMovedFar){S.dragCount=(S.dragCount||0)+1;checkAchs();persistAccount();}else{const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;const tx=_touchStartX,ty=_touchStartY;if(Math.abs(tx-petX)<50&&Math.abs(ty-petY)<50){showPetTalk('tap');spawnP(['💕','✨','⭐']);}}}});
+    cvs.addEventListener('click',e=>{if('ontouchstart' in window)return;const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;const x=(e.clientX-r.left)*scale,y=(e.clientY-r.top)*scale;if(Math.abs(x-petX)<45&&Math.abs(y-petY)<45){showPetTalk('tap');spawnP(['💕','✨','⭐']);}});
   }
   if(petAF)return;
   const loop=()=>{
@@ -1051,8 +1053,9 @@ function drawCloth(ctx,cx,cy,previewId){
   } else if(clothId==='c_backpack'){
     const bpx=cx+19,bpy=cy-4;
     ctx.fillStyle='#6090e0';ctx.strokeStyle='#4070c0';ctx.lineWidth=1.2;
-    ctx.beginPath();ctx.roundRect(bpx-6,bpy-9,13,15,3);ctx.fill();ctx.stroke();
-    ctx.fillStyle='#80b0ff';ctx.beginPath();ctx.roundRect(bpx-3.5,bpy-6,7,5.5,2);ctx.fill();ctx.stroke();
+    const _rr=(c,x,y,w,h,r)=>{c.beginPath();if(c.roundRect){c.roundRect(x,y,w,h,r);}else{c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.arcTo(x+w,y,x+w,y+r,r);c.lineTo(x+w,y+h-r);c.arcTo(x+w,y+h,x+w-r,y+h,r);c.lineTo(x+r,y+h);c.arcTo(x,y+h,x,y+h-r,r);c.lineTo(x,y+r);c.arcTo(x,y,x+r,y,r);c.closePath();}};
+    _rr(ctx,bpx-6,bpy-9,13,15,3);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#80b0ff';_rr(ctx,bpx-3.5,bpy-6,7,5.5,2);ctx.fill();ctx.stroke();
     ctx.beginPath();ctx.arc(bpx,bpy+4,1.3,0,Math.PI*2);ctx.fillStyle='#ffd700';ctx.fill();
     ctx.strokeStyle='#4070c0';ctx.lineWidth=1.5;ctx.lineCap='round';
     ctx.beginPath();ctx.moveTo(bpx-6,bpy-9);ctx.bezierCurveTo(bpx-14,bpy-8,bpx-14,bpy+2,bpx-6,bpy+6);ctx.stroke();
@@ -1171,7 +1174,7 @@ function drawCloth(ctx,cx,cy,previewId){
     // 骑士盔甲：银色金属甲
     // 胸甲
     ctx.fillStyle='#c0c8d0';ctx.strokeStyle='#809090';ctx.lineWidth=1.5;
-    ctx.beginPath();ctx.roundRect(cx-13,cy-2,26,18,3);ctx.fill();ctx.stroke();
+    {const _rr2=(c,x,y,w,h,r)=>{c.beginPath();if(c.roundRect){c.roundRect(x,y,w,h,r);}else{c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.arcTo(x+w,y,x+w,y+r,r);c.lineTo(x+w,y+h-r);c.arcTo(x+w,y+h,x+w-r,y+h,r);c.lineTo(x+r,y+h);c.arcTo(x,y+h,x,y+h-r,r);c.lineTo(x,y+r);c.arcTo(x,y,x+r,y,r);c.closePath();}};_rr2(ctx,cx-13,cy-2,26,18,3);ctx.fill();ctx.stroke();}
     // 甲片横纹
     ctx.strokeStyle='#8090a0';ctx.lineWidth=1;
     [cy+4,cy+10].forEach(ly=>{ctx.beginPath();ctx.moveTo(cx-12,ly);ctx.lineTo(cx+12,ly);ctx.stroke();});
@@ -1241,7 +1244,7 @@ function drawCloth(ctx,cx,cy,previewId){
     // 星辰战衣：深蓝星空图案全身
     // 战衣主体
     ctx.fillStyle='#0a0a2a';ctx.strokeStyle='#3060c0';ctx.lineWidth=1.5;
-    ctx.beginPath();ctx.roundRect(cx-14,cy-4,28,22,3);ctx.fill();ctx.stroke();
+    {const _rr3=(c,x,y,w,h,r)=>{c.beginPath();if(c.roundRect){c.roundRect(x,y,w,h,r);}else{c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.arcTo(x+w,y,x+w,y+r,r);c.lineTo(x+w,y+h-r);c.arcTo(x+w,y+h,x+w-r,y+h,r);c.lineTo(x+r,y+h);c.arcTo(x,y+h,x,y+h-r,r);c.lineTo(x,y+r);c.arcTo(x,y,x+r,y,r);c.closePath();}};_rr3(ctx,cx-14,cy-4,28,22,3);ctx.fill();ctx.stroke();}
     // 肩甲
     [[cx-17,cy-5],[cx+17,cy-5]].forEach(([sx,sy])=>{
       ctx.fillStyle='#1a2060';ctx.strokeStyle='#4060c0';ctx.lineWidth=1;

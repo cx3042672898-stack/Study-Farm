@@ -1527,7 +1527,6 @@ function showEvoTip(msg,sub){
   document.getElementById('evo-tip-sub').textContent=sub||'';
   document.getElementById('evo-tip-ov').classList.add('on');
 }
-
 function petAct(type){
   if(type==='evolve'){
     if(S.petLevel>=5){showEvoTip('已经是最高进化形态了！🌟','继续照顾宠物，保持满级状态！');return;}
@@ -1537,18 +1536,35 @@ function petAct(type){
       showEvoTip(`经验不足，无法进化！`,`当前学习经验：${S.petLearnExp||0} / 需要：${req}\n还差 ${req-(S.petLearnExp||0)} 点，快去学习吧！`);
       return;
     }
+    if(!S.petReachedLevels)S.petReachedLevels={};
+    const _petId=S.activePet;
+    const _prevMax=(S.petReachedLevels[_petId]||0);
+    const _targetLv=S.petLevel+1;
+    const _alreadyReached=_prevMax>=_targetLv;
+    const _needed=_alreadyReached?1:5;
+    const _title=_alreadyReached?`⬆️ 重回旧形态（仅需答对1题）`:`⬆️ 进化（需答对5题）`;
+    if(_alreadyReached)showToast('✨ 曾到达过此形态，仅需答对1题！');
     showPetTalk('evolve_ready');
-    openQuiz({title:'⬆️ 进化（需答对5题）',needed:5,onSuccess:()=>{S.petLevel++;S.petLearnExp=0;gainExp(60);saveCurPet();persistAccount();updatePetUI();checkAchs();showPetTalk('evolve_done');const st=getEvoStage();showResult('🌟','成功进化！',`${S.petName} 进化为【${st.name}】\n${st.desc}\n✨继续好好照顾ta！`);},onFail:()=>{}});return;
+    openQuiz({title:_title,needed:_needed,onSuccess:()=>{
+      S.petLevel++;S.petLearnExp=0;
+      if(!S.petReachedLevels)S.petReachedLevels={};
+      S.petReachedLevels[_petId]=Math.max(S.petReachedLevels[_petId]||0,S.petLevel);
+      gainExp(60);saveCurPet();persistAccount();updatePetUI();checkAchs();
+      showPetTalk('evolve_done');const st=getEvoStage();
+      showResult('🌟','成功进化！',`${S.petName} 进化为【${st.name}】\n${st.desc}\n✨继续好好照顾ta！`);
+    },onFail:()=>{}});return;
   }
   if(type==='degrade'){
     if(S.petLevel<=1){showToast('已是初始形态，无法退化');return;}
     showPetTalk('degrade_ask');
     setTimeout(()=>{
-      openConfirm('⬇️',`${S.petName}：难道你不满意现在的我吗？🥺\n\n确定要让宠物退化到上一个形态吗？\n（退化后需重新积累学习经验）`,
-        ()=>{openQuiz({title:'⬇️ 退化确认（答对1题）',needed:1,onSuccess:()=>{S.petLevel--;S.petLearnExp=0;saveCurPet();persistAccount();updatePetUI();showPetTalk('degrade_done');showToast(`${S.petName} 退化到了 ${getEvoStage().name} 形态`);}});},
-        false,
-        ()=>showPetTalk('degrade_cancel')
-      );
+      const _stages=EVO_STAGES[S.petBreed||'hamster']||EVO_STAGES.hamster;
+      const _opts=[];
+      for(let lv=1;lv<S.petLevel;lv++) _opts.push({label:`Lv.${lv}「${_stages[lv-1].name}」`,value:lv});
+      openStageSelect('⬇️ 选择退化目标',`${S.petName} 将退化到所选形态（经验清零）`,_opts,(targetLv)=>{
+        openConfirm('⬇️',`确定退化到【Lv.${targetLv} ${_stages[targetLv-1].name}】？\n（学习经验清零，之后可重新进化）`,
+          ()=>execDegrade(targetLv),false,()=>showPetTalk('degrade_cancel'));
+      },()=>showPetTalk('degrade_cancel'));
     },800);return;
   }
   const cfg=PET_CFGS[type];if(!cfg)return;
@@ -1567,6 +1583,38 @@ function petAct(type){
     onFail:()=>{S.petHappy=Math.max(0,S.petHappy-8);S.petEnergy=Math.max(0,S.petEnergy-5);saveCurPet();persistAccount();updatePetUI();showResult('😢','答题失败…',`${S.petName}有点失望\n心情-8→${Math.round(S.petHappy)}\n体力-5→${Math.round(S.petEnergy)}`);}
   });
 }
+
+function openStageSelect(title,desc,opts,onSelect,onCancel){
+  const ov=document.createElement('div');
+  ov.id='stage-sel-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:3000;display:flex;align-items:center;justify-content:center';
+  let html=`<div style="background:#fff;border-radius:18px;padding:22px 20px;max-width:290px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.18)">
+    <div style="font-size:1rem;font-weight:700;margin-bottom:6px;text-align:center">${title}</div>
+    <div style="font-size:.75rem;color:#888;margin-bottom:14px;text-align:center">${desc}</div>`;
+  opts.forEach(opt=>{
+    html+=`<button onclick="window._stageSel(${opt.value})" style="display:block;width:100%;padding:11px 14px;margin:7px 0;border-radius:11px;border:1.5px solid #d0e8d0;background:rgba(90,154,90,0.07);font-family:'Noto Sans SC',sans-serif;font-size:.88rem;cursor:pointer;color:#2a4a2a;transition:.15s" onmouseover="this.style.background='rgba(90,154,90,0.18)'" onmouseout="this.style.background='rgba(90,154,90,0.07)'">${opt.label}</button>`;
+  });
+  html+=`<button onclick="window._stageSel(-1)" style="display:block;width:100%;padding:9px;margin-top:10px;border-radius:10px;border:1.5px solid #e0e0e0;background:transparent;font-family:'Noto Sans SC',sans-serif;font-size:.8rem;cursor:pointer;color:#aaa">取消</button></div>`;
+  ov.innerHTML=html;document.body.appendChild(ov);
+  window._stageSel=(lv)=>{
+    ov.remove();window._stageSel=null;
+    if(lv===-1){if(onCancel)onCancel();}else{onSelect(lv);}
+  };
+}
+function execDegrade(targetLv){
+  openQuiz({title:'⬇️ 退化确认（答对1题）',needed:1,
+    onSuccess:()=>{
+      if(!S.petReachedLevels)S.petReachedLevels={};
+      const petId=S.activePet;
+      S.petReachedLevels[petId]=Math.max(S.petReachedLevels[petId]||0,S.petLevel);
+      S.petLevel=targetLv;S.petLearnExp=0;
+      saveCurPet();persistAccount();updatePetUI();
+      showPetTalk('degrade_done');
+      showToast(`${S.petName} 退化到了 ${getEvoStage().name} 形态`);
+    }
+  });
+}
+
 
 // ─── SHOP ─────────────────────────────────────────
 let curShopTab='seeds';

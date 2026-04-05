@@ -202,13 +202,121 @@ function processTimePass(){
 }
 
 // ─── QUIZ ENGINE ──────────────────────────────────
-let QZ=null,curQ=null,qAnswered=false;
+let QZ=null, curQ=null, qAnswered=false, curSelOpts=[]; 
+
 function getQ(){const pool=getActiveQuestions();if(!pool||!pool.length)return QB&&QB[0]||{c:'基础',q:'加载中...',o:['A','B','C','D'],a:0,e:''};let av=pool.map((_,i)=>i).filter(i=>!S.usedQ.includes(i));if(av.length<5){S.usedQ=[];av=pool.map((_,i)=>i);}const idx=av[Math.floor(Math.random()*av.length)];S.usedQ.push(idx);if(S.usedQ.length>pool.length-3)S.usedQ=S.usedQ.slice(-15);return pool[idx];}
+
 function openQuiz(cfg){QZ={...cfg,done:0,correct:0};qAnswered=false;const sub=getActiveSubject();const badge=document.getElementById('sub-badge');if(badge){badge.textContent=sub.icon+' '+sub.name;badge.style.background=sub.color||'#5a9a5a';}document.getElementById('quiz-ov').classList.add('on');loadNextQ();}
-function loadNextQ(){curQ=getQ();qAnswered=false;document.getElementById('qcat').textContent=curQ.c;document.getElementById('qcat').className='qcat ct-'+curQ.c;document.getElementById('qtxt').textContent=curQ.q;document.getElementById('explain').classList.remove('on');document.getElementById('mb-next').classList.remove('on');document.getElementById('qprog').textContent=`已答对 ${QZ.correct}/${QZ.needed}`;document.getElementById('qttl').textContent=QZ.title||'答题挑战';const _shieldTip=(S.streakShieldLeft||0)>0?'  🛡️护盾×'+S.streakShieldLeft:'';document.getElementById('qhint').textContent=`🎯 需答对 ${QZ.needed} 题，已答对 ${QZ.correct} 题${_shieldTip}`;const d=document.getElementById('qopts');d.innerHTML='';curQ.o.forEach((o,i)=>{const b=document.createElement('button');b.className='opt';b.textContent=['A','B','C','D'][i]+'. '+o;b.onclick=()=>pickOpt(i,b);d.appendChild(b);});}
-function pickOpt(idx,btn){if(qAnswered)return;qAnswered=true;S.totalAnswered++;QZ.done++;document.querySelectorAll('.opt').forEach(b=>b.disabled=true);const ok=idx===curQ.a;btn.classList.add(ok?'ok':'no');document.querySelectorAll('.opt')[curQ.a].classList.add('ok');document.getElementById('explain').textContent='💡 '+curQ.e;document.getElementById('explain').classList.add('on');if(ok){QZ.correct++;S.totalCorrect++;S.curStreak++;S.maxStreak=Math.max(S.maxStreak,S.curStreak);if(!S.catCorrect)S.catCorrect={...DEFAULT_SAVE.catCorrect};S.catCorrect[curQ.c]=(S.catCorrect[curQ.c]||0)+1;const mult=S.expBoostLeft>0?2:1;gainExp(15*mult);if(S.expBoostLeft>0){S.expBoostLeft--;updateTop();if(!S.expBoostLeft)showToast('📖 经验加成已用完');else showToast(`📖 学霸加成剩余 ${S.expBoostLeft} 题`);}spawnP(['⭐','✨','🌸']);}else{if((S.streakShieldLeft||0)>0){S.streakShieldLeft--;showToast('🛡️连击护盾生效！连击保住了！');}else{S.curStreak=0;}document.getElementById('quiz-ov').classList.add('shake');setTimeout(()=>document.getElementById('quiz-ov').classList.remove('shake'),400);}checkAchs();updateTop();persistAccount();const nb=document.getElementById('mb-next');if(QZ.correct>=QZ.needed){nb.textContent='完成 ✓';nb.classList.add('on');nb.onclick=()=>closeQuiz(true);}else{nb.textContent=`继续（还差 ${QZ.needed-QZ.correct} 题）→`;nb.classList.add('on');nb.onclick=quizNext;}}
+
+function loadNextQ(){
+  curQ=getQ(); qAnswered=false; curSelOpts=[]; 
+  document.getElementById('qcat').textContent=curQ.c; 
+  document.getElementById('qcat').className='qcat ct-'+curQ.c; 
+  document.getElementById('qtxt').textContent=curQ.q; 
+  document.getElementById('explain').classList.remove('on'); 
+  document.getElementById('mb-next').classList.remove('on'); 
+  document.getElementById('qprog').textContent=`已答对 ${QZ.correct}/${QZ.needed}`; 
+  document.getElementById('qttl').textContent=QZ.title||'答题挑战'; 
+  const _shieldTip=(S.streakShieldLeft||0)>0?'  🛡️护盾×'+S.streakShieldLeft:''; 
+  
+  // 多选还是单选的提示判定
+  const isMulti = Array.isArray(curQ.a);
+  document.getElementById('qhint').textContent=`🎯 需答对 ${QZ.needed} 题，已答对 ${QZ.correct} 题${_shieldTip}${isMulti?' 【这是一个多选题，请选完提交】':''}`; 
+  
+  const d=document.getElementById('qopts'); d.innerHTML=''; 
+  curQ.o.forEach((o,i)=>{
+    const b=document.createElement('button'); b.className='opt'; 
+    b.textContent=['A','B','C','D','E','F'][i]+'. '+o; 
+    b.onclick=()=>pickOpt(i,b); d.appendChild(b);
+  });
+  
+  // 若是多选，给一个醒目底部按钮准备验证答案
+  if (isMulti) {
+    const sBtn = document.createElement('button');
+    sBtn.id='submit-multi-btn';
+    sBtn.textContent='✔️ 提交答案';
+    sBtn.className='mbtn mb-ok on';
+    sBtn.style.cssText='width:100%;margin-top:10px;background:var(--gold);';
+    sBtn.onclick=()=>submitAns();
+    d.appendChild(sBtn);
+  }
+}
+
+function pickOpt(idx,btn){
+  if(qAnswered) return;
+  const isMulti = Array.isArray(curQ.a);
+  
+  if (!isMulti) {
+    curSelOpts = [idx]; 
+    submitAns(); 
+  } else {
+    // 处理多选的高亮和缓存
+    if (curSelOpts.includes(idx)) {
+      curSelOpts = curSelOpts.filter(v=>v!==idx);
+      btn.style.boxShadow = ''; btn.style.borderColor='var(--border)';
+    } else {
+      curSelOpts.push(idx);
+      btn.style.boxShadow = 'inset 0 0 0 2px var(--gold)';
+      btn.style.borderColor='var(--gold)'; 
+    }
+  }
+}
+
+function submitAns() {
+  if (qAnswered) return;
+  const isMulti = Array.isArray(curQ.a);
+  if (isMulti && curSelOpts.length === 0) { showToast("❗ 请至少选择一项答案！"); return; }
+  
+  qAnswered=true; S.totalAnswered++; QZ.done++; 
+  const optBtns = document.querySelectorAll('#qopts .opt');
+  optBtns.forEach(b => b.disabled=true);
+  const smbBtn = document.getElementById('submit-multi-btn');
+  if (smbBtn) smbBtn.style.display='none';
+  
+  // 对比正确错误情况
+  let isRight = false;
+  if (!isMulti) {
+     isRight = (curSelOpts[0] === curQ.a);
+  } else {
+     const rightAns = [...curQ.a].sort(); 
+     const selAns = [...curSelOpts].sort();
+     isRight = (JSON.stringify(rightAns) === JSON.stringify(selAns));
+  }
+  
+  // 回显判断颜色效果（去除缓存选色）
+  optBtns.forEach((b,i) => {
+    b.style.boxShadow = '';
+    const shouldBeRight = isMulti ? curQ.a.includes(i) : curQ.a === i;
+    if (shouldBeRight) b.classList.add('ok'); // 所有的正解显示绿标
+    if (curSelOpts.includes(i) && !shouldBeRight) b.classList.add('no'); // 答错了的地方用红标
+  });
+
+  document.getElementById('explain').textContent='💡 '+curQ.e;
+  document.getElementById('explain').classList.add('on');
+  
+  if (isRight) {
+     QZ.correct++; S.totalCorrect++; S.curStreak++; 
+     S.maxStreak=Math.max(S.maxStreak,S.curStreak); 
+     if(!S.catCorrect)S.catCorrect={...DEFAULT_SAVE.catCorrect}; 
+     S.catCorrect[curQ.c]=(S.catCorrect[curQ.c]||0)+1; 
+     const mult=S.expBoostLeft>0?2:1; gainExp(15*mult); 
+     if(S.expBoostLeft>0){S.expBoostLeft--;updateTop();if(!S.expBoostLeft)showToast('📖 加成耗尽');else showToast(`学霸加成剩余 ${S.expBoostLeft} 题`);}
+     spawnP(['⭐','✨','🌸']);
+  } else {
+     if((S.streakShieldLeft||0)>0){S.streakShieldLeft--;showToast('🛡️连击护盾保住了！');}else{S.curStreak=0;}
+     document.getElementById('quiz-ov').classList.add('shake'); setTimeout(()=>document.getElementById('quiz-ov').classList.remove('shake'),400);
+  }
+  checkAchs(); updateTop(); persistAccount(); 
+  
+  const nb=document.getElementById('mb-next'); 
+  if(QZ.correct>=QZ.needed){nb.textContent='完成 ✓'; nb.classList.add('on'); nb.onclick=()=>closeQuiz(true);} 
+  else {nb.textContent=`继续（还差 ${QZ.needed-QZ.correct} 题）→`; nb.classList.add('on'); nb.onclick=quizNext;}
+}
+
 function quizNext(){if(QZ.correct>=QZ.needed){closeQuiz(true);return;}loadNextQ();}
 function closeQuiz(ok=false){document.getElementById('quiz-ov').classList.remove('on');const ctx=QZ;QZ=null;if(ok&&ctx?.onSuccess)ctx.onSuccess();else if(!ok&&ctx?.onFail)ctx.onFail();}
+// ─── QUIZ ENGINE END ─────────────────────────────
+
 
 // ─── EXP / LEVEL（最高100级） ──────────────────────
 function gainExp(n){
@@ -459,16 +567,12 @@ function drawEye(ctx, x, y, h, size) {
   }
 }
 
-// ── 仓鼠（正面·圆润可爱）──
-// ── 🐹小仓鼠 (超圆润麻薯体型，巨大嘟嘟脸颊，Lv2+抱着瓜子啃) ──
-// ── 仓鼠（正面·圆润可爱）──
-// ── 🐹小仓鼠 (1阶为新设计，2阶为原版胖球，3阶+长皇冠抱瓜子) ──
 function drawHamster(ctx, cx, cy, stage) {
     const lv = S.petLevel, h = S.petHappy / 100, col = stage.color || '#e8b070';
     const light = adjustColor(col, 60), dark = adjustColor(col, -30);
 
-    // 【1阶】使用你提供的全新第一形态设计
     if (lv === 1) {
+        // 【1阶】保留原版的超萌第一形态
         const es = stage.earSize || 1;
         ctx.beginPath(); ctx.ellipse(cx, cy + 22, 27, 6, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,.07)'; ctx.fill();
         ctx.beginPath(); ctx.ellipse(cx, cy, 27, 21, 0, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill();
@@ -487,17 +591,9 @@ function drawHamster(ctx, cx, cy, stage) {
         [[cx - 23, cy + 14, -.5], [cx + 23, cy + 14, .5]].forEach(([px, py, r]) => { ctx.beginPath(); ctx.ellipse(px, py, 7, 5.5, r, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill(); });
         drawTears(ctx, cx, cy - 8, h);
         if (S.petEnergy < 25) { ctx.font = '11px sans-serif'; ctx.fillText('💤', cx + 15, cy - 28); }
-    } 
-    // 【2阶及以上】使用原版的进化形态逻辑（2阶为原版空手胖球，3阶开始抱瓜子戴皇冠）
-    else {
-        // Lv 5 仙气光环
-        if (lv >= 5) {
-            const g = ctx.createRadialGradient(cx, cy, 10, cx, cy, 50);
-            g.addColorStop(0, 'rgba(255,240,180,0.6)'); g.addColorStop(1, 'rgba(255,240,180,0)');
-            ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, 50, 0, Math.PI*2); ctx.fill();
-        }
 
-        // 身体 (超级圆润的麻薯)
+    } else if (lv === 2 || lv === 3) {
+        // 【2阶、3阶】保留原版身形；其中3阶变为原来的第4形态（抱瓜子，有头饰）。
         ctx.fillStyle = col; 
         ctx.beginPath(); ctx.ellipse(cx, cy + 12, 22, 20, 0, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = light; // 浅色白肚皮
@@ -520,13 +616,16 @@ function drawHamster(ctx, cx, cy, stage) {
         ctx.fillStyle = dark;
         ctx.beginPath(); ctx.ellipse(cx - 7, cy + 8, 5, 4, -0.5, 0, Math.PI*2); ctx.fill();
         ctx.beginPath(); ctx.ellipse(cx + 7, cy + 8, 5, 4, 0.5, 0, Math.PI*2); ctx.fill();
-        
-        // Lv3开始怀里抱着一颗小葵花籽
-        if (lv >= 3) {
+
+        if (lv === 3) {
+            // 第3形态（原版本第4形态特征）：怀里抱瓜子
             ctx.fillStyle = '#333';
             ctx.beginPath(); ctx.moveTo(cx, cy + 2); ctx.lineTo(cx-4, cy+12); ctx.lineTo(cx+4, cy+12); ctx.fill();
             ctx.fillStyle = '#eee';
             ctx.beginPath(); ctx.moveTo(cx, cy + 4); ctx.lineTo(cx-2, cy+12); ctx.lineTo(cx+2, cy+12); ctx.fill();
+            
+            // 第3形态带皇冠/发芽
+            ctx.font = '14px sans-serif'; ctx.fillText(stage.crownIco || '🌟', cx - 7, cy - 32); 
         }
 
         // 粉色小脚丫
@@ -550,11 +649,446 @@ function drawHamster(ctx, cx, cy, stage) {
             ctx.beginPath(); ctx.arc(cx+16, cy-5, 4, 0, Math.PI*2); ctx.fill();
         }
 
-        // Lv3开始头顶长出小发芽或皇冠
-        if (lv >= 3) { ctx.font = '14px sans-serif'; ctx.fillText(stage.crownIco || '🌱', cx - 7, cy - 32); }
         drawTears(ctx, cx, cy-5, h); if (S.petEnergy < 25) { ctx.font='12px sans-serif'; ctx.fillText('💤', cx+18, cy-25); }
+
+    } else if (lv === 4) {
+        // 【4阶】版本B：正太装（V字刘海、倾斜耳朵、缩小瓜子、无尾巴）
+        const skin = '#ffe4d6'; 
+        // 1. 后发
+        ctx.fillStyle = '#b07b46'; ctx.beginPath(); ctx.arc(cx, cy-8, 14, 0, Math.PI*2); ctx.fill();
+        // 2. 身体与腿脚
+        ctx.fillStyle = skin; ctx.beginPath(); ctx.ellipse(cx-6, cy+22, 3, 4, 0, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(cx+6, cy+22, 3, 4, 0, 0, Math.PI*2); ctx.fill(); // 小脚丫
+        // 白衬衫与蓝背带裤
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect?ctx.roundRect(cx-9, cy+2, 18, 12, 3):ctx.rect(cx-9, cy+2, 18, 12); ctx.fill();
+        ctx.fillStyle = '#4a86e8'; // 牛仔蓝
+        ctx.beginPath(); ctx.roundRect?ctx.roundRect(cx-9, cy+10, 18, 9, 2):ctx.rect(cx-9, cy+10, 18, 9); ctx.fill(); // 裤子
+        ctx.beginPath(); ctx.rect(cx-7, cy+2, 3, 8); ctx.fill(); ctx.beginPath(); ctx.rect(cx+4, cy+2, 3, 8); ctx.fill(); // 背带
+        ctx.fillStyle = '#ffd700'; ctx.beginPath(); ctx.arc(cx-5.5, cy+10, 1.5, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+5.5, cy+10, 1.5, 0, Math.PI*2); ctx.fill(); // 纽扣
+        // 3. 抱着的缩小版瓜子
+        ctx.fillStyle = '#333'; 
+        ctx.beginPath(); 
+        ctx.ellipse(cx, cy+12, 4, 8, Math.PI/6, 0, Math.PI*2); // 缩小瓜子尺寸
+        ctx.fill();
+        ctx.fillStyle = '#eee'; 
+        ctx.beginPath(); 
+        ctx.ellipse(cx, cy+12, 1.8, 6, Math.PI/6, 0, Math.PI*2); 
+        ctx.fill();
+        // 4. 小手 (压在瓜子上)
+        ctx.fillStyle = skin; ctx.beginPath(); ctx.ellipse(cx-7, cy+11, 4, 3, 0.5, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(cx+7, cy+11, 4, 3, -0.5, 0, Math.PI*2); ctx.fill();
+        // 5. 脸
+        ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(cx, cy-6, 11, 0, Math.PI*2); ctx.fill();
+        // 7. V字刘海 (上移与后发衔接，消除空白)
+        ctx.fillStyle = '#b07b46';
+        ctx.beginPath(); 
+        ctx.moveTo(cx-13, cy-18); // 左顶点：上移超过脸的顶部，覆盖肉色空白
+        ctx.lineTo(cx-7, cy-8);  // 左过渡点
+        ctx.lineTo(cx, cy-4);    // 中间V字尖
+        ctx.lineTo(cx+7, cy-8);  // 右过渡点
+        ctx.lineTo(cx+13, cy-18); // 右顶点：上移超过脸的顶部，覆盖肉色空白
+        ctx.fill();
+        // 8. 大眼正太五官
+        const ey = cy - 3;
+        ctx.fillStyle='#222'; ctx.beginPath(); ctx.arc(cx-5, ey, 3, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+5, ey, 3, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx-5.5, ey-1, 1.2, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+4.5, ey-1, 1.2, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle='rgba(255,100,100,0.4)'; ctx.beginPath(); ctx.ellipse(cx-8, ey+3, 2.5,1.5,0,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(cx+8, ey+3, 2.5,1.5,0,0,Math.PI*2); ctx.fill();
+
+        drawTears(ctx, cx, ey, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx+15, cy-22); }
+
+    } else {
+        // 【5阶】版本B：帅气古风男神 (宽肩，自己设计的华贵衣裳，后发在身后)
+        const skin = '#fffaf2'; 
+        ctx.fillStyle = 'rgba(255,240,160,0.15)'; ctx.beginPath(); ctx.arc(cx, cy, 45, 0, Math.PI*2); ctx.fill();
+        
+        // 1. 后发（缩小半径，减少蓬松感，保留长发效果）
+        ctx.fillStyle = '#e8d287'; 
+        // 整体收窄收短，不那么蓬
+        ctx.beginPath(); ctx.ellipse(cx, cy+5, 14, 26, 0, 0, Math.PI*2); ctx.fill();
+
+        // 3. 华贵男神衣袍 (宽阔的肩膀，修长挺拔，白金相间)
+        ctx.fillStyle = '#fdfdfd'; // 白色里衣
+        ctx.beginPath(); ctx.moveTo(cx, cy-10); ctx.lineTo(cx-24, cy+32); ctx.lineTo(cx+24, cy+32); ctx.fill();
+        ctx.fillStyle = '#3a4a5a'; // 墨蓝色外袍，彰显男性稳重
+        ctx.beginPath(); ctx.moveTo(cx-12, cy+5); ctx.lineTo(cx-24, cy+32); ctx.lineTo(cx-6, cy+32); ctx.lineTo(cx, cy+15); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx+12, cy+5); ctx.lineTo(cx+24, cy+32); ctx.lineTo(cx+6, cy+32); ctx.lineTo(cx, cy+15); ctx.fill();
+        ctx.fillStyle = '#d4a050'; // 金色宽腰封
+        ctx.beginPath(); ctx.rect(cx-10, cy+12, 20, 6); ctx.fill();
+        // 金色交领
+        ctx.strokeStyle = '#d4a050'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(cx-6, cy-5); ctx.lineTo(cx, cy+8); ctx.lineTo(cx+6, cy-5); ctx.stroke();
+
+        // 4. 男性轮廓脸型 (瘦长一点的V脸)
+        ctx.fillStyle = skin;
+        ctx.beginPath(); ctx.moveTo(cx-7, cy-15); ctx.lineTo(cx+7, cy-15); ctx.lineTo(cx, cy); ctx.fill(); 
+        ctx.beginPath(); ctx.arc(cx, cy-15, 7, Math.PI, 0); ctx.fill(); 
+
+        // 6. 斜刘海（不对称设计，替代原来的对称刘海）
+        ctx.fillStyle = '#e8d287';
+        ctx.beginPath();
+        // 斜向刘海：左边更长，向右侧倾斜，自然覆盖额头
+        ctx.moveTo(cx-13, cy-21);  // 左上起点
+        ctx.lineTo(cx-14, cy-7);   // 左下，靠近脸左侧
+        ctx.lineTo(cx-2, cy-13);   // 中间偏左
+        ctx.lineTo(cx+6, cy-15);   // 中间偏右，斜向上收
+        ctx.lineTo(cx+11, cy-19);  // 右上短起点
+        ctx.lineTo(cx+7, cy-17);   // 调整右上弧度，让形状更自然
+        ctx.closePath();
+        ctx.fill();
+
+        // 7. 闭目俊朗神颜 (剑眉星目感)
+        ctx.strokeStyle='#4a3a2a'; ctx.lineWidth=1.2; 
+        ctx.beginPath(); ctx.moveTo(cx-6, cy-11); ctx.quadraticCurveTo(cx-4, cy-9, cx-1, cy-11); ctx.stroke(); // 闭眼
+        ctx.beginPath(); ctx.moveTo(cx+6, cy-11); ctx.quadraticCurveTo(cx+4, cy-9, cx+1, cy-11); ctx.stroke();
+        ctx.strokeStyle='#b8860b'; ctx.lineWidth=1; // 金色眼影点缀
+        ctx.beginPath(); ctx.moveTo(cx-6, cy-11); ctx.lineTo(cx-8, cy-13); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx+6, cy-11); ctx.lineTo(cx+8, cy-13); ctx.stroke();
+
+        ctx.fillStyle='#ffda78'; ctx.font='12px sans-serif'; ctx.fillText('✨', cx-22+Math.sin(petT)*2, cy); ctx.fillText('🌟', cx+16, cy+15-Math.sin(petT)*2);
+
+        drawTears(ctx, cx, cy-8, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 18, cy - 25); }
     }
 }
+
+// ── 🐉 小火龙 (1阶保留，2阶侧面西方龙，3阶帅气S型中国龙，4/5阶绝对退回初版) ──
+function drawDragon(ctx, cx, cy, stage) {
+    const lv = S.petLevel, h = S.petHappy / 100, col = stage.color || '#50c080';
+    const light = adjustColor(col, 40), dark = adjustColor(col, -40);
+
+    if (lv === 1) {
+        // 【1阶】保留极萌圆球龙
+        const flap = Math.sin(petT * 4) * 0.35; 
+        ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(cx-13, cy, 8, 11, 0.6+flap, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.ellipse(cx+13, cy, 8, 11, -0.6-flap, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx, cy+5, 18, 16, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#ffdf8d'; ctx.beginPath(); ctx.ellipse(cx, cy+8, 12, 10, 0, 0, Math.PI*2); ctx.fill(); 
+        ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx, cy-7, 18, 15, 0, 0, Math.PI * 2); ctx.fill(); 
+        ctx.fillStyle = dark; ctx.beginPath(); ctx.arc(cx-5,cy-19,2.5,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+5,cy-19,2.5,0,Math.PI*2); ctx.fill(); 
+        const ey = cy - 9;
+        if(h>0.4){
+             ctx.fillStyle='#101416'; ctx.beginPath(); ctx.arc(cx-8, ey, 4.5, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+8, ey, 4.5, 0, Math.PI*2); ctx.fill();
+             ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx-9.5, ey-1, 1.8, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+6.5, ey-1, 1.8, 0, Math.PI*2); ctx.fill();
+        }else{
+             ctx.strokeStyle='#101416'; ctx.lineWidth=2.5; ctx.beginPath(); ctx.moveTo(cx-10,ey); ctx.lineTo(cx-6,ey+2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx+10,ey); ctx.lineTo(cx+6,ey+2); ctx.stroke();
+        }
+        drawTears(ctx, cx, ey+2, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 18, cy - 22); }
+
+    } else if (lv === 2) {
+        // 【2阶：侧边西方龙，蹲坐，霸气喷火】
+        const flap = Math.sin(petT * 4) * 0.2;
+        ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(cx-4, cy-5, 8, 14, 0.5+flap, 0, Math.PI*2); ctx.fill(); // 远翼
+        ctx.strokeStyle = col; ctx.lineWidth = 6; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(cx-6, cy+14); ctx.quadraticCurveTo(cx-20, cy+20, cx-22, cy+4); ctx.stroke(); // 尾
+        ctx.fillStyle = dark; ctx.beginPath(); ctx.moveTo(cx-22, cy+4); ctx.lineTo(cx-26, cy-2); ctx.lineTo(cx-16, cy+2); ctx.fill(); // 尾刺
+        ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx, cy+10, 14, 16, -0.2, 0, Math.PI*2); ctx.fill(); // 身
+        ctx.fillStyle = '#ffdf8d'; ctx.beginPath(); ctx.ellipse(cx+8, cy+12, 6, 12, -0.2, 0, Math.PI*2); ctx.fill(); // 浅肚
+        ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx-4, cy+20, 8, 6, 0, 0, Math.PI*2); ctx.fill(); // 腿
+        ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(cx+2, cy-2, 10, 16, 0.3+flap, 0, Math.PI*2); ctx.fill(); // 近翼
+        ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(cx+2, cy-2, 6, 12, 0.3+flap, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx+8, cy-8, 12, 10, 0.2, 0, Math.PI*2); ctx.fill(); // 头
+        ctx.beginPath(); ctx.moveTo(cx+8, cy-14); ctx.lineTo(cx+22, cy-8); ctx.lineTo(cx+12, cy-2); ctx.fill(); // 嘴
+        ctx.strokeStyle = '#ffcf40'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(cx+4, cy-14); ctx.lineTo(cx-2, cy-22); ctx.stroke(); // 角
+        ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(cx+10, cy-10, 2.5, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx+11, cy-11, 1, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#ff7540'; ctx.beginPath(); ctx.moveTo(cx+22, cy-6); ctx.lineTo(cx+35, cy-10); ctx.lineTo(cx+32, cy-4); ctx.lineTo(cx+40, cy); ctx.lineTo(cx+30, cy+2); ctx.fill(); // 火
+        drawTears(ctx, cx+5, cy-6, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx - 15, cy - 22); }
+
+    } else if (lv === 3) {
+        // 【3阶：帅气中国龙，S型身躯，带祥云龙珠特效】
+        const floatY = Math.sin(petT * 2) * 4;
+        ctx.strokeStyle = col; ctx.lineWidth = 10; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(cx, cy-10+floatY); ctx.bezierCurveTo(cx-25, cy+floatY, cx-25, cy+25+floatY, cx, cy+20+floatY); ctx.bezierCurveTo(cx+25, cy+15+floatY, cx+25, cy+35+floatY, cx-10, cy+30+floatY); ctx.stroke();
+        ctx.strokeStyle = dark; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(cx-12, cy+floatY); ctx.lineTo(cx-16, cy-5+floatY); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx-14, cy+12+floatY); ctx.lineTo(cx-20, cy+12+floatY); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx+12, cy+20+floatY); ctx.lineTo(cx+18, cy+16+floatY); ctx.stroke();
+        ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx-10, cy+10+floatY, 3, 6, 0.5, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(cx+10, cy+25+floatY, 3, 6, -0.5, 0, Math.PI*2); ctx.fill(); // 爪
+        ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx, cy-12+floatY, 14, 12, 0, 0, Math.PI*2); ctx.fill(); // 龙头
+        ctx.fillStyle = '#ffdf8d'; ctx.beginPath(); ctx.ellipse(cx, cy-6+floatY, 10, 6, 0, 0, Math.PI*2); ctx.fill(); // 嘴
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(cx-8, cy-6+floatY); ctx.quadraticCurveTo(cx-20, cy-4+floatY, cx-25, cy+5+floatY); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx+8, cy-6+floatY); ctx.quadraticCurveTo(cx+20, cy-4+floatY, cx+25, cy+5+floatY); ctx.stroke(); // 龙须
+        ctx.strokeStyle = '#ffcf40'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(cx-4, cy-20+floatY); ctx.lineTo(cx-8, cy-32+floatY); ctx.moveTo(cx-6, cy-26+floatY); ctx.lineTo(cx-12, cy-28+floatY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx+4, cy-20+floatY); ctx.lineTo(cx+8, cy-32+floatY); ctx.moveTo(cx+6, cy-26+floatY); ctx.lineTo(cx+12, cy-28+floatY); ctx.stroke();
+        ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(cx-6, cy-14+floatY, 2, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+6, cy-14+floatY, 2, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#ff4040'; ctx.beginPath(); ctx.arc(cx, cy-35+floatY, 4, 0, Math.PI*2); ctx.fill(); // 龙珠
+        drawTears(ctx, cx, cy-10+floatY, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 15, cy - 25); }
+
+    } else if (lv === 4) {
+        // 【4阶 完全退回你最满意的初版：红肚兜小孩】
+        const skin = '#ffe4d6';
+        const tailWag = Math.sin(petT * 3) * 4;
+        ctx.strokeStyle = col; ctx.lineWidth = 6; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(cx, cy+12); ctx.quadraticCurveTo(cx+25, cy+15, cx+20+tailWag, cy+5); ctx.stroke();
+        ctx.fillStyle = skin; ctx.beginPath(); 
+        if(ctx.roundRect) ctx.roundRect(cx-7, cy+2, 14, 16, 4); else ctx.rect(cx-7, cy+2, 14, 16); 
+        ctx.fill(); 
+        ctx.fillStyle = '#e03030'; ctx.beginPath(); ctx.moveTo(cx-6, cy+4); ctx.lineTo(cx+6, cy+4); ctx.lineTo(cx, cy+15); ctx.fill(); 
+        ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 1; ctx.stroke(); 
+        ctx.fillStyle = skin;
+        ctx.beginPath(); ctx.ellipse(cx-10, cy+8, 3, 5, 0.4, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(cx+10, cy+8, 3, 5, -0.4, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(cx-4, cy+20, 4, 3, 0, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(cx+4, cy+20, 4, 3, 0, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx, cy-8, 13, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#1a1a20';
+        ctx.beginPath(); ctx.arc(cx-10, cy-18, 5, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx+10, cy-18, 5, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(cx-6, cy-18); ctx.lineTo(cx-10, cy-26); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx+6, cy-18); ctx.lineTo(cx+10, cy-26); ctx.stroke();
+        ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(cx-5, cy-6, 2.5, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+5, cy-6, 2.5, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx-5.5, cy-7, 1, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+4.5, cy-7, 1, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = col; ctx.beginPath(); ctx.arc(cx-9, cy-3, 1.5, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+9, cy-3, 1.5, 0, Math.PI*2); ctx.fill(); 
+        drawTears(ctx, cx, cy - 2, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 15, cy - 20); }
+
+    } else {
+        // 【5阶 完全退回你最满意的初版：白发长须龙神】
+        const skin = '#fff0e8';
+        ctx.fillStyle = 'rgba(255,215,0,0.15)'; ctx.beginPath(); ctx.arc(cx, cy-10, 42, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,215,0,0.4)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(cx, cy-10, 38, 0, Math.PI*2); ctx.stroke();
+        const fly = Math.sin(petT * 2) * 4;
+        ctx.strokeStyle = 'rgba(120, 200, 255, 0.7)'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(cx-25, cy-15+fly); ctx.bezierCurveTo(cx-40, cy+25, cx+40, cy+25, cx+25, cy-15-fly); ctx.stroke();
+        ctx.fillStyle = '#1a202a'; ctx.beginPath(); ctx.ellipse(cx, cy-5, 12, 28, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#f5f5f5'; ctx.beginPath(); ctx.moveTo(cx-8, cy-15); ctx.lineTo(cx+8, cy-15); ctx.lineTo(cx+12, cy+35); ctx.lineTo(cx-12, cy+35); ctx.fill();
+        ctx.fillStyle = dark; ctx.beginPath(); ctx.moveTo(cx-8, cy-15); ctx.lineTo(cx-15, cy+35); ctx.lineTo(cx-4, cy+35); ctx.lineTo(cx, cy); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx+8, cy-15); ctx.lineTo(cx+15, cy+35); ctx.lineTo(cx+4, cy+35); ctx.lineTo(cx, cy); ctx.fill();
+        ctx.fillStyle = '#f0c050'; ctx.beginPath(); ctx.fillRect(cx-9, cy+2, 18, 4); ctx.fill();
+        ctx.fillStyle = '#f5f5f5';
+        ctx.beginPath(); ctx.moveTo(cx-8, cy-5); ctx.lineTo(cx-25, cy+15); ctx.lineTo(cx-15, cy+22); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx+8, cy-5); ctx.lineTo(cx+25, cy+15); ctx.lineTo(cx+15, cy+22); ctx.fill();
+        ctx.fillStyle = skin;
+        ctx.beginPath(); ctx.moveTo(cx-7, cy-22); ctx.lineTo(cx+7, cy-22); ctx.lineTo(cx, cy-10); ctx.fill(); 
+        ctx.beginPath(); ctx.arc(cx, cy-22, 7, Math.PI, Math.PI*2); ctx.fill(); 
+        ctx.strokeStyle = '#222'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(cx-5, cy-18); ctx.lineTo(cx-1, cy-17); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx+5, cy-18); ctx.lineTo(cx+1, cy-17); ctx.stroke();
+        ctx.strokeStyle = '#e04040'; ctx.lineWidth = 1; 
+        ctx.beginPath(); ctx.moveTo(cx-5, cy-18); ctx.lineTo(cx-8, cy-20); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx+5, cy-18); ctx.lineTo(cx+8, cy-20); ctx.stroke();
+        ctx.fillStyle = '#f0c050'; ctx.beginPath(); ctx.ellipse(cx, cy-23, 1.5, 2.5, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#1a202a';
+        ctx.beginPath(); ctx.moveTo(cx, cy-28); ctx.quadraticCurveTo(cx-8, cy-20, cx-9, cy-13); ctx.lineTo(cx-5, cy-26); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx, cy-28); ctx.quadraticCurveTo(cx+8, cy-20, cx+9, cy-13); ctx.lineTo(cx+5, cy-26); ctx.fill();
+        ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(cx-4, cy-28); ctx.lineTo(cx-12, cy-38); ctx.lineTo(cx-8, cy-43); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx-8, cy-34); ctx.lineTo(cx-14, cy-32); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx+4, cy-28); ctx.lineTo(cx+12, cy-38); ctx.lineTo(cx+8, cy-43); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx+8, cy-34); ctx.lineTo(cx+14, cy-32); ctx.stroke();
+        drawTears(ctx, cx, cy - 14, h); 
+        if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 20, cy - 35); }
+    }
+}
+
+
+// ── 🦊 小狐狸 (1-3阶极萌，4阶无尾小女孩，5阶无尾妖艳红衣仙女) ──
+function drawFox(ctx, cx, cy, stage) {
+    const lv = S.petLevel, h = S.petHappy / 100, col = stage.color || '#e87030';
+    const light = adjustColor(col, 60), dark = adjustColor(col, -30);
+
+    if (lv < 4) {
+        // 【1-3阶】保留满意版！
+        const tails = Math.min(lv, 3);
+        ctx.fillStyle = col; ctx.strokeStyle = light; ctx.lineWidth = 2.5;
+        for(let i=0; i<tails; i++){
+            const spread = (i - (tails-1)/2) * 0.45; const wag = Math.sin(petT*2.5 + i*1.2) * 5;
+            ctx.beginPath(); ctx.ellipse(cx+16+i*5, cy+wag+5, 14, 11, -0.6+spread, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        }
+        ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx, cy+10, 15, 14, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(cx, cy+14, 10, 8, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(cx-8, cy+21, 3.5, 3, 0, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(cx+8, cy+21, 3.5, 3, 0, 0, Math.PI*2); ctx.fill();
+        [[cx-14, cy-17, -0.5], [cx+14, cy-17, 0.5]].forEach(([ex, ey, rot]) => {
+            ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(ex, ey, 9, 13, rot, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ffdedb'; ctx.beginPath(); ctx.ellipse(ex, ey+3, 5, 8, rot, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx, cy-6, 20, 15, 0, 0, Math.PI*2); ctx.fill(); 
+        ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(cx, cy-2, 11, 7, 0, 0, Math.PI*2); ctx.fill(); 
+        ctx.fillStyle = '#1c1513'; ctx.beginPath(); ctx.ellipse(cx, cy-4, 2.5, 1.5, 0,0,Math.PI*2); ctx.fill(); 
+        const ey = cy - 8;
+        if(h > 0.4) { 
+            ctx.strokeStyle='#231215'; ctx.lineWidth=2.2; ctx.lineCap='round';
+            ctx.beginPath(); ctx.moveTo(cx-14, ey); ctx.quadraticCurveTo(cx-10, ey-3, cx-6, ey+1); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx+14, ey); ctx.quadraticCurveTo(cx+10, ey-3, cx+6, ey+1); ctx.stroke();
+            ctx.fillStyle = 'rgba(255,140,140,0.5)'; ctx.beginPath(); ctx.arc(cx-14, ey+4, 3, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+14, ey+4, 3, 0, Math.PI*2); ctx.fill();
+        }else{
+            ctx.fillStyle='#222'; ctx.beginPath(); ctx.ellipse(cx-10, ey, 3, 2, 0,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(cx+10, ey, 3, 2, 0,0,Math.PI*2); ctx.fill();
+        }
+        drawTears(ctx, cx, ey+2, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 22, cy - 25); }
+
+    } else if (lv === 4) {
+        // 【4阶：狐耳可爱小女孩，二次元Q版，有一只狐狸尾巴】
+        const skin = '#ffe4d6';
+        const tailOsc = Math.sin(petT*2)*3;
+
+        // 可爱小裙子（红白相间）
+        ctx.fillStyle = '#d32f2f'; ctx.beginPath(); ctx.moveTo(cx-12, cy+22); ctx.lineTo(cx+12, cy+22); ctx.lineTo(cx+8, cy+4); ctx.lineTo(cx-8, cy+4); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy+5, 6, 0, Math.PI*2); ctx.fill(); // 白领子
+        
+        // 女孩的圆头
+        ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(cx, cy-8, 12, 0, Math.PI*2); ctx.fill();
+        
+        // 头发（银白色或浅橘色齐刘海，选浅橘色呼应狐狸）
+        ctx.fillStyle = '#ffbca5';
+        ctx.beginPath(); ctx.arc(cx, cy-10, 13, Math.PI, 0); ctx.fill(); // 头顶
+        ctx.beginPath(); ctx.moveTo(cx-13, cy-10); ctx.lineTo(cx-15, cy+5); ctx.lineTo(cx-8, cy-5); ctx.fill(); // 左鬓角
+        ctx.beginPath(); ctx.moveTo(cx+13, cy-10); ctx.lineTo(cx+15, cy+5); ctx.lineTo(cx+8, cy-5); ctx.fill(); // 右鬓角
+        ctx.beginPath(); ctx.moveTo(cx-8, cy-5); ctx.lineTo(cx, cy-8); ctx.lineTo(cx+8, cy-5); ctx.lineTo(cx, cy-12); ctx.fill(); // 齐刘海
+
+        // 狐狸耳朵在头顶
+        [[cx-9, cy-18, -0.2], [cx+9, cy-18, 0.2]].forEach(([ex, ey, rot]) => {
+            ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(ex, ey, 5, 9, rot, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#ffdedb'; ctx.beginPath(); ctx.ellipse(ex, ey+2, 3, 6, rot, 0, Math.PI*2); ctx.fill();
+        });
+
+        // 动漫大眼
+        const ey = cy - 4;
+        ctx.fillStyle='#a04040'; ctx.beginPath(); ctx.arc(cx-5, ey, 3, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+5, ey, 3, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx-5.5, ey-1, 1, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+4.5, ey-1, 1, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle='rgba(255,100,100,0.5)'; ctx.beginPath(); ctx.arc(cx-8, ey+3, 2, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+8, ey+3, 2, 0, Math.PI*2); ctx.fill(); // 腮红
+
+        drawTears(ctx, cx, ey, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 18, cy - 25); }
+    } else {
+        // 【5阶：无尾巴！唯美闭目妖艳仙女，优雅红衣，银紫长发】
+        const skin = '#fffaf5';
+        // 1. 后发 (绝对在最底！)
+        ctx.fillStyle = '#e8e8f8'; ctx.beginPath(); ctx.ellipse(cx, cy+5, 18, 35, 0, 0, Math.PI*2); ctx.fill();
+
+        // 2. 优雅仙女裙 (红白相间，露出修长身形)
+        ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.moveTo(cx, cy-10); ctx.lineTo(cx-18, cy+32); ctx.lineTo(cx+18, cy+32); ctx.fill();
+        ctx.fillStyle = '#d32f2f'; // 红衣外袍
+        ctx.beginPath(); ctx.moveTo(cx-8, cy+2); ctx.lineTo(cx-22, cy+32); ctx.lineTo(cx-12, cy+32); ctx.lineTo(cx, cy+12); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx+8, cy+2); ctx.lineTo(cx+22, cy+32); ctx.lineTo(cx+12, cy+32); ctx.lineTo(cx, cy+12); ctx.fill();
+        ctx.fillStyle = '#ffcccc'; ctx.beginPath(); ctx.rect(cx-6, cy+12, 12, 4); ctx.fill(); // 腰封
+
+        // 3. 鹅蛋脸
+        ctx.fillStyle = skin; ctx.beginPath(); ctx.ellipse(cx, cy-14, 7, 9, 0, 0, Math.PI*2); ctx.fill();
+
+        // 4. 半藏的狐耳
+        ctx.fillStyle = dark; ctx.beginPath(); ctx.arc(cx-6, cy-22, 3.5, Math.PI, 0); ctx.fill(); ctx.fillStyle = '#ffc9ce'; ctx.beginPath(); ctx.arc(cx-6, cy-22, 1.5, Math.PI, 0); ctx.fill();
+        ctx.fillStyle = dark; ctx.beginPath(); ctx.arc(cx+6, cy-22, 3.5, Math.PI, 0); ctx.fill(); ctx.fillStyle = '#ffc9ce'; ctx.beginPath(); ctx.arc(cx+6, cy-22, 1.5, Math.PI, 0); ctx.fill();
+
+        // 5. 飘逸前发刘海
+        ctx.fillStyle = '#e8e8f8';
+        ctx.beginPath(); ctx.arc(cx, cy-16, 7.5, Math.PI, 0); ctx.fill(); // 额顶
+        ctx.beginPath(); ctx.moveTo(cx, cy-18); ctx.quadraticCurveTo(cx-8, cy-10, cx-10, cy); ctx.lineTo(cx-5, cy-14); ctx.fill(); // 左长鬓
+        ctx.beginPath(); ctx.moveTo(cx, cy-18); ctx.quadraticCurveTo(cx+8, cy-10, cx+10, cy); ctx.lineTo(cx+5, cy-14); ctx.fill(); // 右长鬓
+
+        // 6. 妖艳闭目眼妆 (上挑红眼尾)
+        ctx.strokeStyle='#3e1a20'; ctx.lineWidth=1; 
+        ctx.beginPath(); ctx.arc(cx-4, cy-13, 2.5, 0, Math.PI, false); ctx.stroke(); 
+        ctx.beginPath(); ctx.arc(cx+4, cy-13, 2.5, 0, Math.PI, false); ctx.stroke();
+        ctx.strokeStyle='#d83348'; ctx.lineWidth=1.5; // 红眼尾
+        ctx.beginPath(); ctx.moveTo(cx-6.5,cy-13); ctx.lineTo(cx-9,cy-15); ctx.stroke(); 
+        ctx.beginPath(); ctx.moveTo(cx+6.5,cy-13); ctx.lineTo(cx+9,cy-15); ctx.stroke();
+        
+        // 眉心花钿与红唇点
+        ctx.fillStyle='#db3856'; ctx.beginPath(); ctx.ellipse(cx, cy-18, 1, 1.5, 0,0,Math.PI*2); ctx.fill(); // 额头花钿
+
+        drawTears(ctx, cx, cy - 8, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 20, cy - 25); }
+    }
+}
+
+
+// ── 🐻 小熊 (1-3阶原版极萌，4阶抱蜂蜜正太有手脚，5阶层级完美修正是帅气绿袍森系男神) ──
+function drawBear(ctx, cx, cy, stage) {
+    const lv = S.petLevel, h = S.petHappy / 100, col = stage.color || '#a06030';
+    const light = adjustColor(col, 40), dark = adjustColor(col, -30);
+
+    if (lv < 4) {
+        // 【1-3阶】原版完美保留！
+        ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx, cy+14, 21, 18, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(cx, cy+17, 13, 11, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = dark;
+        [[cx-14,cy+25,-0.2],[cx+14,cy+25,0.2]].forEach(([px,py,rt])=>{ ctx.beginPath(); ctx.ellipse(px,py, 7, 5, rt, 0, Math.PI*2); ctx.fill(); ctx.fillStyle='#ffb2c3'; ctx.beginPath(); ctx.ellipse(px,py, 2.5,2, rt,0,Math.PI*2); ctx.fill(); ctx.fillStyle=dark;});
+
+        if (lv >= 2) {
+           ctx.fillStyle='#ffab34'; ctx.beginPath(); ctx.ellipse(cx, cy+18, 9,11, 0,0,Math.PI*2); ctx.fill(); 
+           ctx.fillStyle='#e07820'; ctx.beginPath(); ctx.ellipse(cx, cy+8, 7,2,0,0,Math.PI*2); ctx.fill(); ctx.font='11px sans-serif'; ctx.fillText('🍯', cx-7, cy+22);
+        }
+        
+        ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(cx-14, cy+10, 5,10,-0.6,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(cx+14, cy+10, 5,10,0.6,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx, cy-6, 19, 16, 0, 0, Math.PI*2); ctx.fill(); 
+        [[cx-15, cy-18],[cx+15,cy-18]].forEach(([ex,ey])=>{ ctx.fillStyle=col; ctx.beginPath(); ctx.arc(ex,ey,6,0,Math.PI*2); ctx.fill(); ctx.fillStyle=light; ctx.beginPath(); ctx.arc(ex,ey,3,0,Math.PI*2); ctx.fill(); }); 
+        ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(cx, cy-1, 8,6, 0,0,Math.PI*2); ctx.fill(); 
+        
+        const ey = cy - 8;
+        if(h>0.4){
+           ctx.fillStyle='#121010'; ctx.beginPath(); ctx.arc(cx-8, ey, 2.5, 0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+8, ey, 2.5, 0,Math.PI*2); ctx.fill();
+        }else{
+           ctx.strokeStyle='#121010'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(cx-10,ey); ctx.lineTo(cx-6,ey-2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx+10,ey); ctx.lineTo(cx+6,ey-2); ctx.stroke();
+        }
+        ctx.fillStyle='#1c1c1c'; ctx.beginPath(); ctx.ellipse(cx, cy-2, 3, 2, 0,0,Math.PI*2); ctx.fill();
+
+        drawTears(ctx, cx, ey+2, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 18, cy - 25); }
+
+    } else if (lv === 4) {
+               // 【4阶：抱蜂蜜的可爱小男孩，二次元画风】
+        const skin = '#ffe4d6';
+        
+        // 衣服（黄色小T恤）
+        ctx.fillStyle = '#ffcf40'; ctx.beginPath(); ctx.moveTo(cx-10,cy+4); ctx.lineTo(cx-12,cy+22); ctx.lineTo(cx+12,cy+22); ctx.lineTo(cx+10,cy+4); ctx.fill();
+        
+        // 抱着的蜂蜜罐
+        ctx.fillStyle='#ffab34'; ctx.beginPath(); ctx.ellipse(cx, cy+16, 7, 8, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle='#e07820'; ctx.beginPath(); ctx.ellipse(cx, cy+9, 5, 2, 0, 0, Math.PI*2); ctx.fill();
+        ctx.font='10px sans-serif'; ctx.fillText('🍯', cx-6, cy+19);
+
+        // 圆圆的男孩脸
+        ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(cx, cy-8, 12, 0, Math.PI*2); ctx.fill();
+        
+        // 头发（深棕色蓬松短发）
+        ctx.fillStyle = '#5c3a21';
+        ctx.beginPath(); ctx.arc(cx, cy-10, 13, Math.PI, 0); ctx.fill(); // 头顶
+        ctx.beginPath(); ctx.moveTo(cx-12, cy-10); ctx.lineTo(cx-14, cy); ctx.lineTo(cx-6, cy-6); ctx.fill(); 
+        ctx.beginPath(); ctx.moveTo(cx+12, cy-10); ctx.lineTo(cx+14, cy); ctx.lineTo(cx+6, cy-6); ctx.fill(); 
+        ctx.beginPath(); ctx.moveTo(cx-6, cy-6); ctx.lineTo(cx, cy-8); ctx.lineTo(cx+6, cy-6); ctx.lineTo(cx, cy-12); ctx.fill(); // 乱刘海
+
+        // 熊耳朵在头上
+        [[cx-11, cy-18], [cx+11, cy-18]].forEach(([ex,ey])=>{ ctx.fillStyle=col; ctx.beginPath(); ctx.arc(ex,ey, 5, 0,Math.PI*2); ctx.fill(); ctx.fillStyle=light; ctx.beginPath(); ctx.arc(ex,ey, 2.5, 0,Math.PI*2); ctx.fill(); }); 
+
+        // 动漫大眼
+        const ey = cy - 4;
+        ctx.fillStyle='#3a2212'; ctx.beginPath(); ctx.arc(cx-5, ey, 3, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+5, ey, 3, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx-5.5, ey-1, 1, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+4.5, ey-1, 1, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle='rgba(255,140,100,0.5)'; ctx.beginPath(); ctx.arc(cx-8, ey+3, 2, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+8, ey+3, 2, 0, Math.PI*2); ctx.fill();
+
+        drawTears(ctx, cx, ey, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 18, cy - 25); }
+
+    } else {
+               // 【5阶：稳重优雅的男性森林神明，闭目，绿色调，帅气干净】
+        const skin = '#fff4e6';
+        
+        // 森林特效叶子
+        for(let i=0; i<3; i++) { ctx.fillStyle='rgba(150,220,100,0.6)'; ctx.font='14px sans-serif'; ctx.fillText('🍃', cx-30+i*30+Math.sin(petT*2+i)*3, cy-8+i*8); }
+        
+        // 宽阔稳重的神明长袍（深绿色与棕色交织，下摆较宽显得稳重）
+        ctx.fillStyle = '#2e4d3a'; // 深绿主袍
+        ctx.beginPath(); ctx.moveTo(cx, cy-5); ctx.lineTo(cx-22, cy+32); ctx.lineTo(cx+22, cy+32); ctx.fill();
+        ctx.fillStyle = '#d4b886'; // 金棕色内衬/领口
+        ctx.beginPath(); ctx.moveTo(cx-10, cy+5); ctx.lineTo(cx-18, cy+32); ctx.lineTo(cx-12, cy+32); ctx.lineTo(cx, cy+10); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx+10, cy+5); ctx.lineTo(cx+18, cy+32); ctx.lineTo(cx+12, cy+32); ctx.lineTo(cx, cy+10); ctx.fill();
+
+        // 长发束在脑后（深棕色）
+        ctx.fillStyle = '#3d2b1f'; 
+        ctx.beginPath(); ctx.ellipse(cx, cy-2, 10, 20, 0, 0, Math.PI*2); ctx.fill();
+
+        // 男性俊朗轮廓（比女性稍宽一点点的完美脸型，依然用简洁几何图形）
+        ctx.fillStyle = skin;
+        ctx.beginPath(); ctx.ellipse(cx, cy-15, 7.5, 9.5, 0, 0, Math.PI*2); ctx.fill();
+
+        // 额前沉稳的刘海
+        ctx.fillStyle = '#3d2b1f';
+        ctx.beginPath(); ctx.arc(cx, cy-18, 8, Math.PI, 0); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx-8, cy-18); ctx.lineTo(cx-8, cy-6); ctx.lineTo(cx-3, cy-16); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx+8, cy-18); ctx.lineTo(cx+8, cy-6); ctx.lineTo(cx+3, cy-16); ctx.fill();
+
+        // 头顶隐约的熊耳（不破坏帅气感）
+        [[cx-9, cy-21],[cx+9, cy-21]].forEach(([ex,ey])=>{ ctx.fillStyle=col; ctx.beginPath(); ctx.arc(ex,ey,4.5,0,Math.PI*2); ctx.fill(); ctx.fillStyle=dark; ctx.beginPath(); ctx.arc(ex,ey,2,0,Math.PI*2); ctx.fill();});
+
+        // 稳重闭目（平缓的直线略微带一点点弧度）
+        ctx.strokeStyle='#2c1e15'; ctx.lineWidth=1.2; 
+        ctx.beginPath(); ctx.moveTo(cx-6, cy-13); ctx.quadraticCurveTo(cx-4, cy-12.5, cx-2, cy-13); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx+6, cy-13); ctx.quadraticCurveTo(cx+4, cy-12.5, cx+2, cy-13); ctx.stroke();
+
+        // 额头森林印记
+        ctx.fillStyle='#8fd16a'; ctx.beginPath(); ctx.ellipse(cx, cy-19, 1.5, 2.5, 0,0,Math.PI*2); ctx.fill(); 
+        
+        drawTears(ctx, cx, cy - 8, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 20, cy - 25); }
+    }
+}
+
 
 // ── 猫咪（3/4侧面·优雅）──
 // ── 🐱猫咪 (正面乖巧坐姿，Lv越高尾巴越长、皇冠越华丽) ──
@@ -782,42 +1316,7 @@ function drawPanda(ctx, cx, cy, stage) {
     drawTears(ctx, cx, cy - 2, h); 
     if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 24, cy - 20); }
 }
-// ── 🦊小狐狸 (3/4侧面，Lv越高尾巴越多，最高5尾) ──
-function drawFox(ctx, cx, cy, stage) {
-    const lv = S.petLevel, h = S.petHappy / 100, col = stage.color || '#e87030';
-    const light = adjustColor(col, 60), dark = adjustColor(col, -30);
-    // 多尾巴系统 (狐狸的灵魂)
-    const tails = Math.min(lv, 5);
-    ctx.fillStyle = col; ctx.strokeStyle = light; ctx.lineWidth = 4;
-    for(let i=0; i<tails; i++){
-        const spread = (i - (tails-1)/2) * 0.4;
-        const wag = Math.sin(petT*2 + i) * 5;
-        ctx.beginPath(); ctx.ellipse(cx + 20 + i*4, cy + 5 + wag, 18, 6, -0.5 + spread, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-    }
-    // 身体
-    ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx + 5, cy + 10, 16, 12, 0.2, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(cx + 8, cy + 12, 10, 6, 0.2, 0, Math.PI * 2); ctx.fill(); // 白肚皮
-    // 腿
-    ctx.fillStyle = dark;
-    ctx.beginPath(); ctx.ellipse(cx - 5, cy + 20, 3, 8, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(cx + 10, cy + 20, 3, 8, 0, 0, Math.PI * 2); ctx.fill();
-    // 头部 (尖长)
-    ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx - 5, cy - 10, 15, 12, -0.2, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(cx - 5, cy - 20); ctx.lineTo(cx - 20, cy - 5); ctx.lineTo(cx - 5, cy); ctx.fill(); // 尖嘴
-    ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(cx - 10, cy - 5, 8, 5, -0.2, 0, Math.PI * 2); ctx.fill(); // 白下巴
-    ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(cx - 20, cy - 6, 2.5, 0, Math.PI * 2); ctx.fill(); // 黑鼻头
-    // 耳朵 (尖锐)
-    [[cx - 10, cy - 20, -0.4], [cx + 2, cy - 18, 0.2]].forEach(([ex, ey, rot]) => {
-        ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(ex, ey, 4, 10, rot, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(ex, ey+2, 2, 6, rot, 0, Math.PI * 2); ctx.fill();
-    });
-    // 眼睛 (狐狸眼)
-    ctx.strokeStyle = '#222'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(cx - 12, cy - 12); ctx.lineTo(cx - 6, cy - 10); ctx.stroke();
-    if(lv>=4){ ctx.fillStyle='rgba(255,200,100,0.6)'; ctx.beginPath(); ctx.arc(cx, cy-30, 8, 0, Math.PI*2); ctx.fill(); } // 仙家灵珠
-    if(h>0.4){ ctx.fillStyle='rgba(255,100,100,0.4)'; ctx.beginPath(); ctx.arc(cx-8,cy-6,3,0,Math.PI*2); ctx.fill(); }
-    drawTears(ctx, cx-10, cy-8, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 10, cy - 25); }
-}
+
 
 // ── 🦌小鹿 (3/4侧面，优雅，Lv越高鹿角越华丽且开花) ──
 function drawDeer(ctx, cx, cy, stage) {
@@ -904,150 +1403,7 @@ function drawPenguin(ctx, cx, cy, stage) {
     drawTears(ctx, cx, cy-2, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 15, cy - 25); }
 }
 
-// ── 🐉小飞龙 (侧面，胖乎乎，Lv越高翅膀越大、吐小火苗) ──
-// ── 🐉小飞龙 (1-3阶幼龙，4阶龙童化形，5阶龙神本相) ──
-function drawDragon(ctx, cx, cy, stage) {
-    const lv = S.petLevel, h = S.petHappy / 100, col = stage.color || '#50c080';
-    const light = adjustColor(col, 40), dark = adjustColor(col, -40);
 
-    if (lv < 4) {
-        // 【1-3阶】 原始幼龙形态
-        // 翅膀 (随等级变大、扑腾)
-        const flap = Math.sin(petT * 3) * 0.3;
-        ctx.fillStyle = dark;
-        const wingSize = 8 + lv * 2;
-        ctx.beginPath(); ctx.ellipse(cx - 5, cy - 5, wingSize, wingSize*1.2, 0.5 + flap, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(cx - 5, cy - 5, wingSize*0.6, wingSize*0.8, 0.5 + flap, 0, Math.PI * 2); ctx.fill();
-        // 尾巴 (带小刺)
-        ctx.strokeStyle = col; ctx.lineWidth = 8; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(cx + 10, cy + 15); ctx.quadraticCurveTo(cx + 30, cy + 18, cx + 25, cy + 5); ctx.stroke();
-        if (lv >= 3) { ctx.fillStyle = dark; ctx.beginPath(); ctx.moveTo(cx + 25, cy + 5); ctx.lineTo(cx + 32, cy + 2); ctx.lineTo(cx + 25, cy - 2); ctx.fill(); }
-        // 身体 (胖墩)
-        ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx + 5, cy + 12, 16, 14, -0.2, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(cx + 8, cy + 14, 10, 8, -0.2, 0, Math.PI * 2); ctx.fill(); // 肚皮
-        // 粗短腿
-        ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(cx + 2, cy + 24, 4, 6, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx + 14, cy + 22, 4, 6, -0.2, 0, Math.PI * 2); ctx.fill();
-        // 头部 (大方圆脸)
-        ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx - 8, cy - 8, 16, 14, 0.1, 0, Math.PI * 2); ctx.fill();
-        // 龙角
-        ctx.fillStyle = '#ffcc60';
-        ctx.beginPath(); ctx.ellipse(cx - 4, cy - 22, 3, 6 + lv, 0.2, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(cx - 16, cy - 20, 3, 5 + lv, -0.2, 0, Math.PI * 2); ctx.fill();
-        // 眼睛与大鼻孔
-        const ey = cy - 10;
-        ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(cx - 12, ey, 3, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx - 13, ey - 1, 1.5, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = dark; ctx.beginPath(); ctx.arc(cx - 18, cy - 2, 1.5, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(cx - 22, cy - 3, 1.5, 0, Math.PI * 2); ctx.fill();
-        
-        drawTears(ctx, cx - 12, cy - 6, h); 
-        if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 15, cy - 25); }
-    } 
-    else if (lv === 4) {
-        // 【4阶】 龙童化形：带龙角龙尾的可爱仙婴
-        const skin = '#ffe4d6';
-        
-        // 龙尾巴 (在身后摇摆)
-        ctx.strokeStyle = col; ctx.lineWidth = 6; ctx.lineCap = 'round';
-        const tailWag = Math.sin(petT * 3) * 4;
-        ctx.beginPath(); ctx.moveTo(cx, cy+12); ctx.quadraticCurveTo(cx+25, cy+15, cx+20+tailWag, cy+5); ctx.stroke();
-        
-        // 婴儿身躯与红肚兜 (兼容旧版浏览器roundRect)
-        ctx.fillStyle = skin; ctx.beginPath(); 
-        if(ctx.roundRect) ctx.roundRect(cx-7, cy+2, 14, 16, 4); else ctx.rect(cx-7, cy+2, 14, 16); 
-        ctx.fill(); 
-        ctx.fillStyle = '#e03030'; ctx.beginPath(); ctx.moveTo(cx-6, cy+4); ctx.lineTo(cx+6, cy+4); ctx.lineTo(cx, cy+15); ctx.fill(); 
-        ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 1; ctx.stroke(); 
-        
-        // 小手和小脚
-        ctx.fillStyle = skin;
-        ctx.beginPath(); ctx.ellipse(cx-10, cy+8, 3, 5, 0.4, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(cx+10, cy+8, 3, 5, -0.4, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(cx-4, cy+20, 4, 3, 0, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(cx+4, cy+20, 4, 3, 0, 0, Math.PI*2); ctx.fill();
-        
-        // 大头娃娃
-        ctx.beginPath(); ctx.arc(cx, cy-8, 13, 0, Math.PI*2); ctx.fill();
-        
-        // 丸子头
-        ctx.fillStyle = '#1a1a20';
-        ctx.beginPath(); ctx.arc(cx-10, cy-18, 5, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(cx+10, cy-18, 5, 0, Math.PI*2); ctx.fill();
-        
-        // 头顶龙角
-        ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(cx-6, cy-18); ctx.lineTo(cx-10, cy-26); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx+6, cy-18); ctx.lineTo(cx+10, cy-26); ctx.stroke();
-        
-        // 眼睛与脸颊龙鳞
-        ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(cx-5, cy-6, 2.5, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+5, cy-6, 2.5, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx-5.5, cy-7, 1, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+4.5, cy-7, 1, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = col; ctx.beginPath(); ctx.arc(cx-9, cy-3, 1.5, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+9, cy-3, 1.5, 0, Math.PI*2); ctx.fill(); 
-
-        // 眼泪和疲劳特效（自动适配脸部坐标）
-        drawTears(ctx, cx, cy - 2, h); 
-        if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 15, cy - 20); }
-    } 
-    else if (lv >= 5) {
-        // 【5阶】 龙神本相：彻底褪去妖形，化为无尾、长发飘飘的清冷神明
-        const skin = '#fff0e8';
-        
-        // 神圣光环
-        ctx.fillStyle = 'rgba(255,215,0,0.15)'; ctx.beginPath(); ctx.arc(cx, cy-10, 42, 0, Math.PI*2); ctx.fill();
-        ctx.strokeStyle = 'rgba(255,215,0,0.4)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(cx, cy-10, 38, 0, Math.PI*2); ctx.stroke();
-
-        // 仙气飘带
-        const fly = Math.sin(petT * 2) * 4;
-        ctx.strokeStyle = 'rgba(120, 200, 255, 0.7)'; ctx.lineWidth = 4; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(cx-25, cy-15+fly); ctx.bezierCurveTo(cx-40, cy+25, cx+40, cy+25, cx+25, cy-15-fly); ctx.stroke();
-
-        // 身后长发
-        ctx.fillStyle = '#1a202a'; ctx.beginPath(); ctx.ellipse(cx, cy-5, 12, 28, 0, 0, Math.PI*2); ctx.fill();
-
-        // 飘逸仙袍
-        ctx.fillStyle = '#f5f5f5'; ctx.beginPath(); ctx.moveTo(cx-8, cy-15); ctx.lineTo(cx+8, cy-15); ctx.lineTo(cx+12, cy+35); ctx.lineTo(cx-12, cy+35); ctx.fill();
-        ctx.fillStyle = dark; ctx.beginPath(); ctx.moveTo(cx-8, cy-15); ctx.lineTo(cx-15, cy+35); ctx.lineTo(cx-4, cy+35); ctx.lineTo(cx, cy); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(cx+8, cy-15); ctx.lineTo(cx+15, cy+35); ctx.lineTo(cx+4, cy+35); ctx.lineTo(cx, cy); ctx.fill();
-        ctx.fillStyle = '#f0c050'; ctx.beginPath(); ctx.fillRect(cx-9, cy+2, 18, 4); ctx.fill();
-
-        // 宽大的古风袖子
-        ctx.fillStyle = '#f5f5f5';
-        ctx.beginPath(); ctx.moveTo(cx-8, cy-5); ctx.lineTo(cx-25, cy+15); ctx.lineTo(cx-15, cy+22); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(cx+8, cy-5); ctx.lineTo(cx+25, cy+15); ctx.lineTo(cx+15, cy+22); ctx.fill();
-
-        // 成年人脸型
-        ctx.fillStyle = skin;
-        ctx.beginPath(); ctx.moveTo(cx-7, cy-22); ctx.lineTo(cx+7, cy-22); ctx.lineTo(cx, cy-10); ctx.fill(); 
-        ctx.beginPath(); ctx.arc(cx, cy-22, 7, Math.PI, Math.PI*2); ctx.fill(); 
-
-        // 凌厉双眼与红色眼影
-        ctx.strokeStyle = '#222'; ctx.lineWidth = 1.2;
-        ctx.beginPath(); ctx.moveTo(cx-5, cy-18); ctx.lineTo(cx-1, cy-17); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx+5, cy-18); ctx.lineTo(cx+1, cy-17); ctx.stroke();
-        ctx.strokeStyle = '#e04040'; ctx.lineWidth = 1; 
-        ctx.beginPath(); ctx.moveTo(cx-5, cy-18); ctx.lineTo(cx-8, cy-20); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx+5, cy-18); ctx.lineTo(cx+8, cy-20); ctx.stroke();
-        
-        // 额头龙神金印
-        ctx.fillStyle = '#f0c050'; ctx.beginPath(); ctx.ellipse(cx, cy-23, 1.5, 2.5, 0, 0, Math.PI*2); ctx.fill();
-
-        // 额前碎发
-        ctx.fillStyle = '#1a202a';
-        ctx.beginPath(); ctx.moveTo(cx, cy-28); ctx.quadraticCurveTo(cx-8, cy-20, cx-9, cy-13); ctx.lineTo(cx-5, cy-26); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(cx, cy-28); ctx.quadraticCurveTo(cx+8, cy-20, cx+9, cy-13); ctx.lineTo(cx+5, cy-26); ctx.fill();
-
-        // 威严的龙角
-        ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(cx-4, cy-28); ctx.lineTo(cx-12, cy-38); ctx.lineTo(cx-8, cy-43); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx-8, cy-34); ctx.lineTo(cx-14, cy-32); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx+4, cy-28); ctx.lineTo(cx+12, cy-38); ctx.lineTo(cx+8, cy-43); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx+8, cy-34); ctx.lineTo(cx+14, cy-32); ctx.stroke();
-
-        // 眼泪和疲劳特效（自动适配脸部坐标）
-        drawTears(ctx, cx, cy - 14, h); 
-        if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 20, cy - 35); }
-    }
-}
 
 // ── 🦉猫头鹰 (正面栖息，智者，Lv越高带博士帽/单片眼镜) ──
 function drawOwl(ctx, cx, cy, stage) {
@@ -1088,46 +1444,7 @@ function drawOwl(ctx, cx, cy, stage) {
     drawTears(ctx, cx, cy - 2, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 18, cy - 25); }
 }
 
-// ── 🐻小熊 (正面坐姿，憨态可掬，Lv越高皇冠和蜂蜜罐越明显) ──
-function drawBear(ctx, cx, cy, stage) {
-    const lv = S.petLevel, h = S.petHappy / 100, col = stage.color || '#a06030';
-    const light = adjustColor(col, 40), dark = adjustColor(col, -30);
-    // 身体 (超大圆肚子)
-    ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx, cy + 12, 22, 20, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(cx, cy + 15, 14, 12, 0, 0, Math.PI * 2); ctx.fill();
-    // 腿和脚底板
-    ctx.fillStyle = dark;
-    [[cx - 14, cy + 22, -0.2], [cx + 14, cy + 22, 0.2]].forEach(([px, py, rot]) => {
-        ctx.beginPath(); ctx.ellipse(px, py, 7, 6, rot, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#ffb0a0'; ctx.beginPath(); ctx.arc(px, py+1, 2.5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = dark; // 肉垫
-    });
-    // 手臂 (抱着蜂蜜罐)
-    ctx.fillStyle = dark;
-    if (lv >= 2) {
-        ctx.fillStyle = '#ffb030'; ctx.beginPath(); ctx.ellipse(cx, cy + 18, 8, 10, 0, 0, Math.PI * 2); ctx.fill(); // 蜂蜜罐
-        ctx.fillStyle = '#e08020'; ctx.beginPath(); ctx.ellipse(cx, cy + 10, 6, 2, 0, 0, Math.PI * 2); ctx.fill(); // 盖子
-        ctx.font = '10px sans-serif'; ctx.fillText('🍯', cx - 6, cy + 22);
-    }
-    ctx.fillStyle = dark;
-    ctx.beginPath(); ctx.ellipse(cx - 15, cy + 8, 6, 12, -0.5, 0, Math.PI * 2); ctx.fill(); // 左手
-    ctx.beginPath(); ctx.ellipse(cx + 15, cy + 8, 6, 12, 0.5, 0, Math.PI * 2); ctx.fill(); // 右手
-    // 头部
-    ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx, cy - 12, 18, 16, 0, 0, Math.PI * 2); ctx.fill();
-    // 圆耳朵
-    [[cx - 14, cy - 22], [cx + 14, cy - 22]].forEach(([ex, ey]) => {
-        ctx.fillStyle = col; ctx.beginPath(); ctx.arc(ex, ey, 6, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = light; ctx.beginPath(); ctx.arc(ex, ey, 3, 0, Math.PI * 2); ctx.fill();
-    });
-    // 脸部突出的口鼻区
-    ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(cx, cy - 5, 8, 6, 0, 0, Math.PI * 2); ctx.fill();
-    // 眼睛和鼻子
-    const ey = cy - 14;
-    ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(cx - 7, ey, 2.5, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(cx + 7, ey, 2.5, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(cx, cy - 7, 3, 2, 0, 0, Math.PI * 2); ctx.fill(); // 大黑鼻
-    if(lv >= 4) { ctx.font = '16px sans-serif'; ctx.fillText('👑', cx - 8, cy - 32); }
-    if(h>0.4){ ctx.fillStyle='rgba(255,100,100,0.3)'; ctx.beginPath(); ctx.arc(cx-12,cy-9,3,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(cx+12,cy-9,3,0,Math.PI*2); ctx.fill(); }
-    drawTears(ctx, cx, cy-8, h); if (S.petEnergy < 25) { ctx.font = '12px sans-serif'; ctx.fillText('💤', cx + 18, cy - 25); }
-}
+
 
 // ── 🦄独角兽 (3/4侧面，高贵，Lv越高彩虹鬃毛越绚丽且长出天马翅膀) ──
 function drawUnicorn(ctx, cx, cy, stage) {
@@ -2124,3 +2441,4 @@ function initGame(){petX=75;petY=76;petWalking=false;
 }
 
 (function init(){renderLoginScreen();setInterval(naturalDecay,60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden&&CURRENT_ACC_ID){if(!petAF)startPetAnim();else setTimeout(drawPet,100);}});})();
+

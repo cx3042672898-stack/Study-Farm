@@ -2349,17 +2349,79 @@ function randomPickMember(){
 
 function joinClass(){const cls=(document.getElementById('ci-class')?.value||'').trim();if(!cls){showToast('请输入班级名称！');return;}S.classId=cls;joinClassBoard(cls,S.playerName,S.score);persistAccount();updateClassSection();showToast(`✅ 已加入班级 ${cls}！`);}
 function leaveClass(){openConfirm('🏫','确定退出班级？退出后排名数据仍保留。',()=>{S.classId='';persistAccount();updateClassSection();showToast('已退出班级');});}
-
+// ─── 班级总览浏览器 ─────────────────────────────────
+let _viewingClass='';
+function renderClassBrowser(){
+  const el=document.getElementById('class-browser');if(!el)return;
+  const cd=getClassData();const classes=Object.keys(cd);
+  if(!classes.length){el.innerHTML='<div style="font-size:.74rem;color:var(--muted)">暂无班级数据。批量导入学生后可在此查看各班情况。</div>';return;}
+  if(!_viewingClass||!cd[_viewingClass])_viewingClass=S.classId||classes[0];
+  const tabsHtml=classes.map(cls=>`<div onclick="switchViewClass('${encodeURIComponent(cls)}')" style="padding:4px 11px;border-radius:99px;border:1.5px solid ${cls===_viewingClass?'var(--green)':'var(--border)'};background:${cls===_viewingClass?'var(--green)':'var(--panel)'};color:${cls===_viewingClass?'#fff':'var(--ink)'};font-size:.68rem;cursor:pointer;white-space:nowrap;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">${cls}</div>`).join('');
+  const members=sortMembers(cd[_viewingClass]||[]);
+  const membersHtml=members.map((m,i)=>{
+    const isSelf=m.name===S.playerName&&_viewingClass===S.classId;
+    const rankStyle=i===0?'#ffd700;color:#806000':i===1?'#c0c0c0;color:#505050':i===2?'#cd7f32;color:#503010':'rgba(100,160,100,.1);color:var(--dgreen)';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;border:1px solid ${isSelf?'var(--green)':'var(--border)'};background:${isSelf?'rgba(100,160,100,.06)':'#fff'}">`
+      +`<div style="width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;background:${rankStyle}">${i+1}</div>`
+      +`<div style="flex:1;font-size:.78rem;font-weight:500">${m.name}${isSelf?' 👈':''}</div>`
+      +`<div style="font-size:.65rem;color:var(--muted)">Lv.${m.level||1} · ⭐${m.score||0}</div></div>`;
+  }).join('');
+  el.innerHTML=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${tabsHtml}</div>`
+    +`<div style="font-size:.7rem;color:var(--muted);margin-bottom:7px">👥 ${_viewingClass} · 共${members.length}名学生</div>`
+    +`<div style="display:flex;flex-direction:column;gap:5px;max-height:280px;overflow-y:auto">${membersHtml||'<div style="font-size:.74rem;color:var(--muted)">班级暂无成员</div>'}</div>`
+    +(members.length?`<div style="margin-top:8px"><button onclick="randomPickFromBrowser()" style="padding:6px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🎲 随机抽人</button></div>`:'');
+}
+function switchViewClass(clsEncoded){
+  _viewingClass=decodeURIComponent(clsEncoded);renderClassBrowser();
+}
+function randomPickFromBrowser(){
+  const cd=getClassData();const members=cd[_viewingClass]||[];
+  if(!members.length){showToast('班级暂无成员！');return;}
+  const picked=members[Math.floor(Math.random()*members.length)];
+  openConfirm('🎲',`【${_viewingClass}】随机抽到：\n\n🌟 ${picked.name} 🌟\n\nLv.${picked.level||1} · ⭐${picked.score||0}分`,()=>{});
+}
 // ─── ACHIEVEMENTS ─────────────────────────────────
 function checkAchs(){let got=false;ACHS.forEach(a=>{if(!S.unlockedAch.includes(a.id)&&a.cond(S)){S.unlockedAch.push(a.id);if(!S.newAch.includes(a.id))S.newAch.push(a.id);triggerAchPop(a);gainExp(20);S.coins+=10;S.totalCoins+=10;got=true;}});if(got){updateTop();persistAccount();}const n=S.newAch.length;['bd-ach','sbd-ach'].forEach(id=>{const el=document.getElementById(id);if(!el)return;if(n>0){el.textContent=n;el.classList.add('on');}else{el.textContent='';el.classList.remove('on');}});renderAchs();}
 function triggerAchPop(a){document.getElementById('ap-ico').textContent=a.ico;document.getElementById('ap-nm').textContent=a.nm;const p=document.getElementById('achpop');p.classList.add('on');setTimeout(()=>p.classList.remove('on'),3000);}
-function renderAchs(){const g=document.getElementById('ach-grid');if(!g)return;g.innerHTML='';ACHS.forEach(a=>{const got=S.unlockedAch.includes(a.id);const d=document.createElement('div');d.className='ach '+(got?'got':'no');d.innerHTML=`<div class="aico2">${a.ico}</div><div class="anm2">${a.nm}</div><div class="adesc">${a.desc}</div>${got?'<div class="atag">✓ 已解锁</div>':''}`;g.appendChild(d);});const ac=document.getElementById('ach-count');if(ac)ac.textContent=`${S.unlockedAch.length}/${ACHS.length}`;}
+
+
+function renderAchs(){const g=document.getElementById('ach-grid');if(!g)return;g.innerHTML='';ACHS.forEach(a=>{const got=S.unlockedAch.includes(a.id);const d=document.createElement('div');d.className='ach '+(got?'got':'no');d.innerHTML=`<div class="aico2">${a.ico}</div><div class="anm2">${a.nm}</div><div class="adesc">${a.desc}</div>${got?'<div class="atag">✓ 已解锁</div>':''}`;g.appendChild(d);});const ac=document.getElementById('ach-count');if(ac)ac.textContent=`${S.unlockedAch.length}/${ACHS.length}`;renderPetArchive();}
+
+function renderPetArchive(){
+  const g=document.getElementById('pet-archive-grid');
+  const cnt=document.getElementById('pet-archive-count');
+  if(!g)return;
+  if(!S.petReachedLevels)S.petReachedLevels={};
+  g.innerHTML='';
+  const ownedIds=S.ownedPets||['p_hamster'];
+  ownedIds.forEach(petId=>{
+    const info=SHOP_PETS.find(p=>p.id===petId);if(!info)return;
+    const breed=info.breed||'hamster';
+    const stages=(EVO_STAGES[breed]||EVO_STAGES.hamster);
+    const maxStage=stages.length;
+    const reached=Math.max(S.petReachedLevels[petId]||1,S.activePet===petId?S.petLevel:1);
+    const pct=Math.round((reached/maxStage)*100);
+    const stageName=stages[Math.min(reached-1,stages.length-1)]?.name||'未知';
+    const isActive=S.activePet===petId;
+    const d=document.createElement('div');
+    d.style.cssText='background:var(--panel);border-radius:11px;border:1.5px solid '+(isActive?'var(--green)':'var(--border)')+';padding:9px;text-align:center';
+    d.innerHTML=`<div style="font-size:1.5rem;margin-bottom:3px">${info.ico}</div>`
+      +`<div style="font-size:.74rem;font-weight:700;margin-bottom:1px">${info.name}</div>`
+      +`<div style="font-size:.58rem;color:var(--dgreen);margin-bottom:5px">${isActive?'🟢 当前宠物':'　'}</div>`
+      +`<div style="font-size:.62rem;color:var(--gold);font-weight:600;margin-bottom:5px">最高：${stageName}</div>`
+      +`<div style="background:rgba(100,160,100,.1);border-radius:99px;height:5px;overflow:hidden;margin-bottom:3px">`
+      +`<div style="height:100%;background:linear-gradient(90deg,var(--green),var(--gold));border-radius:99px;width:${pct}%;transition:width .5s"></div></div>`
+      +`<div style="font-size:.58rem;color:var(--muted)">Lv.${reached} / ${maxStage}阶 · ${pct}%</div>`;
+    g.appendChild(d);
+  });
+  if(cnt)cnt.textContent=ownedIds.length+'只';
+}
 
 // ─── TOP BAR ──────────────────────────────────────
 function updateTop(){const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};const setW=(id,w)=>{const el=document.getElementById(id);if(el)el.style.width=w;};const mx=expForLv(S.level);const expPct=Math.min(100,S.exp/mx*100)+'%';set('dc',S.coins);set('ds',S.score);set('dlv','Lv.'+S.level);set('dexph',S.exp+'/'+mx);setW('dexp',expPct);const nm=S.playerName||(S.expBoostLeft>0?`📖×${S.expBoostLeft}`:'');set('pname',nm||'点击查看我的');const ico=S.petLevel>=5?'🌟':S.petLevel>=3?'⭐':'🌾';const av=document.getElementById('avatar');if(av)av.textContent=ico;set('sb-pname',S.playerName||'-');set('sb-pmeta',`Lv.${S.level} · ⭐${S.score}`);set('sb-lv',`Lv.${S.level} · ${S.exp}/${mx} EXP`);setW('sb-expfill',expPct);set('sb-coins',S.coins);set('sb-score',S.score);const sbav=document.getElementById('sb-av');if(sbav)sbav.textContent=ico;}
 
 // ─── PROFILE ──────────────────────────────────────
-function updateProfile(){const pn=document.getElementById('prof-name');if(pn)pn.textContent=S.playerName||'未命名';const pa=document.getElementById('prof-av');if(pa)pa.textContent=S.petLevel>=5?'🌟':S.petLevel>=3?'⭐':'🌾';const acc2=S.totalAnswered>0?Math.round(S.totalCorrect/S.totalAnswered*100):0;const ps=document.getElementById('prof-stats');if(ps)ps.innerHTML=`<div class="ps"><div class="psv">Lv.${S.level}</div><div class="psl">等级</div></div><div class="ps"><div class="psv">${S.totalCorrect}</div><div class="psl">答对</div></div><div class="ps"><div class="psv">${S.harvests}</div><div class="psl">收获</div></div><div class="ps"><div class="psv">${S.coins}</div><div class="psl">金币</div></div><div class="ps"><div class="psv">${S.unlockedAch.length}</div><div class="psl">成就</div></div><div class="ps"><div class="psv">${acc2}%</div><div class="psl">正确率</div></div>`;const ss=document.getElementById('study-stats');if(ss)ss.innerHTML=`📝 总答题：${S.totalAnswered}<br>✅ 答对：${S.totalCorrect}（${acc2}%）<br>🔥 最高连击：${S.maxStreak}<br>🐾 宠物喂食：${S.petFeedCount}次<br>💰 累计金币：${S.totalCoins}<br>🌾 累计收获：${S.harvests}次`;updateClassSection();renderAccountSettings();}
+function updateProfile(){const pn=document.getElementById('prof-name');if(pn)pn.textContent=S.playerName||'未命名';const pa=document.getElementById('prof-av');if(pa)pa.textContent=S.petLevel>=5?'🌟':S.petLevel>=3?'⭐':'🌾';const acc2=S.totalAnswered>0?Math.round(S.totalCorrect/S.totalAnswered*100):0;const ps=document.getElementById('prof-stats');if(ps)ps.innerHTML=`<div class="ps"><div class="psv">Lv.${S.level}</div><div class="psl">等级</div></div><div class="ps"><div class="psv">${S.totalCorrect}</div><div class="psl">答对</div></div><div class="ps"><div class="psv">${S.harvests}</div><div class="psl">收获</div></div><div class="ps"><div class="psv">${S.coins}</div><div class="psl">金币</div></div><div class="ps"><div class="psv">${S.unlockedAch.length}</div><div class="psl">成就</div></div><div class="ps"><div class="psv">${acc2}%</div><div class="psl">正确率</div></div>`;const ss=document.getElementById('study-stats');if(ss)ss.innerHTML=`📝 总答题：${S.totalAnswered}<br>✅ 答对：${S.totalCorrect}（${acc2}%）<br>🔥 最高连击：${S.maxStreak}<br>🐾 宠物喂食：${S.petFeedCount}次<br>💰 累计金币：${S.totalCoins}<br>🌾 累计收获：${S.harvests}次`;updateClassSection();renderAccountSettings();renderClassBrowser();}
 
 // ─── NAME MODAL ───────────────────────────────────
 let nameTarget='player';

@@ -669,11 +669,15 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
       </div>
     </div>
 
-    <!-- ACH -->
+<!-- ACH -->
     <div class="page" id="page-ach">
       <div class="card">
         <div class="cttl">🏆 成就大厅 <span style="font-size:.7rem;color:var(--muted);margin-left:auto" id="ach-count"></span></div>
         <div class="achgrid" id="ach-grid"></div>
+      </div>
+      <div class="card">
+        <div class="cttl">🐾 宠物进化档案 <span style="font-size:.7rem;color:var(--muted);margin-left:auto" id="pet-archive-count"></span></div>
+        <div id="pet-archive-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:7px"></div>
       </div>
     </div>
 
@@ -696,6 +700,10 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
           </div>
         </div>
         <div>
+          <div class="card">
+            <div class="cttl">🏫 班级总览</div>
+            <div id="class-browser"></div>
+          </div>
           <div class="card">
             <div class="cttl">🏫 班级排名</div>
             <div id="class-section"></div>

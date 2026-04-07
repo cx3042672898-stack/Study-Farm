@@ -368,7 +368,7 @@ window.SHOP_TOOLS=[
   {id:'t_autowater',name:'自动喷水器',  ico:'🚿',desc:'每2h自动浇水，有损耗需维护',                   price:120,type:'auto_water'},
   {id:'t_repair',   name:'修复套件',    ico:'🔧',desc:'修复任意自动设备至100%耐久',                   price:50, type:'repair_kit',  bulkable:true},
   {id:'t_petpack',  name:'宠物补给包',  ico:'💝',desc:'立即：所有宠物属性恢复至80+',                  price:45, type:'pet_restore'},
-  {id:'t_evoboost', name:'进化催化剂',  ico:'🧬',desc:'立即：宠物学习经验+100',                       price:55, type:'evo_boost'},
+  {id:'t_evoboost', name:'进化催化剂',  ico:'🧬',desc:'立即：宠物学习经验+1000',                       price:55, type:'evo_boost'},
   {id:'t_expboost', name:'学霸加成',    ico:'📖',desc:'答题经验×2，持续10道题',                       price:60, type:'exp_boost'},
   {id:'t_shield',   name:'连击护盾',    ico:'🛡️',desc:'下次答错也不断连击，可批量',                  price:40, type:'streak_shield',bulkable:true},
   {id:'t_seedpack', name:'神秘种子包',  ico:'📦',desc:'随机获得3粒已解锁种子',                        price:35, type:'seed_pack'},

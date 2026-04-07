@@ -160,14 +160,137 @@ function openImportClass(){['ic-class','ic-names'].forEach(id=>{const el=documen
 function importClassList(){const cls=(document.getElementById('ic-class')?.value||'').trim();const raw=(document.getElementById('ic-names')?.value||'').trim();if(!cls){showToast('请输入班级名称！');return;}if(!raw){showToast('请输入名单！');return;}const lines=raw.split('\n').map(l=>l.trim()).filter(Boolean);const accounts=getAllAccounts();let created=0,skipped=0;lines.forEach(line=>{const parts=line.split(/[,，]/);const name=parts[0].trim();const pin=(parts[1]||'').trim();if(!name)return;if(accounts.some(a=>a.name===name&&a.classId===cls)){skipped++;return;}if(pin&&!/^\d{4}$/.test(pin)){skipped++;return;}const id='acc_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)+created;accounts.push({id,name,pin:pin||'',classId:cls,level:1,score:0,lastActive:Date.now()});const fresh=JSON.parse(JSON.stringify(DEFAULT_SAVE));fresh.playerName=name;fresh.classId=cls;localStorage.setItem(getAccKey(id),JSON.stringify(fresh));joinClassBoard(cls,name,0);created++;});saveAllAccounts(accounts);document.getElementById('import-class-ov').classList.remove('on');showToast(`✅ 创建${created}个账号${skipped?'，'+skipped+'个已跳过':''}`);renderLoginScreen();}
 
 // ─── 科目切换 ─────────────────────────────────────
-function setSubject(id){window.ACTIVE_SUBJECT_ID=id;localStorage.setItem('jbfarm_subject',id);S.usedQ=[];renderSubjectBars();}
+function setSubject(id){
+  window.ACTIVE_SUBJECT_ID=id;
+  localStorage.setItem('jbfarm_subject',id);
+  // 切换科目时清空模块选择
+  window.ACTIVE_MODULE_ID=null;
+  window.ACTIVE_MODULE_LABEL='';
+  localStorage.removeItem('jbfarm_module');
+  localStorage.removeItem('jbfarm_module_label');
+  S.usedQ=[];
+  renderSubjectBars();
+}
+
 function renderSubjectBars(){
   const mb=document.getElementById('subject-bar-mobile');
-  if(mb){mb.innerHTML='';SUBJECTS.forEach(sub=>{const b=document.createElement('div');b.className='sub-pill'+(sub.id===ACTIVE_SUBJECT_ID?' on':'');if(sub.id===ACTIVE_SUBJECT_ID)b.style.background=sub.color||'#5a9a5a';b.textContent=sub.icon+' '+sub.name;b.onclick=()=>setSubject(sub.id);mb.appendChild(b);});}
+  if(mb){
+    mb.innerHTML='';
+    // 科目按钮
+    SUBJECTS.forEach(sub=>{
+      const b=document.createElement('div');
+      b.className='sub-pill'+(sub.id===ACTIVE_SUBJECT_ID?' on':'');
+      if(sub.id===ACTIVE_SUBJECT_ID)b.style.background=sub.color||'#5a9a5a';
+      b.textContent=sub.icon+' '+sub.name;
+      b.onclick=()=>setSubject(sub.id);
+      mb.appendChild(b);
+    });
+    // 模块选择按钮（只在有模块定义时显示）
+    const modCfg=window.SUBJECT_MODULES&&SUBJECT_MODULES[ACTIVE_SUBJECT_ID];
+    if(modCfg&&modCfg.groups){
+      const sep=document.createElement('div');
+      sep.style.cssText='width:1px;background:rgba(100,160,100,.2);margin:3px 2px;flex-shrink:0';
+      mb.appendChild(sep);
+      // "全部"按钮
+      const allBtn=document.createElement('div');
+      allBtn.className='sub-pill'+(!ACTIVE_MODULE_ID?' on':'');
+      if(!ACTIVE_MODULE_ID){const sub=SUBJECTS.find(s=>s.id===ACTIVE_SUBJECT_ID);allBtn.style.background=sub?.color||'#5a9a5a';}
+      allBtn.textContent='📚 全部';
+      allBtn.onclick=()=>{
+        window.ACTIVE_MODULE_ID=null;window.ACTIVE_MODULE_LABEL='';
+        localStorage.removeItem('jbfarm_module');localStorage.removeItem('jbfarm_module_label');
+        S.usedQ=[];renderSubjectBars();showToast('已切换：全部题目');
+      };
+      mb.appendChild(allBtn);
+      // 模块按钮入口
+      const pickBtn=document.createElement('div');
+      pickBtn.className='sub-pill';
+      pickBtn.style.cssText='border-style:dashed;color:var(--dgreen)';
+      pickBtn.textContent=(ACTIVE_MODULE_LABEL?'📂 '+ACTIVE_MODULE_LABEL:'📂 选模块')+'▾';
+      pickBtn.onclick=()=>openModulePicker();
+      mb.appendChild(pickBtn);
+    }
+  }
   const sb=document.getElementById('sb-subjects');
-  if(sb){sb.innerHTML='';SUBJECTS.forEach(sub=>{const d=document.createElement('div');d.className='sb-sub-item'+(sub.id===ACTIVE_SUBJECT_ID?' on':'');d.innerHTML=`<div class="sb-sub-dot" style="${sub.id===ACTIVE_SUBJECT_ID?'background:'+sub.color:''}"></div>${sub.icon} ${sub.name}`;d.onclick=()=>setSubject(sub.id);sb.appendChild(d);});}
-  const badge=document.getElementById('sub-badge');if(badge){const sub=getActiveSubject();badge.textContent=sub.icon+' '+sub.name;badge.style.background=sub.color||'#5a9a5a';}
+  if(sb){
+    sb.innerHTML='';
+    SUBJECTS.forEach(sub=>{
+      const d=document.createElement('div');
+      d.className='sb-sub-item'+(sub.id===ACTIVE_SUBJECT_ID?' on':'');
+      d.innerHTML=`<div class="sb-sub-dot" style="${sub.id===ACTIVE_SUBJECT_ID?'background:'+sub.color:''}"></div>${sub.icon} ${sub.name}`;
+      d.onclick=()=>setSubject(sub.id);
+      sb.appendChild(d);
+    });
+    // 侧边栏模块信息
+    const modCfg=window.SUBJECT_MODULES&&SUBJECT_MODULES[ACTIVE_SUBJECT_ID];
+    if(modCfg){
+      const d=document.createElement('div');
+      d.style.cssText='padding:5px 14px 2px;font-size:.58rem;color:rgba(255,255,255,.35)';
+      d.textContent=ACTIVE_MODULE_LABEL?'📂 '+ACTIVE_MODULE_LABEL:'📚 全部题目';
+      d.style.cursor='pointer';
+      d.onclick=()=>openModulePicker();
+      sb.appendChild(d);
+    }
+  }
+  const badge=document.getElementById('sub-badge');
+  if(badge){
+    const sub=getActiveSubject();
+    badge.textContent=(ACTIVE_MODULE_LABEL?sub.icon+' '+ACTIVE_MODULE_LABEL:sub.icon+' '+sub.name);
+    badge.style.background=sub.color||'#5a9a5a';
+  }
 }
+
+function openModulePicker(){
+  const modCfg=window.SUBJECT_MODULES&&SUBJECT_MODULES[ACTIVE_SUBJECT_ID];
+  if(!modCfg||!modCfg.groups){showToast('该科目暂无子模块');return;}
+  const sub=SUBJECTS.find(s=>s.id===ACTIVE_SUBJECT_ID)||SUBJECTS[0];
+  // 构造弹窗内容
+  let html=`<div style="margin-bottom:10px">
+    <div style="font-size:.8rem;font-weight:700;color:var(--dgreen);margin-bottom:6px">${sub.icon} ${sub.name} · 选择题目范围</div>
+    <div onclick="_closeModPicker()" style="display:inline-block;padding:4px 14px;border-radius:99px;border:1.5px solid var(--border);font-size:.72rem;cursor:pointer;margin-bottom:10px;background:${!ACTIVE_MODULE_ID?sub.color:'var(--panel)'};color:${!ACTIVE_MODULE_ID?'#fff':'var(--ink)'}">📚 全部题目</div>
+  </div>`;
+  modCfg.groups.forEach(g=>{
+    html+=`<div style="font-size:.62rem;color:var(--muted);letter-spacing:1px;margin-bottom:5px;margin-top:8px">${g.label}</div>`;
+    html+=`<div style="display:flex;flex-direction:column;gap:5px">`;
+    g.modules.forEach(mod=>{
+      const isOn=ACTIVE_MODULE_ID===mod.id;
+      const hasQ=window[mod.qbKey]&&window[mod.qbKey].length>0;
+      const cnt=hasQ?window[mod.qbKey].length:0;
+      html+=`<div onclick="_selectMod('${mod.id}','${encodeURIComponent(mod.label)}')" style="padding:8px 12px;border-radius:10px;border:1.5px solid ${isOn?sub.color:'var(--border)'};background:${isOn?'rgba(100,160,100,.08)':'#fff'};cursor:pointer;display:flex;align-items:center;gap:8px">
+        <span style="font-size:.85rem">${mod.isExam?'📄':'📖'}</span>
+        <span style="flex:1;font-size:.76rem;font-weight:${isOn?'700':'400'};color:${isOn?sub.color:'var(--ink)'}">${mod.label}</span>
+        <span style="font-size:.6rem;color:${hasQ?'var(--muted)':'#ccc'}">${hasQ?cnt+'题':'待添加'}</span>
+        ${isOn?'<span style="font-size:.7rem;color:'+sub.color+'">✓</span>':''}
+      </div>`;
+    });
+    html+='</div>';
+  });
+  // 放入confirm弹窗（借用已有overlay）
+  document.getElementById('confirm-ico').textContent=sub.icon;
+  document.getElementById('confirm-msg').innerHTML=html;
+  document.getElementById('confirm-yes-btn').style.display='none';
+  document.querySelector('#confirm-ov .mb-cancel').textContent='关闭';
+  document.getElementById('confirm-ov').classList.add('on');
+  // 注入辅助函数
+  window._closeModPicker=function(){
+    window.ACTIVE_MODULE_ID=null;window.ACTIVE_MODULE_LABEL='';
+    localStorage.removeItem('jbfarm_module');localStorage.removeItem('jbfarm_module_label');
+    S.usedQ=[];document.getElementById('confirm-ov').classList.remove('on');
+    document.getElementById('confirm-yes-btn').style.display='';
+    document.querySelector('#confirm-ov .mb-cancel').textContent='取消';
+    renderSubjectBars();showToast('已切换：全部题目');
+  };
+  window._selectMod=function(id,labelEnc){
+    const label=decodeURIComponent(labelEnc);
+    window.ACTIVE_MODULE_ID=id;window.ACTIVE_MODULE_LABEL=label;
+    localStorage.setItem('jbfarm_module',id);localStorage.setItem('jbfarm_module_label',label);
+    S.usedQ=[];document.getElementById('confirm-ov').classList.remove('on');
+    document.getElementById('confirm-yes-btn').style.display='';
+    document.querySelector('#confirm-ov .mb-cancel').textContent='取消';
+    renderSubjectBars();showToast('已切换：'+label);
+  };
+}
+
 
 // ─── 宠物行走开关 ─────────────────────────────────
 function togglePetWalk(){

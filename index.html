@@ -903,6 +903,35 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 <script src="subject_english.js"></script>
 <script src="gamedata.js"></script>
 <script src="subjects.js"></script>
+
+<!-- ★ 新增：各科目模块化子题库 -->
+<script src="subject_history8_mod.js"></script>
+<script src="subject_geo7_mod.js"></script>
+<script src="subject_geo8_mod.js"></script>
+<script src="subject_geoh_teacher_mod.js"></script>
+
 <script src="game.js"></script>
+
+
+
+
+
 </body>
 </html>
+
+
+<!--
+══════════════════════════════════════════════════════════════
+  index.html 修改说明
+  
+  找到 index.html 底部的 <script> 标签区域，
+  原来是这样：
+
+    <script src="gamedata.js"></script>
+    <script src="subjects.js"></script>
+    <script src="game.js"></script>
+
+  把它替换为下方内容（在 subjects.js 后面追加新文件引入）：
+══════════════════════════════════════════════════════════════
+-->
+

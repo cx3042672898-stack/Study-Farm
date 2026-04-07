@@ -455,6 +455,17 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 .sb-pause-item:hover{background:rgba(255,255,255,.07);color:rgba(255,255,255,.9)}
 .sb-pause-item.paused{color:#f0c040;background:rgba(240,192,64,.1)}
 @media(max-width:899px){.sb-pause-item{display:none}}
+/* ── AVATAR PICKER ── */
+.avatar-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-bottom:10px}
+.av-item{aspect-ratio:1;border-radius:10px;border:2px solid var(--border);display:flex;align-items:center;
+  justify-content:center;font-size:1.4rem;cursor:pointer;transition:all .15s;background:#fff}
+.av-item.on{border-color:var(--green);background:rgba(100,160,100,.1);transform:scale(1.1)}
+.av-item:active{transform:scale(.9)}
+.av-custom-input{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;
+  font-family:'Noto Sans SC',sans-serif;font-size:1.4rem;color:var(--ink);background:#fff;
+  outline:none;text-align:center;letter-spacing:4px}
+.av-custom-input:focus{border-color:var(--green)}
+
 </style>
 </head>
 <body>
@@ -559,7 +570,7 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 
   <!-- 手机顶栏 -->
   <div id="topbar">
-    <div id="avatar" onclick="goToLogin()">🌾</div>
+    <div id="avatar" onclick="openAvatarPicker()" title="点击更换头像">🌾</div>
     <div id="pname" onclick="switchTab('profile')">-</div>
     <button id="pause-btn" onclick="togglePause()">⏸ 暂停</button>
     <div class="topchips">
@@ -690,7 +701,7 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
       <div class="dtwo">
         <div>
           <div class="card" style="text-align:center;padding:16px 12px">
-            <div class="prof-av" id="prof-av">🌾</div>
+            <div class="prof-av" id="prof-av" onclick="openAvatarPicker()" style="cursor:pointer" title="点击更换头像">🌾</div>
             <div style="font-family:'Ma Shan Zheng',cursive;font-size:1.1rem;color:var(--dgreen);margin-bottom:10px" id="prof-name">-</div>
             <div class="prof-stats" id="prof-stats"></div>
           </div>
@@ -721,7 +732,10 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
             <div style="display:flex;gap:7px;flex-wrap:wrap">
               <button onclick="exportSave()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📤 导出存档</button>
               <button onclick="document.getElementById('import-file').click()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📥 导入存档</button>
+              <button onclick="exportAllSaves()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.06);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📦 导出全部账号</button>
+              <button onclick="document.getElementById('import-all-file').click()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.06);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📥 导入全部账号</button>
               <input type="file" id="import-file" accept=".json" style="display:none" onchange="importSave(this)">
+              <input type="file" id="import-all-file" accept=".json" style="display:none" onchange="importAllSaves(this)">
             </div>
           </div>
           <div class="card" style="text-align:center">
@@ -860,6 +874,33 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
   <div style="margin-top:12px;font-size:.7rem;color:var(--muted);cursor:pointer;text-align:center"
     onclick="document.getElementById('setpin-ov').classList.remove('on');setpinInput=''">取消</div>
 </div></div>
+
+<!-- 头像选择弹窗 -->
+<div class="overlay" id="avatar-pick-ov">
+  <div class="modal" style="padding:16px 14px">
+    <div class="mttl">🎨 选择头像</div>
+    <div style="font-size:.72rem;color:var(--muted);margin-bottom:10px">点击预设头像，或在下方输入自定义表情</div>
+    <div class="avatar-grid" id="avatar-grid-presets"></div>
+    <div style="font-size:.68rem;color:var(--muted);margin-bottom:5px">✏️ 自定义（输入任意emoji）</div>
+    <input class="av-custom-input" id="av-custom-input" placeholder="🌟" maxlength="2" style="user-select:text">
+    <div style="font-size:.6rem;color:var(--muted);margin:5px 0 12px;text-align:center">支持单个或双字符Emoji</div>
+    <div class="mbrow">
+      <button class="mbtn mb-cancel" onclick="document.getElementById('avatar-pick-ov').classList.remove('on')">取消</button>
+      <button class="mbtn mb-ok on" onclick="saveAvatar()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 班级管理弹窗 -->
+<div class="overlay" id="class-manage-ov">
+  <div class="modal" style="padding:16px 14px">
+    <div class="mttl" id="class-manage-ttl">🏫 班级管理</div>
+    <div id="class-manage-body"></div>
+    <div class="mbrow" style="margin-top:10px">
+      <button class="mbtn mb-cancel" onclick="document.getElementById('class-manage-ov').classList.remove('on')">关闭</button>
+    </div>
+  </div>
+</div>
 
 <!-- 模块选择弹窗 -->
 <div class="overlay" id="mod-pick-ov">

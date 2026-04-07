@@ -586,6 +586,10 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
             <div class="farm-grid" id="farm-grid"></div>
             <div id="farm-stat" style="font-size:.7rem;color:var(--muted);line-height:1.9"></div>
           </div>
+          <div class="card" id="warehouse-card" style="display:none">
+            <div class="cttl">🏪 收获仓库 <span style="font-size:.6rem;color:var(--muted);margin-left:auto">收获→仓库→售卖得金币</span></div>
+            <div id="warehouse-body"></div>
+          </div>
         </div>
         <div>
           <div class="card">
@@ -857,6 +861,15 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
     onclick="document.getElementById('setpin-ov').classList.remove('on');setpinInput=''">取消</div>
 </div></div>
 
+<!-- 模块选择弹窗 -->
+<div class="overlay" id="mod-pick-ov">
+  <div class="modal" style="padding:16px 14px">
+    <div class="mttl" id="mod-pick-ttl">📂 选择题目范围</div>
+    <div id="mod-pick-body" style="max-height:60vh;overflow-y:auto;margin-bottom:10px"></div>
+    <button class="mbtn mb-cancel" style="width:100%" onclick="document.getElementById('mod-pick-ov').classList.remove('on')">关闭</button>
+  </div>
+</div>
+
 <!-- PAUSE OVERLAY -->
 <div class="overlay" id="pause-ov">
   <div class="modal" style="text-align:center;max-width:340px">
@@ -918,20 +931,4 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 
 </body>
 </html>
-
-
-<!--
-══════════════════════════════════════════════════════════════
-  index.html 修改说明
-  
-  找到 index.html 底部的 <script> 标签区域，
-  原来是这样：
-
-    <script src="gamedata.js"></script>
-    <script src="subjects.js"></script>
-    <script src="game.js"></script>
-
-  把它替换为下方内容（在 subjects.js 后面追加新文件引入）：
-══════════════════════════════════════════════════════════════
--->
-
+</html>

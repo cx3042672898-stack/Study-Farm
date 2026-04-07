@@ -417,14 +417,14 @@ window.DEFAULT_SAVE={
   catCorrect:{基础:0,人物:0,属性:0,形态:0,心理:0,教师:0,课程:0,德育:0},
   usedQ:[], unlockedAch:[], newAch:[],
   plots:[
-    {s:'empty',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false},
-    {s:'empty',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false},
-    {s:'empty',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false},
-    {s:'empty',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false},
-    {s:'locked',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false,unlockProgress:0},
-    {s:'locked',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false,unlockProgress:0},
-    {s:'locked',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false,unlockProgress:0},
-    {s:'locked',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false,unlockProgress:0},
+    {s:'empty',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false,soil:'yellow'},
+    {s:'empty',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false,soil:'yellow'},
+    {s:'empty',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false,soil:'yellow'},
+    {s:'empty',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false,soil:'yellow'},
+    {s:'locked',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false,unlockProgress:0,soil:'yellow'},
+    {s:'locked',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false,unlockProgress:0,soil:'yellow'},
+    {s:'locked',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false,unlockProgress:0,soil:'yellow'},
+    {s:'locked',g:0,seed:'wheat',lastWater:0,hasBug:false,hasCrack:false,unlockProgress:0,soil:'yellow'},
   ],
   seedBag:{wheat:2,sunflower:0,strawberry:0,blueberry:0,cherry:0},
   totalSeeds:0, totalPlanted:0, harvests:0, plotsUnlocked:0,
@@ -444,6 +444,7 @@ window.DEFAULT_SAVE={
   ownedSkins:[],        // 已购买的皮肤id列表
   ownedClothes:[], equippedCloth:null,
   ownedPets:['p_hamster'], activePet:'p_hamster',
+  warehouse:{}, petReachedLevels:{},
   expBoostLeft:0, lastSaveTime:0, _classRank:99,
 };
 

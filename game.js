@@ -29,7 +29,9 @@ function loadAccSave(id){
       Object.keys(DEFAULT_SAVE).forEach(k=>{if(s[k]===undefined)s[k]=JSON.parse(JSON.stringify(DEFAULT_SAVE[k]));});
       if(!s.seedBag||typeof s.seedBag!=='object')s.seedBag={...DEFAULT_SAVE.seedBag};
       if(!Array.isArray(s.plots)||s.plots.length<8)s.plots=DEFAULT_SAVE.plots.map(p=>({...p}));
-      s.plots.forEach(p=>{if(p.lastWater===undefined)p.lastWater=Date.now();if(p.hasBug===undefined)p.hasBug=false;if(p.hasCrack===undefined)p.hasCrack=false;if(p.unlockProgress===undefined)p.unlockProgress=0;});
+      s.plots.forEach(p=>{if(p.lastWater===undefined)p.lastWater=Date.now();if(p.hasBug===undefined)p.hasBug=false;if(p.hasCrack===undefined)p.hasCrack=false;if(p.unlockProgress===undefined)p.unlockProgress=0;if(p.soil===undefined)p.soil='yellow';});
+      if(s.warehouse===undefined)s.warehouse={};
+      if(s.petReachedLevels===undefined)s.petReachedLevels={};
       if(!Array.isArray(s.unlockedAch))s.unlockedAch=[];
       if(!Array.isArray(s.newAch))s.newAch=[];
       if(!Array.isArray(s.ownedClothes))s.ownedClothes=[];
@@ -163,7 +165,6 @@ function importClassList(){const cls=(document.getElementById('ic-class')?.value
 function setSubject(id){
   window.ACTIVE_SUBJECT_ID=id;
   localStorage.setItem('jbfarm_subject',id);
-  // 切换科目时清空模块选择
   window.ACTIVE_MODULE_ID=null;
   window.ACTIVE_MODULE_LABEL='';
   localStorage.removeItem('jbfarm_module');
@@ -173,42 +174,27 @@ function setSubject(id){
 }
 
 function renderSubjectBars(){
+  const _hasMod=id=>window.SUBJECT_MODULES&&SUBJECT_MODULES[id]&&SUBJECT_MODULES[id].groups&&SUBJECT_MODULES[id].groups.length>0;
   const mb=document.getElementById('subject-bar-mobile');
   if(mb){
     mb.innerHTML='';
-    // 科目按钮
     SUBJECTS.forEach(sub=>{
       const b=document.createElement('div');
-      b.className='sub-pill'+(sub.id===ACTIVE_SUBJECT_ID?' on':'');
-      if(sub.id===ACTIVE_SUBJECT_ID)b.style.background=sub.color||'#5a9a5a';
-      b.textContent=sub.icon+' '+sub.name;
-      b.onclick=()=>setSubject(sub.id);
+      const isActive=sub.id===ACTIVE_SUBJECT_ID;
+      b.className='sub-pill'+(isActive?' on':'');
+      if(isActive)b.style.background=sub.color||'#5a9a5a';
+      b.textContent=sub.icon+' '+sub.name+(_hasMod(sub.id)?'▾':'');
+      b.onclick=()=>{if(!isActive)setSubject(sub.id);if(_hasMod(sub.id))setTimeout(openModulePicker,30);};
       mb.appendChild(b);
     });
-    // 模块选择按钮（只在有模块定义时显示）
-    const modCfg=window.SUBJECT_MODULES&&SUBJECT_MODULES[ACTIVE_SUBJECT_ID];
-    if(modCfg&&modCfg.groups){
-      const sep=document.createElement('div');
-      sep.style.cssText='width:1px;background:rgba(100,160,100,.2);margin:3px 2px;flex-shrink:0';
-      mb.appendChild(sep);
-      // "全部"按钮
-      const allBtn=document.createElement('div');
-      allBtn.className='sub-pill'+(!ACTIVE_MODULE_ID?' on':'');
-      if(!ACTIVE_MODULE_ID){const sub=SUBJECTS.find(s=>s.id===ACTIVE_SUBJECT_ID);allBtn.style.background=sub?.color||'#5a9a5a';}
-      allBtn.textContent='📚 全部';
-      allBtn.onclick=()=>{
-        window.ACTIVE_MODULE_ID=null;window.ACTIVE_MODULE_LABEL='';
-        localStorage.removeItem('jbfarm_module');localStorage.removeItem('jbfarm_module_label');
-        S.usedQ=[];renderSubjectBars();showToast('已切换：全部题目');
-      };
-      mb.appendChild(allBtn);
-      // 模块按钮入口
-      const pickBtn=document.createElement('div');
-      pickBtn.className='sub-pill';
-      pickBtn.style.cssText='border-style:dashed;color:var(--dgreen)';
-      pickBtn.textContent=(ACTIVE_MODULE_LABEL?'📂 '+ACTIVE_MODULE_LABEL:'📂 选模块')+'▾';
-      pickBtn.onclick=()=>openModulePicker();
-      mb.appendChild(pickBtn);
+    if(window.ACTIVE_MODULE_LABEL&&window.ACTIVE_MODULE_ID){
+      const ml=document.createElement('div');
+      ml.className='sub-pill on';
+      ml.style.cssText='max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.6rem;padding:2px 8px;background:#7a5020;flex-shrink:0';
+      ml.textContent='📂 '+ACTIVE_MODULE_LABEL;
+      ml.title=ACTIVE_MODULE_LABEL;
+      ml.onclick=openModulePicker;
+      mb.appendChild(ml);
     }
   }
   const sb=document.getElementById('sb-subjects');
@@ -216,79 +202,84 @@ function renderSubjectBars(){
     sb.innerHTML='';
     SUBJECTS.forEach(sub=>{
       const d=document.createElement('div');
-      d.className='sb-sub-item'+(sub.id===ACTIVE_SUBJECT_ID?' on':'');
-      d.innerHTML=`<div class="sb-sub-dot" style="${sub.id===ACTIVE_SUBJECT_ID?'background:'+sub.color:''}"></div>${sub.icon} ${sub.name}`;
-      d.onclick=()=>setSubject(sub.id);
+      const isActive=sub.id===ACTIVE_SUBJECT_ID;
+      d.className='sb-sub-item'+(isActive?' on':'');
+      d.innerHTML=`<div class="sb-sub-dot" style="${isActive?'background:'+sub.color:''}"></div>${sub.icon} ${sub.name}${_hasMod(sub.id)?'▾':''}`;
+      d.onclick=()=>{if(!isActive)setSubject(sub.id);if(_hasMod(sub.id))openModulePicker();};
       sb.appendChild(d);
     });
-    // 侧边栏模块信息
-    const modCfg=window.SUBJECT_MODULES&&SUBJECT_MODULES[ACTIVE_SUBJECT_ID];
-    if(modCfg){
-      const d=document.createElement('div');
-      d.style.cssText='padding:5px 14px 2px;font-size:.58rem;color:rgba(255,255,255,.35)';
-      d.textContent=ACTIVE_MODULE_LABEL?'📂 '+ACTIVE_MODULE_LABEL:'📚 全部题目';
-      d.style.cursor='pointer';
-      d.onclick=()=>openModulePicker();
-      sb.appendChild(d);
+    if(window.ACTIVE_MODULE_LABEL){
+      const ml=document.createElement('div');
+      ml.style.cssText='padding:2px 14px 5px;font-size:.58rem;color:rgba(255,255,255,.38);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      ml.textContent='📂 '+ACTIVE_MODULE_LABEL;
+      ml.onclick=openModulePicker;
+      sb.appendChild(ml);
     }
   }
   const badge=document.getElementById('sub-badge');
-  if(badge){
-    const sub=getActiveSubject();
-    badge.textContent=(ACTIVE_MODULE_LABEL?sub.icon+' '+ACTIVE_MODULE_LABEL:sub.icon+' '+sub.name);
-    badge.style.background=sub.color||'#5a9a5a';
-  }
+  if(badge){const sub=getActiveSubject();badge.textContent=window.ACTIVE_MODULE_LABEL?sub.icon+' '+ACTIVE_MODULE_LABEL:sub.icon+' '+sub.name;badge.style.background=sub.color||'#5a9a5a';}
 }
 
 function openModulePicker(){
-  const modCfg=window.SUBJECT_MODULES&&SUBJECT_MODULES[ACTIVE_SUBJECT_ID];
+  if(!window.SUBJECT_MODULES)return;
+  const modCfg=SUBJECT_MODULES[ACTIVE_SUBJECT_ID];
   if(!modCfg||!modCfg.groups){showToast('该科目暂无子模块');return;}
   const sub=SUBJECTS.find(s=>s.id===ACTIVE_SUBJECT_ID)||SUBJECTS[0];
-  // 构造弹窗内容
-  let html=`<div style="margin-bottom:10px">
-    <div style="font-size:.8rem;font-weight:700;color:var(--dgreen);margin-bottom:6px">${sub.icon} ${sub.name} · 选择题目范围</div>
-    <div onclick="_closeModPicker()" style="display:inline-block;padding:4px 14px;border-radius:99px;border:1.5px solid var(--border);font-size:.72rem;cursor:pointer;margin-bottom:10px;background:${!ACTIVE_MODULE_ID?sub.color:'var(--panel)'};color:${!ACTIVE_MODULE_ID?'#fff':'var(--ink)'}">📚 全部题目</div>
+  const ov=document.getElementById('mod-pick-ov');
+  if(!ov)return;
+  const ttlEl=document.getElementById('mod-pick-ttl');
+  if(ttlEl)ttlEl.textContent=sub.icon+' '+sub.name+' · 选择题目范围';
+  const body=document.getElementById('mod-pick-body');
+  if(!body)return;
+  const curMid=window.ACTIVE_MODULE_ID||'';
+  let html=`<div onclick="_mpAll()" style="padding:9px 12px;border-radius:10px;border:1.5px solid ${!curMid?'var(--green)':'var(--border)'};background:${!curMid?'rgba(100,160,100,.08)':'#fff'};cursor:pointer;display:flex;align-items:center;gap:8px;margin-bottom:10px">
+    <span>📚</span><span style="flex:1;font-size:.8rem;font-weight:${!curMid?700:400};color:${!curMid?'var(--dgreen)':'var(--ink)'}">全部题目（混合所有模块）</span>${!curMid?'<span style="color:var(--green);font-size:.68rem">✓ 当前</span>':''}
   </div>`;
   modCfg.groups.forEach(g=>{
-    html+=`<div style="font-size:.62rem;color:var(--muted);letter-spacing:1px;margin-bottom:5px;margin-top:8px">${g.label}</div>`;
-    html+=`<div style="display:flex;flex-direction:column;gap:5px">`;
+    html+=`<div style="font-size:.6rem;color:var(--muted);letter-spacing:1px;padding:5px 2px 4px;border-top:1px solid var(--border);margin-top:4px">${g.label}</div>`;
     g.modules.forEach(mod=>{
-      const isOn=ACTIVE_MODULE_ID===mod.id;
-      const hasQ=window[mod.qbKey]&&window[mod.qbKey].length>0;
+      const isOn=curMid===mod.id;
+      const hasQ=!!(window[mod.qbKey]&&window[mod.qbKey].length>0);
       const cnt=hasQ?window[mod.qbKey].length:0;
-      html+=`<div onclick="_selectMod('${mod.id}','${encodeURIComponent(mod.label)}')" style="padding:8px 12px;border-radius:10px;border:1.5px solid ${isOn?sub.color:'var(--border)'};background:${isOn?'rgba(100,160,100,.08)':'#fff'};cursor:pointer;display:flex;align-items:center;gap:8px">
+      html+=`<div onclick="_mpSel('${mod.id}','${encodeURIComponent(mod.label)}',${hasQ})" style="padding:8px 12px;border-radius:9px;border:1.5px solid ${isOn?'var(--green)':hasQ?'var(--border)':'#e8e8e8'};background:${isOn?'rgba(100,160,100,.08)':hasQ?'#fff':'#f8f8f8'};cursor:pointer;display:flex;align-items:center;gap:7px;margin-bottom:5px">
         <span style="font-size:.85rem">${mod.isExam?'📄':'📖'}</span>
-        <span style="flex:1;font-size:.76rem;font-weight:${isOn?'700':'400'};color:${isOn?sub.color:'var(--ink)'}">${mod.label}</span>
-        <span style="font-size:.6rem;color:${hasQ?'var(--muted)':'#ccc'}">${hasQ?cnt+'题':'待添加'}</span>
-        ${isOn?'<span style="font-size:.7rem;color:'+sub.color+'">✓</span>':''}
+        <span style="flex:1;font-size:.75rem;font-weight:${isOn?700:400};color:${isOn?'var(--dgreen)':hasQ?'var(--ink)':'#bbb'}">${mod.label}</span>
+        <span style="font-size:.58rem;color:${hasQ?'var(--muted)':'#ccc'}">${hasQ?cnt+'题':'📭 待更新'}</span>
+        ${isOn?'<span style="color:var(--green);font-size:.65rem">✓</span>':''}
       </div>`;
     });
-    html+='</div>';
   });
-  // 放入confirm弹窗（借用已有overlay）
-  document.getElementById('confirm-ico').textContent=sub.icon;
-  document.getElementById('confirm-msg').innerHTML=html;
-  document.getElementById('confirm-yes-btn').style.display='none';
-  document.querySelector('#confirm-ov .mb-cancel').textContent='关闭';
-  document.getElementById('confirm-ov').classList.add('on');
-  // 注入辅助函数
-  window._closeModPicker=function(){
+  body.innerHTML=html;
+  window._mpAll=function(){
     window.ACTIVE_MODULE_ID=null;window.ACTIVE_MODULE_LABEL='';
     localStorage.removeItem('jbfarm_module');localStorage.removeItem('jbfarm_module_label');
-    S.usedQ=[];document.getElementById('confirm-ov').classList.remove('on');
-    document.getElementById('confirm-yes-btn').style.display='';
-    document.querySelector('#confirm-ov .mb-cancel').textContent='取消';
-    renderSubjectBars();showToast('已切换：全部题目');
+    S.usedQ=[];
+    document.getElementById('mod-pick-ov').classList.remove('on');
+    renderSubjectBars();showToast('📚 已切换：全部题目');
   };
-  window._selectMod=function(id,labelEnc){
+  window._mpSel=function(id,labelEnc,hasQ){
     const label=decodeURIComponent(labelEnc);
+    if(!hasQ){
+      openConfirm('⚠️',`「${label}」
+
+该模块暂时没有题目 📭
+等待更新中...
+
+是否仍然选择？（答题时会提示）`,()=>{
+        _mpDoSel(id,label);
+        document.getElementById('mod-pick-ov').classList.remove('on');
+      });
+      return;
+    }
+    _mpDoSel(id,label);
+    document.getElementById('mod-pick-ov').classList.remove('on');
+  };
+  window._mpDoSel=function(id,label){
     window.ACTIVE_MODULE_ID=id;window.ACTIVE_MODULE_LABEL=label;
     localStorage.setItem('jbfarm_module',id);localStorage.setItem('jbfarm_module_label',label);
-    S.usedQ=[];document.getElementById('confirm-ov').classList.remove('on');
-    document.getElementById('confirm-yes-btn').style.display='';
-    document.querySelector('#confirm-ov .mb-cancel').textContent='取消';
-    renderSubjectBars();showToast('已切换：'+label);
+    S.usedQ=[];renderSubjectBars();showToast('📂 已切换：'+label);
   };
+  ov.classList.add('on');
 }
 
 
@@ -329,7 +320,15 @@ let QZ=null, curQ=null, qAnswered=false, curSelOpts=[];
 
 function getQ(){const pool=getActiveQuestions();if(!pool||!pool.length)return QB&&QB[0]||{c:'基础',q:'加载中...',o:['A','B','C','D'],a:0,e:''};let av=pool.map((_,i)=>i).filter(i=>!S.usedQ.includes(i));if(av.length<5){S.usedQ=[];av=pool.map((_,i)=>i);}const idx=av[Math.floor(Math.random()*av.length)];S.usedQ.push(idx);if(S.usedQ.length>pool.length-3)S.usedQ=S.usedQ.slice(-15);return pool[idx];}
 
-function openQuiz(cfg){QZ={...cfg,done:0,correct:0};qAnswered=false;const sub=getActiveSubject();const badge=document.getElementById('sub-badge');if(badge){badge.textContent=sub.icon+' '+sub.name;badge.style.background=sub.color||'#5a9a5a';}document.getElementById('quiz-ov').classList.add('on');loadNextQ();}
+function openQuiz(cfg){
+  const _pool=getActiveQuestions();
+  if(!_pool||!_pool.length){
+    const _ml=window.ACTIVE_MODULE_LABEL||'';
+    showResult('⚠️','该题库暂无题目',_ml?`「${_ml}」\n\n此模块题目待更新中 📭\n\n请点击上方科目标签切换其他模块！`:'当前题库为空\n请切换科目或选择其他模块');
+    return;
+  }
+  QZ={...cfg,done:0,correct:0};qAnswered=false;const sub=getActiveSubject();const badge=document.getElementById('sub-badge');if(badge){badge.textContent=(window.ACTIVE_MODULE_LABEL?sub.icon+' '+ACTIVE_MODULE_LABEL:sub.icon+' '+sub.name);badge.style.background=sub.color||'#5a9a5a';}document.getElementById('quiz-ov').classList.add('on');loadNextQ();
+}
 
 function loadNextQ(){
   curQ=getQ(); qAnswered=false; curSelOpts=[]; 
@@ -480,6 +479,14 @@ function onPlotClick(idx,event){
   if(growing){const rt=calcReadyTime(idx);acts.push({l:`💧 浇水（答1题）${rt?' ⏱'+rt:''}`,fn:()=>doWaterPlot(idx)});acts.push({l:'✨ 施肥（答2题）',fn:()=>doFertPlot(idx)});}
   if(p.s==='s3')acts.push({l:'🌾 收获（答1题）',fn:()=>doHarvestPlot(idx)});
   if(p.hasBug){if(S.pestStock>0)acts.push({l:`🧴 使用除虫药（库存${S.pestStock}）`,fn:()=>usePest(idx)});else acts.push({l:'🧴 除虫（答1题）',fn:()=>doPestPlot(idx)});}
+  // 土壤升级按钮
+  if(p.s!=='locked'){
+    const _cs=p.soil||'yellow';
+    const _nextMap={yellow:'red',red:'black'};
+    const _nextSoil=_nextMap[_cs];
+    const SNAMES={yellow:'🟡黄土地',red:'🟥红土地',black:'⬛黑土地'};
+    if(_nextSoil)acts.push({l:`🌱 升级土壤：${SNAMES[_cs]}→${SNAMES[_nextSoil]}`,fn:()=>upgradeSoil(idx)});
+  }
   const ad=document.getElementById('pp-actions');ad.innerHTML='';
   if(!acts.length)ad.innerHTML='<div style="font-size:.7rem;color:var(--muted);text-align:center">暂无操作</div>';
   acts.forEach(a=>{const b=document.createElement('div');b.className='pp-act';b.textContent=a.l;b.onclick=()=>{closePlotPopup();a.fn();};ad.appendChild(b);});
@@ -488,11 +495,125 @@ function onPlotClick(idx,event){
 }
 function closePlotPopup(){document.getElementById('plot-popup').classList.remove('on');}
 function usePest(idx){S.pestStock--;S.plots[idx].hasBug=false;persistAccount();renderFarm();showToast('🧴 除虫药使用成功！');}
-function doPlantPlot(idx){if(!totalSeeds()){showToast('种子袋空了！');return;}openSeedPicker('plant',null,sid=>{openQuiz({title:'🌱 播种',needed:1,onSuccess:()=>{const p=S.plots[idx];p.s='s0';p.g=0;p.seed=sid;p.lastWater=Date.now();p.hasBug=false;p.hasCrack=false;S.seedBag[sid]--;S.totalPlanted++;gainExp(10);persistAccount();renderFarm();checkAchs();const sd=SEEDS[sid];showResult('🌱','播种成功！',`第${idx+1}块地种了${sd.ico}${sd.name}\n约${sd.autoGrowH*4}小时后成熟`);}});});}
+function doPlantPlot(idx){if(!totalSeeds()){openConfirm('🌰','种子袋空空！\n需要先去商店购买种子。\n是否前往商店？',()=>switchTab('shop'));return;}openSeedPicker('plant',null,sid=>{openQuiz({title:'🌱 播种',needed:1,onSuccess:()=>{const p=S.plots[idx];p.s='s0';p.g=0;p.seed=sid;p.lastWater=Date.now();p.hasBug=false;p.hasCrack=false;S.seedBag[sid]--;S.totalPlanted++;gainExp(10);persistAccount();renderFarm();checkAchs();const sd=SEEDS[sid];showResult('🌱','播种成功！',`第${idx+1}块地种了${sd.ico}${sd.name}\n约${sd.autoGrowH*4}小时后成熟`);}});});}
 function doWaterPlot(idx){openQuiz({title:'💧 浇水',needed:1,onSuccess:()=>{const p=S.plots[idx];p.hasCrack=false;p.lastWater=Date.now();growPlot(idx,30);S.coins+=3;S.totalCoins+=3;gainExp(12);persistAccount();renderFarm();const rt=calcReadyTime(idx);showResult('💧','浇水完成！',`第${idx+1}块地 +30% → ${Math.round(p.g)}%\n金币+3${p.s==='s3'?'\n🌾 已成熟！':rt?'\n预计还需'+rt:''}`);}});}
 function doFertPlot(idx){openQuiz({title:'✨ 施肥（需答对2题）',needed:2,onSuccess:()=>{const p=S.plots[idx];p.hasCrack=false;p.lastWater=Date.now();growPlot(idx,60);S.coins+=8;S.totalCoins+=8;gainExp(25);persistAccount();renderFarm();showResult('✨','施肥成功！',`第${idx+1}块地 +60% → ${Math.round(p.g)}%\n金币+8${p.s==='s3'?'\n🌾 已成熟！':''}`);}});}
-function doHarvestPlot(idx){openQuiz({title:'🌾 收获',needed:1,onSuccess:()=>{const sid=S.plots[idx].seed||'wheat';const sd=SEEDS[sid];S.plots[idx].s='empty';S.plots[idx].g=0;S.harvests++;const _hb=(S.harvestBoostLeft>0)?2:1;if(_hb>1){S.harvestBoostLeft--;showToast('🌈丰收加倍！还剩'+S.harvestBoostLeft+'次');}const _hr=sd.reward*_hb;S.coins+=_hr;S.totalCoins+=_hr;S.score+=_hr;gainExp(sd.expGain);persistAccount();renderFarm();checkAchs();showResult('🌾','大丰收！',`收获了${sd.ico}${sd.name}！\n金币+${_hr}${_hb>1?' 🌈×2':''}，积分+${_hr}\n累计收获${S.harvests}次`);}});}
+function doHarvestPlot(idx){openQuiz({title:'🌾 收获',needed:1,onSuccess:()=>{
+  const sid=S.plots[idx].seed||'wheat';const sd=SEEDS[sid];
+  const _soil=S.plots[idx].soil||'yellow';
+  const _sm=_soil==='black'?1.6:_soil==='red'?1.3:1.0;
+  S.plots[idx].s='empty';S.plots[idx].g=0;S.harvests++;
+  const _hb=(S.harvestBoostLeft>0)?2:1;
+  if(_hb>1){S.harvestBoostLeft--;showToast('🌈丰收加倍！还剩'+S.harvestBoostLeft+'次');}
+  const _coinVal=Math.round(sd.reward*_sm*_hb);
+  const _expVal=Math.round(sd.expGain*_sm);
+  if(!S.warehouse)S.warehouse={};
+  if(!S.warehouse[sid])S.warehouse[sid]={count:0,value:0};
+  S.warehouse[sid].count++;S.warehouse[sid].value+=_coinVal;
+  S.score+=Math.round(_coinVal*0.5);
+  gainExp(_expVal);persistAccount();renderFarm();checkAchs();
+  const _soilTip=_soil!=='yellow'?`\n${_soil==='black'?'⬛黑土地':'🟥红土地'}加成×${_sm}`:'';
+  showResult('🌾','大丰收！',`${sd.ico}${sd.name}已存入仓库🏪${_soilTip}\n经验+${_expVal}${_hb>1?' 🌈×2':''}\n去仓库售卖可得🪙${_coinVal}`);
+}});}
+
 function doPestPlot(idx){openQuiz({title:'🧴 除虫',needed:1,onSuccess:()=>{S.plots[idx].hasBug=false;gainExp(8);persistAccount();renderFarm();showResult('🧴','除虫成功！','虫害已消灭！');}});}
+
+// ─── SOIL UPGRADE SYSTEM ──────────────────────────
+const SOIL_LEVELS=['yellow','red','black'];
+const SOIL_NAMES_MAP={yellow:'🟡黄土地',red:'🟥红土地',black:'⬛黑土地'};
+const SOIL_UPGRADE_COST={yellow:50,red:150};
+const SOIL_MULT_MAP={yellow:1.0,red:1.3,black:1.6};
+const SOIL_LV_REQ={red:3,black:7};
+
+function canUpgradeSoil(idx){
+  const p=S.plots[idx];
+  if(!p||p.s==='locked')return{ok:false,msg:'地块未开荒，无法升级'};
+  const cur=p.soil||'yellow';
+  const ni=SOIL_LEVELS.indexOf(cur)+1;
+  if(ni>=SOIL_LEVELS.length)return{ok:false,msg:'已是最高品质⬛黑土地！'};
+  const next=SOIL_LEVELS[ni];
+  const lvReq=SOIL_LV_REQ[next]||0;
+  if(S.level<lvReq)return{ok:false,msg:`需要达到Lv.${lvReq}\n（当前Lv.${S.level}，还差${lvReq-S.level}级）`};
+  if(next==='red'){
+    const allUnlocked=S.plots.every(pl=>pl.s!=='locked');
+    if(!allUnlocked)return{ok:false,msg:'需要先开荒全部地块\n才能升级🟥红土地'};
+  }
+  if(next==='black'){
+    const allRed=S.plots.every(pl=>pl.soil==='red'||pl.soil==='black');
+    if(!allRed)return{ok:false,msg:'需要先将所有地块升级为🟥红土地\n才能升级⬛黑土地'};
+  }
+  const cost=SOIL_UPGRADE_COST[cur];
+  if(S.coins<cost)return{ok:false,msg:`金币不足！需🪙${cost}\n（当前🪙${S.coins}）`};
+  return{ok:true,next,cost};
+}
+
+function upgradeSoil(idx){
+  const {ok,msg,next,cost}=canUpgradeSoil(idx);
+  if(!ok){showResult('⚠️','土壤无法升级',msg);return;}
+  const cur=S.plots[idx].soil||'yellow';
+  const mult=SOIL_MULT_MAP[next];
+  openConfirm(SOIL_NAMES_MAP[next],
+    `将第${idx+1}块地升级为${SOIL_NAMES_MAP[next]}？\n\n消耗🪙${cost}\n升级后收益倍率：×${mult}\n（经验和金币均提升${Math.round((mult-1)*100)}%）`,
+    ()=>{
+      S.coins-=cost;S.plots[idx].soil=next;
+      persistAccount();renderFarm();updateTop();
+      showToast(`✅ 第${idx+1}块地已升级为${SOIL_NAMES_MAP[next]}！`);
+    }
+  );
+}
+
+// ─── WAREHOUSE SYSTEM ─────────────────────────────
+function renderWarehouse(){
+  const body=document.getElementById('warehouse-body');
+  const card=document.getElementById('warehouse-card');
+  if(!body)return;
+  if(!S.warehouse)S.warehouse={};
+  const hasItems=SEED_IDS.some(sid=>S.warehouse[sid]&&S.warehouse[sid].count>0);
+  if(card)card.style.display=hasItems?'':'none';
+  if(!hasItems){body.innerHTML='';return;}
+  let totalVal=0;
+  let html='<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px">';
+  SEED_IDS.forEach(sid=>{
+    const wh=S.warehouse[sid];
+    if(!wh||!wh.count)return;
+    const sd=SEEDS[sid];
+    totalVal+=wh.value;
+    html+=`<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#fff;border-radius:10px;border:1.5px solid var(--border)">
+      <span style="font-size:1.2rem">${sd.ico}</span>
+      <div style="flex:1;min-width:0"><div style="font-size:.76rem;font-weight:600">${sd.name} ×${wh.count}</div>
+      <div style="font-size:.6rem;color:var(--muted)">售卖可得🪙${wh.value}</div></div>
+      <button onclick="sellCrop('${sid}')" style="padding:4px 12px;border-radius:99px;border:none;background:var(--green);color:#fff;font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">售卖</button>
+    </div>`;
+  });
+  html+='</div>';
+  if(totalVal>0)html+=`<button onclick="sellAllCrops()" style="width:100%;padding:9px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--green),var(--dgreen));color:#fff;font-size:.8rem;font-weight:600;cursor:pointer;font-family:'Noto Sans SC',sans-serif;box-shadow:0 3px 8px rgba(61,122,61,.22)">💰 全部售卖（共🪙${totalVal}）</button>`;
+  body.innerHTML=html;
+}
+function sellCrop(sid){
+  if(!S.warehouse||!S.warehouse[sid]||!S.warehouse[sid].count){showToast('仓库中没有这种作物！');return;}
+  const sd=SEEDS[sid];const cnt=S.warehouse[sid].count;const val=S.warehouse[sid].value;
+  S.coins+=val;S.totalCoins+=val;
+  S.warehouse[sid]={count:0,value:0};
+  persistAccount();renderFarm();updateTop();checkAchs();
+  spawnP(['🪙','💰','✨']);
+  showToast(`💰 售出${sd.ico}${sd.name}×${cnt}，获得🪙${val}！`);
+}
+function sellAllCrops(){
+  if(!S.warehouse){showToast('仓库已空！');return;}
+  let total=0,icons='';
+  SEED_IDS.forEach(sid=>{
+    const wh=S.warehouse[sid];
+    if(!wh||!wh.count)return;
+    total+=wh.value;icons+=SEEDS[sid].ico+'×'+wh.count+' ';
+    S.warehouse[sid]={count:0,value:0};
+  });
+  if(!total){showToast('仓库已空！');return;}
+  S.coins+=total;S.totalCoins+=total;
+  persistAccount();renderFarm();updateTop();checkAchs();
+  spawnP(['🪙','💰','✨','🌟']);
+  showResult('💰','全部售卖完成！',`${icons}\n共获得🪙${total}！`);
+}
+
 function onLockedClick(idx){openConfirm('🔓',`开荒第${idx+1}块地（需答对3题）`,()=>{openQuiz({title:'🔓 开荒（需答对3题）',needed:3,onSuccess:()=>{S.plots[idx].s='empty';S.plotsUnlocked++;gainExp(40);S.coins+=15;S.totalCoins+=15;persistAccount();renderFarm();checkAchs();showResult('🔓','开荒成功！',`第${idx+1}块地已解锁！\n金币+15，经验+40`);}});});}
 
 function farmBulk(type){
@@ -500,7 +621,7 @@ function farmBulk(type){
   if(type==='auto_plant'){const empties=S.plots.map((p,i)=>({p,i})).filter(({p})=>p.s==='empty');if(!empties.length){showToast('没有空地！');return;}if(!totalSeeds()){showToast('种子袋空了！');return;}openSeedPicker('plant',null,sid=>{const n=Math.min(empties.length,S.seedBag[sid]||0);if(!n){showToast(SEEDS[sid].name+'种子不足！');return;}openQuiz({title:`🌱 一键播种（答对${n}题）`,needed:n,onSuccess:()=>{let cnt=0;empties.slice(0,n).forEach(({i})=>{if(S.seedBag[sid]>0){const p=S.plots[i];p.s='s0';p.g=0;p.seed=sid;p.lastWater=Date.now();p.hasBug=false;p.hasCrack=false;S.seedBag[sid]--;S.totalPlanted++;cnt++;}});gainExp(10*cnt);persistAccount();renderFarm();checkAchs();showResult('🌱','一键播种完成！',`播种了${cnt}块地 ${SEEDS[sid].ico}${SEEDS[sid].name}`);}});});return;}
   if(type==='buy_seeds'){openSeedPicker('buy',true,null);return;}
   if(type==='water_all'){const cnt=S.plots.filter(p=>growing.includes(p.s)).length;if(!cnt){showToast('没有正在生长的作物！');return;}openQuiz({title:`🌊 一键浇水（答对${cnt}题）`,needed:cnt,onSuccess:()=>{let coins=0;S.plots.forEach((p,i)=>{if(growing.includes(p.s)){p.hasCrack=false;p.lastWater=Date.now();growPlot(i,30);coins+=3;}});S.coins+=coins;S.totalCoins+=coins;gainExp(12*cnt);persistAccount();renderFarm();showResult('🌊','全部浇水！',`灌溉了${cnt}块地\n金币+${coins}`);}});return;}
-  if(type==='harvest_all'){const cnt=S.plots.filter(p=>p.s==='s3').length;if(!cnt){showToast('没有成熟的作物！');return;}openQuiz({title:`🧺 一键收获（答对${cnt}题）`,needed:cnt,onSuccess:()=>{let total=0,expT=0,icons='';S.plots.forEach((p,i)=>{if(p.s==='s3'){const sd=SEEDS[p.seed||'wheat'];S.plots[i].s='empty';S.plots[i].g=0;S.harvests++;total+=sd.reward;expT+=sd.expGain;S.score+=sd.reward;icons+=sd.ico;}});S.coins+=total;S.totalCoins+=total;gainExp(expT);persistAccount();renderFarm();checkAchs();showResult('🧺','一键大丰收！',`收获：${icons}\n金币+${total}，积分+${total}`);}});return;}
+  if(type==='harvest_all'){const cnt=S.plots.filter(p=>p.s==='s3').length;if(!cnt){showToast('没有成熟的作物！');return;}openQuiz({title:`🧺 一键收获（答对${cnt}题）`,needed:cnt,onSuccess:()=>{let totalVal=0,expT=0,icons='';if(!S.warehouse)S.warehouse={};S.plots.forEach((p,i)=>{if(p.s==='s3'){const sid=p.seed||'wheat';const sd=SEEDS[sid];const _sm=p.soil==='black'?1.6:p.soil==='red'?1.3:1.0;S.plots[i].s='empty';S.plots[i].g=0;S.harvests++;const _hb=(S.harvestBoostLeft>0)?2:1;const _cv=Math.round(sd.reward*_sm*_hb);const _ev=Math.round(sd.expGain*_sm);if(!S.warehouse[sid])S.warehouse[sid]={count:0,value:0};S.warehouse[sid].count++;S.warehouse[sid].value+=_cv;totalVal+=_cv;expT+=_ev;icons+=sd.ico;S.score+=Math.round(_cv*0.5);}});if(S.harvestBoostLeft>0)S.harvestBoostLeft=Math.max(0,S.harvestBoostLeft-cnt);gainExp(expT);persistAccount();renderFarm();checkAchs();showResult('🧺','一键大丰收！',`收获：${icons}\n全部已存入仓库🏪\n经验+${expT}\n共可售卖🪙${totalVal}`);}});return;}
   if(type==='fert_all'){const cnt=S.plots.filter(p=>growing.includes(p.s)).length;if(!cnt){showToast('没有正在生长的作物！');return;}openQuiz({title:`🪣 一键施肥（答对${cnt*2}题）`,needed:cnt*2,onSuccess:()=>{let coins=0;S.plots.forEach((p,i)=>{if(growing.includes(p.s)){p.hasCrack=false;p.lastWater=Date.now();growPlot(i,60);coins+=8;}});S.coins+=coins;S.totalCoins+=coins;gainExp(25*cnt);persistAccount();renderFarm();showResult('🪣','全部施肥！',`施肥了${cnt}块地\n金币+${coins}`);}});return;}
   if(type==='pest_all'){const bugCount=S.plots.filter(p=>p.hasBug).length;if(!bugCount){showToast('目前没有虫害！');return;}if(S.pestStock>=bugCount){S.pestStock-=bugCount;S.plots.forEach(p=>p.hasBug=false);persistAccount();renderFarm();showToast(`🧴 使用${bugCount}瓶除虫药，全部清除！`);return;}openQuiz({title:`🧴 一键除虫（答对${bugCount}题）`,needed:bugCount,onSuccess:()=>{S.plots.forEach(p=>p.hasBug=false);gainExp(8*bugCount);persistAccount();renderFarm();showResult('🧴','除虫完成！',`清除了${bugCount}块地的虫害！`);}});return;}
 }
@@ -521,8 +642,15 @@ function renderFarm(){
     const d=document.createElement('div');
     d.className='plot '+p.s+(p.hasCrack?' cracked':'')+(p.hasBug?' bugged':'');
     if(p.s==='locked'){d.innerHTML='<span class="plot-ico">🔒</span><div class="plot-lbl" style="font-size:.4rem">未开荒</div>';}
-    else if(p.s==='empty'){d.innerHTML='<span class="plot-ico">🟫</span><div class="plot-lbl">空地</div>';}
-    else{const sd=SEEDS[p.seed||'wheat'];const si=p.s==='s3'?sd.stages.length-1:p.s==='s2'?2:p.s==='s1'?1:0;const ico=sd.stages[Math.min(si,sd.stages.length-1)];const rt=calcReadyTime(i);const pctStr=Math.round(p.g);d.innerHTML=`${rt?`<div class="plot-timer">⏱${rt}</div>`:''}${S.hasAutoWater?'<div style="position:absolute;top:2px;right:3px;font-size:.55rem">🚿</div>':''}<span class="plot-ico">${ico}</span><div class="plot-lbl">${sd.name} ${p.s==='s3'?'🎉成熟':pctStr+'%'}</div><div class="plot-pg"><div class="plot-pg-f" style="width:${p.g}%"></div></div>`;}
+    else if(p.s==='empty'){
+      const _sl=p.soil||'yellow';
+      if(_sl==='red')d.style.background='linear-gradient(145deg,#c05030,#903018)';
+      else if(_sl==='black')d.style.background='linear-gradient(145deg,#302010,#1a0c08)';
+      const _sico=_sl==='black'?'⬛':_sl==='red'?'🟥':'🟫';
+      const _snm=_sl==='yellow'?'空地':_sl==='red'?'红土地':'黑土地';
+      d.innerHTML=`<span class="plot-ico">${_sico}</span><div class="plot-lbl">${_snm}</div>`;
+    }
+    else{const sd=SEEDS[p.seed||'wheat'];const si=p.s==='s3'?sd.stages.length-1:p.s==='s2'?2:p.s==='s1'?1:0;const ico=sd.stages[Math.min(si,sd.stages.length-1)];const rt=calcReadyTime(i);const pctStr=Math.round(p.g);const _sl2=p.soil||'yellow';const _sdot=_sl2!=='yellow'?`<div style="position:absolute;bottom:2px;left:2px;width:5px;height:5px;border-radius:50%;background:${_sl2==='black'?'#302010':'#c05030'};border:1px solid rgba(255,255,255,.5)"></div>`:'';d.innerHTML=`${rt?`<div class="plot-timer">⏱${rt}</div>`:''}<div style="position:absolute;top:2px;right:2px;font-size:.48rem;line-height:1.4">${S.hasAutoWater?'🚿':''}${S.hasAutoPest?'🤖':''}</div>${_sdot}<span class="plot-ico">${ico}</span><div class="plot-lbl">${sd.name} ${p.s==='s3'?'🎉成熟':pctStr+'%'}</div><div class="plot-pg"><div class="plot-pg-f" style="width:${p.g}%"></div></div>`;}
     d.onclick=e=>onPlotClick(i,e);g.appendChild(d);
   });
   const ready=S.plots.filter(p=>p.s==='s3').length,grow=S.plots.filter(p=>['s0','s1','s2'].includes(p.s)).length,bug=S.plots.filter(p=>p.hasBug).length;
@@ -531,6 +659,7 @@ function renderFarm(){
   const val=ready+bug;['bd-farm','sbd-farm'].forEach(id=>{const el=document.getElementById(id);if(!el)return;if(val>0){el.textContent=val;el.classList.add('on');}else{el.textContent='';el.classList.remove('on');}});
   if(farmTimerInterval)clearInterval(farmTimerInterval);
   if(grow>0){farmTimerInterval=setInterval(()=>{if(isPaused)return;let changed=false;S.plots.forEach((p,i)=>{if(['s0','s1','s2'].includes(p.s)&&!p.hasCrack&&!p.hasBug){growPlot(i,1/(60*4));changed=true;}});if(changed)renderFarm();},1000);}
+  renderWarehouse();
 }
 
 // ─── PET CANVAS ──────────────────────────────────

@@ -45,7 +45,7 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 
 /* PIN */
 .pin-wrap{display:flex;gap:10px;justify-content:center;margin:12px 0}
-.pin-dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--border);transition:all .2s}
+.pin-dot{width:14px;height:14px;border-radius:50%;border:2px solid #aaa;background:transparent;transition:all .2s}
 .pin-dot.filled{background:var(--dgreen);border-color:var(--dgreen)}
 .numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%;max-width:280px;margin:0 auto}
 .npbtn{padding:14px;border-radius:12px;border:1.5px solid var(--border);background:var(--panel);
@@ -129,7 +129,7 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
   /* 两栏布局 */
   .dtwo{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   /* 宠物页：左列固定宽度 */
-  .dpet{display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start}
+  .dpet{display:grid;grid-template-columns:var(--pet-col,280px) 1fr;gap:16px;align-items:start}
   /* 商店三列 */
   .shop-grid{grid-template-columns:repeat(3,1fr)!important}
   /* 成就四列 */
@@ -346,6 +346,25 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 .ct-形态{background:rgba(220,160,40,.12);color:#806010}
 .ct-心理{background:rgba(160,120,200,.12);color:#705090}
 .ct-教师{background:rgba(100,160,200,.12);color:#3060a0}
+/* 班级登录页chip样式 */
+.student-chip{font-size:.64rem;padding:3px 9px;border-radius:99px;border:1px solid var(--border);background:var(--panel);cursor:pointer;display:inline-block;margin:2px}
+.student-chip:hover{background:rgba(100,160,100,.12);border-color:var(--green)}
+.student-chip.teacher{background:rgba(232,160,32,.12);border-color:var(--gold);color:#a06000;font-weight:600}
+.student-chip.asst-admin{background:rgba(106,168,254,.12);border-color:#4a90d9;color:#2060a0;font-weight:500}
+.class-card{background:var(--panel);border-radius:14px;border:1.5px solid var(--border);padding:13px 14px;cursor:pointer;transition:box-shadow .15s}
+.class-card:hover{box-shadow:0 3px 12px var(--shadow)}
+.class-ico{font-size:1.8rem;margin-right:10px}
+.class-info{flex:1;min-width:0}
+.class-name{font-family:"Ma Shan Zheng",cursive;font-size:1.05rem;color:var(--dgreen);font-weight:700}
+.class-meta{font-size:.66rem;color:var(--muted);margin-top:2px}
+.class-header{display:flex;align-items:center;margin-bottom:8px}
+.class-students{display:flex;flex-wrap:wrap;gap:3px}
+.role-select-wrap{display:flex;gap:10px;margin-bottom:18px;width:100%;max-width:420px}
+.role-btn{flex:1;padding:14px 10px;border-radius:14px;border:2px solid var(--border);background:var(--panel);cursor:pointer;text-align:center;transition:all .15s}
+.role-btn.on{border-color:var(--green);background:rgba(100,160,100,.08)}
+.role-ico{font-size:2rem;margin-bottom:4px}
+.role-nm{font-size:.82rem;font-weight:600}
+.role-sub{font-size:.62rem;color:var(--muted);margin-top:2px}
 .ct-课程{background:rgba(100,180,140,.12);color:#206040}
 .ct-德育{background:rgba(240,160,80,.12);color:#804010}
 .qprog{font-size:.62rem;color:var(--muted);text-align:right;margin-bottom:5px}
@@ -455,7 +474,18 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 .sb-pause-item:hover{background:rgba(255,255,255,.07);color:rgba(255,255,255,.9)}
 .sb-pause-item.paused{color:#f0c040;background:rgba(240,192,64,.1)}
 @media(max-width:899px){.sb-pause-item{display:none}}
-/* ── AVATAR PICKER ── */
+/* ── 拖拽布局调整 ── */
+.resize-handle{position:absolute;background:rgba(100,160,100,.0);transition:background .2s;z-index:10;cursor:col-resize;display:none}
+.resize-handle:hover,.resize-handle.dragging{background:rgba(100,160,100,.35)}
+.resize-handle-h{width:8px;top:0;bottom:0;transform:translateX(-50%)}
+.resize-handle-v{height:8px;left:0;right:0;cursor:row-resize;transform:translateY(-50%)}
+@media(min-width:900px){.resize-handle{display:block}}
+/* 布局编辑模式激活时高亮 */
+.layout-edit-mode .resize-handle{background:rgba(100,160,100,.18);border:1px dashed rgba(100,160,100,.5)}
+.layout-edit-btn{position:fixed;bottom:16px;left:16px;z-index:100;background:rgba(42,90,42,.85);border-radius:99px;padding:5px 12px;font-size:.65rem;color:rgba(255,255,255,.8);cursor:pointer;border:1px solid rgba(255,255,255,.15);backdrop-filter:blur(4px);display:none;font-family:'Noto Sans SC',sans-serif;transition:all .2s}
+.layout-edit-btn:hover{background:rgba(42,90,42,1);color:#fff}
+.layout-edit-btn.active{background:var(--green);color:#fff}
+@media(min-width:900px){.layout-edit-btn{display:block}}
 .avatar-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-bottom:10px}
 .av-item{aspect-ratio:1;border-radius:10px;border:2px solid var(--border);display:flex;align-items:center;
   justify-content:center;font-size:1.4rem;cursor:pointer;transition:all .15s;background:#fff}
@@ -474,11 +504,32 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 <div id="login-screen">
   <div class="ls-logo">🌾</div>
   <div class="ls-title">学习农场</div>
-  <div class="ls-sub">选择账号开始学习</div>
+  <div class="ls-sub">选择你的身份开始学习</div>
+  <!-- 角色选择 -->
+  <div class="role-select-wrap">
+    <div class="role-btn on" id="role-student" onclick="selectRole('student')">
+      <div class="role-ico">🎓</div>
+      <div class="role-nm">我是学生</div>
+      <div class="role-sub">加入班级学习</div>
+    </div>
+    <div class="role-btn" id="role-teacher" onclick="selectRole('teacher')">
+      <div class="role-ico">👨‍🏫</div>
+      <div class="role-nm">我是教师</div>
+      <div class="role-sub">管理班级</div>
+    </div>
+  </div>
   <div class="ls-subject-bar" id="ls-subject-bar"></div>
-  <div class="account-list" id="account-list"></div>
-  <div class="new-acc-btn" onclick="startCreateAccount()">➕ 新建账号</div>
-  <div class="ls-import-link" onclick="openImportClass()">🏫 批量导入班级名单</div>
+  <!-- 学生视图：账号列表 -->
+  <div id="student-view" style="width:100%;max-width:420px">
+    <div class="account-list" id="account-list"></div>
+    <div class="new-acc-btn" onclick="startCreateAccount()">➕ 新建账号</div>
+    <div class="ls-import-link" onclick="openImportClass()">🏫 批量导入班级名单</div>
+  </div>
+  <!-- 教师视图：班级列表 -->
+  <div id="teacher-view" style="width:100%;max-width:420px;display:none">
+    <div id="class-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+    <div class="new-acc-btn" id="new-class-btn" onclick="openCreateClass()">➕ 创建新班级</div>
+  </div>
 </div>
 
 <!-- PIN -->
@@ -522,6 +573,91 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
     <div class="mbrow">
       <button class="mbtn mb-cancel" onclick="document.getElementById('import-class-ov').classList.remove('on')">取消</button>
       <button class="mbtn mb-ok on" onclick="importClassList()">批量创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 批量导入学生（班级内）弹窗 -->
+<div class="overlay" id="batch-import-ov">
+  <div class="modal" style="max-height:85vh;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="mttl" style="margin-bottom:0">📋 批量导入名单</div>
+      <span onclick="document.getElementById('batch-import-ov').classList.remove('on')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);line-height:1;padding:2px 6px">✕</span>
+    </div>
+    <div style="font-size:.7rem;color:var(--muted);margin-bottom:4px">班级：<b id="bi-class-name" style="color:var(--dgreen)"></b></div>
+    <input type="hidden" id="bi-class-key">
+    <div style="font-size:.66rem;color:var(--muted);margin-bottom:8px;line-height:1.7">每行一个名字，逗号分隔可加4位密码<br>如：张三 / 李四,1234</div>
+    <textarea id="batch-import-names" style="flex:1;min-height:150px;border-radius:10px;border:1.5px solid var(--border);padding:10px;font-size:.8rem;font-family:'Noto Sans SC',sans-serif;resize:none;box-sizing:border-box;user-select:text" placeholder="王小明&#10;李华,1234&#10;张三"></textarea>
+    <button onclick="doBatchImport()" style="width:100%;margin-top:10px;padding:11px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.82rem;font-weight:600;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📥 导入名单</button>
+  </div>
+</div>
+
+<!-- 给学生加积分弹窗 -->
+<div class="overlay" id="add-score-ov">
+  <div class="modal" style="max-height:90vh;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="mttl" style="margin-bottom:0" id="add-score-title">⭐ 积分管理</div>
+      <span onclick="document.getElementById('add-score-ov').classList.remove('on')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);line-height:1;padding:2px 6px">✕</span>
+    </div>
+    <!-- 加减分切换 -->
+    <div style="display:flex;border:1.5px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:10px">
+      <div id="score-mode-add" onclick="setScoreMode('add')" style="flex:1;text-align:center;padding:7px;font-size:.78rem;cursor:pointer;background:var(--green);color:#fff;font-weight:600">⭐ 加分</div>
+      <div id="score-mode-sub" onclick="setScoreMode('sub')" style="flex:1;text-align:center;padding:7px;font-size:.78rem;cursor:pointer;background:var(--panel);color:var(--muted)">📉 减分</div>
+    </div>
+    <!-- 分值 + 原因 -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <input class="ci" id="add-score-val" placeholder="分值（1~100）" type="number" min="1" max="100" style="width:90px;user-select:text">
+      <select id="add-score-reason" class="ci" style="flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.78rem;font-family:'Noto Sans SC',sans-serif">
+        <option value="背书">📖 背书</option>
+        <option value="测试">📝 测试</option>
+        <option value="听写">✏️ 听写</option>
+        <option value="作业">📋 作业</option>
+        <option value="答题">🙋 答题</option>
+        <option value="课堂表现">🌟 课堂表现</option>
+        <option value="日常表现">😊 日常表现</option>
+        <option value="违纪">⚠️ 违纪</option>
+        <option value="自定义">✍️ 自定义原因</option>
+      </select>
+    </div>
+    <div id="score-custom-reason-wrap" style="display:none;margin-bottom:8px">
+      <input class="ci" id="score-custom-reason" placeholder="请输入自定义原因" maxlength="30" style="width:100%;user-select:text">
+    </div>
+    <!-- 全选控制栏 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;padding:0 2px">
+      <div style="font-size:.68rem;color:var(--muted)" id="score-select-hint">点击选中，再次点击取消</div>
+      <button onclick="toggleSelectAllScore()" id="score-select-all-btn" style="padding:3px 10px;border-radius:7px;border:1.5px solid var(--border);background:transparent;font-size:.65rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">全选</button>
+    </div>
+    <div id="add-score-list" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:5px"></div>
+    <!-- 底部确认 -->
+    <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+      <button onclick="applyScoreBatch()" style="width:100%;padding:10px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.82rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif" id="score-confirm-btn">✅ 确认给已选学生加分</button>
+    </div>
+  </div>
+</div>
+
+<!-- 创建班级弹窗 -->
+<div class="overlay" id="create-class-ov">
+  <div class="modal">
+    <div class="mttl">创建新班级</div>
+    <div style="margin-bottom:10px"><label class="ci-label">班级名称 *</label>
+      <input class="ci" id="cc-name" placeholder="如：高三2班" maxlength="20" style="user-select:text"></div>
+    <!-- 已有教师选择器（有教师账号时显示） -->
+    <div id="cc-teacher-picker-wrap" style="margin-bottom:8px;display:none">
+      <label class="ci-label">选择已有教师账号</label>
+      <select id="cc-teacher-select" class="ci" style="width:100%;padding:8px 10px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.8rem;font-family:'Noto Sans SC',sans-serif">
+        <option value="">— 新建教师账号 —</option>
+      </select>
+      <div style="font-size:.62rem;color:var(--muted);margin-top:4px">选择已有教师可让一位老师管理多个班级</div>
+      <button onclick="toggleNewTeacherInput()" style="margin-top:5px;padding:4px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;font-size:.65rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--muted)">＋ 或新建教师账号</button>
+    </div>
+    <!-- 手动输入新教师姓名 -->
+    <div id="cc-teacher-input-wrap" style="margin-bottom:10px">
+      <label class="ci-label">新教师姓名 *</label>
+      <input class="ci" id="cc-teacher" placeholder="如：张老师" maxlength="20" style="user-select:text"></div>
+    <div style="font-size:.68rem;color:var(--muted);margin-bottom:8px">💡 将自动创建教师账号，可管理该班级</div>
+    <div class="mbrow">
+      <button class="mbtn mb-cancel" onclick="document.getElementById('create-class-ov').classList.remove('on')">取消</button>
+      <button class="mbtn mb-ok on" onclick="createClass()">创建</button>
     </div>
   </div>
 </div>
@@ -597,7 +733,7 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
             <div class="farm-grid" id="farm-grid"></div>
             <div id="farm-stat" style="font-size:.7rem;color:var(--muted);line-height:1.9"></div>
           </div>
-          <div class="card" id="warehouse-card" style="display:none">
+          <div class="card" id="warehouse-card">
             <div class="cttl">🏪 收获仓库 <span style="font-size:.6rem;color:var(--muted);margin-left:auto">收获→仓库→售卖得金币</span></div>
             <div id="warehouse-body"></div>
           </div>
@@ -661,6 +797,16 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
               <div class="act" style="flex:1" onclick="petAct('degrade')"><span class="aico">⬇️</span><div class="anm">退化</div><div class="acost">答1题</div></div>
               <div class="act" style="flex:1" onclick="switchTab('shop')"><span class="aico">👗</span><div class="anm">换装</div></div>
             </div>
+            <!-- 自定义图片上传 -->
+            <div style="margin-top:9px;border-top:1px solid var(--border);padding-top:9px">
+              <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px">🖼️ 自定义外观图片（替换像素画）</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button onclick="openPetImageUpload()" style="flex:1;padding:7px 6px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.07);color:var(--dgreen);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📤 上传宠物图片</button>
+                <button onclick="openClothImageUpload()" style="flex:1;padding:7px 6px;border-radius:9px;border:1.5px solid #4a90d9;background:rgba(74,144,217,.07);color:#2060a0;font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">👗 上传衣服图片</button>
+                <button onclick="clearPetCustomImg()" style="padding:7px 10px;border-radius:9px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">↩ 恢复默认</button>
+              </div>
+              <div style="font-size:.58rem;color:var(--muted);margin-top:4px">支持 PNG/JPG，建议正方形，≤500KB；图片存储在本地，不上传服务器</div>
+            </div>
           </div>
           <div class="card">
             <div class="cttl">🐾 宠物档案</div>
@@ -687,62 +833,89 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 <!-- ACH -->
     <div class="page" id="page-ach">
       <div class="card">
-        <div class="cttl">🏆 成就大厅 <span style="font-size:.7rem;color:var(--muted);margin-left:auto" id="ach-count"></span></div>
-        <div class="achgrid" id="ach-grid"></div>
-      </div>
-      <div class="card">
-        <div class="cttl">🐾 宠物进化档案 <span style="font-size:.7rem;color:var(--muted);margin-left:auto" id="pet-archive-count"></span></div>
-        <div id="pet-archive-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:7px"></div>
+        <!-- 标签栏 -->
+        <div style="display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap" id="ach-tab-bar">
+          <div onclick="switchAchTab('all')" id="atab-all" style="padding:4px 13px;border-radius:99px;border:1.5px solid var(--green);background:var(--green);color:#fff;font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">全部</div>
+          <div onclick="switchAchTab('study')" id="atab-study" style="padding:4px 13px;border-radius:99px;border:1.5px solid var(--border);background:var(--panel);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">📚 学习</div>
+          <div onclick="switchAchTab('farm')" id="atab-farm" style="padding:4px 13px;border-radius:99px;border:1.5px solid var(--border);background:var(--panel);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">🌾 农场</div>
+          <div onclick="switchAchTab('pet')" id="atab-pet" style="padding:4px 13px;border-radius:99px;border:1.5px solid var(--border);background:var(--panel);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">🐾 宠物</div>
+          <div onclick="switchAchTab('social')" id="atab-social" style="padding:4px 13px;border-radius:99px;border:1.5px solid var(--border);background:var(--panel);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">🏆 其他</div>
+          <div onclick="switchAchTab('archive')" id="atab-archive" style="padding:4px 13px;border-radius:99px;border:1.5px solid var(--border);background:var(--panel);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">📜 宠物档案</div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:.72rem;color:var(--dgreen);font-weight:600" id="ach-tab-title">🏆 成就大厅</span>
+          <span style="font-size:.7rem;color:var(--muted)" id="ach-count"></span>
+        </div>
+        <!-- 成就网格 -->
+        <div id="ach-grid-wrap">
+          <div class="achgrid" id="ach-grid"></div>
+        </div>
+        <!-- 宠物档案（默认隐藏） -->
+        <div id="pet-archive-wrap" style="display:none">
+          <div style="font-size:.68rem;color:var(--muted);margin-bottom:8px">已拥有宠物的进化进度记录</div>
+          <div id="pet-archive-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:7px"></div>
+        </div>
       </div>
     </div>
 
     <!-- PROFILE -->
     <div class="page" id="page-profile">
-      <div class="dtwo">
-        <div>
-          <div class="card" style="text-align:center;padding:16px 12px">
-            <div class="prof-av" id="prof-av" onclick="openAvatarPicker()" style="cursor:pointer" title="点击更换头像">🌾</div>
-            <div style="font-family:'Ma Shan Zheng',cursive;font-size:1.1rem;color:var(--dgreen);margin-bottom:10px" id="prof-name">-</div>
-            <div class="prof-stats" id="prof-stats"></div>
-          </div>
-          <div class="card">
-            <div class="cttl">🔐 账号设置</div>
-            <div id="account-settings"></div>
-          </div>
-          <div class="card">
-            <div class="cttl">📊 学习统计</div>
-            <div id="study-stats" style="font-size:.74rem;color:var(--muted);line-height:2"></div>
-          </div>
+      <!-- 顶部头像+姓名+等级数据 -->
+      <div class="card" style="text-align:center;padding:16px 12px">
+        <div class="prof-av" id="prof-av" onclick="openAvatarPicker()" style="cursor:pointer" title="点击更换头像">🌾</div>
+        <div style="font-family:'Ma Shan Zheng',cursive;font-size:1.1rem;color:var(--dgreen);margin-bottom:10px" id="prof-name">-</div>
+        <div class="prof-stats" id="prof-stats"></div>
+      </div>
+      <!-- 标签切换 -->
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <div id="ptab-personal" onclick="switchProfileTab('personal')" style="flex:1;text-align:center;padding:9px;border-radius:11px;border:1.5px solid var(--green);background:var(--green);color:#fff;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Noto Sans SC',sans-serif">👤 个人</div>
+        <div id="ptab-class" onclick="switchProfileTab('class')" style="flex:1;text-align:center;padding:9px;border-radius:11px;border:1.5px solid var(--border);background:var(--panel);color:var(--muted);font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🏫 班级</div>
+      </div>
+
+      <!-- 个人面板 -->
+      <div id="ppanel-personal">
+        <div class="card">
+          <div class="cttl">🔐 账号设置</div>
+          <div id="account-settings"></div>
         </div>
-        <div>
-          <div class="card">
-            <div class="cttl">🏫 班级总览</div>
-            <div id="class-browser"></div>
+        <div class="card">
+          <div class="cttl">📊 学习统计</div>
+          <div id="study-stats" style="font-size:.74rem;color:var(--muted);line-height:2"></div>
+        </div>
+        <div class="card" style="border-color:rgba(224,85,85,.25)">
+          <div class="cttl" style="color:var(--red)">⚠️ 危险区</div>
+          <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <button onclick="confirmReset()" style="padding:7px 16px;border-radius:99px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">重置当前账号</button>
+            <button onclick="deleteCurrentAccount()" style="padding:7px 16px;border-radius:99px;border:1.5px solid var(--red);background:rgba(224,85,85,.08);color:var(--red);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">注销当前账号</button>
+            <button onclick="goToLogin()" style="padding:7px 16px;border-radius:99px;border:1.5px solid var(--border);background:transparent;font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">切换账号</button>
           </div>
-          <div class="card">
-            <div class="cttl">🏫 班级排名</div>
-            <div id="class-section"></div>
+          <div style="font-size:.6rem;color:var(--muted);margin-top:6px">注销后账号数据将彻底清除，无法恢复</div>
+        </div>
+      </div>
+
+      <!-- 班级面板 -->
+      <div id="ppanel-class" style="display:none">
+        <div class="card">
+          <div class="cttl">🏫 班级总览</div>
+          <div id="class-browser"></div>
+        </div>
+        <div class="card">
+          <div class="cttl">🏫 班级排名</div>
+          <div id="class-section"></div>
+        </div>
+        <div class="card">
+          <div class="cttl">💾 数据管理</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-bottom:9px;line-height:1.7">
+            导出存档可在其他设备导入，实现数据转移。<br>
+            <span style="color:var(--red);font-size:.64rem">⚠️ 不支持自动云同步，请手动导入导出。</span>
           </div>
-          <div class="card">
-            <div class="cttl">💾 数据管理</div>
-            <div style="font-size:.72rem;color:var(--muted);margin-bottom:9px;line-height:1.7">
-              导出存档可在其他设备导入，实现数据转移。<br>
-              <span style="color:var(--red);font-size:.64rem">⚠️ 不支持自动云同步，请手动导入导出。</span>
-            </div>
-            <div style="display:flex;gap:7px;flex-wrap:wrap">
-              <button onclick="exportSave()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📤 导出存档</button>
-              <button onclick="document.getElementById('import-file').click()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📥 导入存档</button>
-              <button onclick="exportAllSaves()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.06);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📦 导出全部账号</button>
-              <button onclick="document.getElementById('import-all-file').click()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.06);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📥 导入全部账号</button>
-              <input type="file" id="import-file" accept=".json" style="display:none" onchange="importSave(this)">
-              <input type="file" id="import-all-file" accept=".json" style="display:none" onchange="importAllSaves(this)">
-            </div>
-          </div>
-          <div class="card" style="text-align:center">
-            <div class="cttl" style="justify-content:center">⚠️ 危险区</div>
-            <button onclick="confirmReset()" style="padding:7px 20px;border-radius:99px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">重置当前账号</button>
-            <span style="margin:0 6px;color:var(--muted)">|</span>
-            <button onclick="goToLogin()" style="padding:7px 20px;border-radius:99px;border:1.5px solid var(--border);background:transparent;font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">切换账号</button>
+          <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <button onclick="exportSave()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📤 导出存档</button>
+            <button onclick="document.getElementById('import-file').click()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📥 导入存档</button>
+            <button onclick="exportAllSaves()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.06);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📦 导出全部账号</button>
+            <button onclick="document.getElementById('import-all-file').click()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.06);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📥 导入全部账号</button>
+            <input type="file" id="import-file" accept=".json" style="display:none" onchange="importSave(this)">
+            <input type="file" id="import-all-file" accept=".json" style="display:none" onchange="importAllSaves(this)">
           </div>
         </div>
       </div>
@@ -758,6 +931,9 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
     <div class="tab" id="tb-profile" onclick="switchTab('profile')"><span class="tico">👤</span><span class="tlbl">我的</span></div>
   </div>
 </div><!-- /app -->
+
+<!-- 浮动布局编辑按钮（桌面端） -->
+<div class="layout-edit-btn" id="layout-edit-btn" onclick="toggleLayoutEditMode()">⚙️ 调整布局</div>
 
 <!-- 缩放控件（桌面显示） -->
 <div id="zoom-ctrl">
@@ -950,7 +1126,107 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
   <div style="font-size:.76rem;font-weight:500" id="ap-nm"></div></div>
 </div>
 
-<script src="questions.js"></script>
+<!-- 宠物图片预览弹窗 -->
+<div class="overlay" id="pet-img-preview-ov">
+  <div class="modal" style="max-width:360px">
+    <div class="mttl">🖼️ 预览图片</div>
+    <div style="text-align:center;margin-bottom:8px">
+      <canvas id="pet-preview-cvs" width="200" height="200"
+        style="border-radius:14px;border:2px solid var(--border);background:#f5f0e8;display:block;margin:0 auto 6px"></canvas>
+      <div style="font-size:.64rem;color:var(--muted)" id="pet-preview-label">拖动滑块调整大小与位置</div>
+      <div style="font-size:.6rem;color:var(--green);margin-top:2px" id="pet-img-filesize"></div>
+    </div>
+    <!-- 模特预览区 -->
+    <div id="pet-preview-model-wrap" style="display:none;text-align:center;margin-bottom:8px;background:rgba(100,160,100,.05);border-radius:10px;padding:6px">
+      <div style="font-size:.6rem;color:var(--muted);margin-bottom:4px">📌 当前宠物模特预览效果</div>
+      <canvas id="pet-model-preview-cvs" width="150" height="150" style="border-radius:10px;background:linear-gradient(135deg,#d4f0d4,#b0d8b0);display:block;margin:0 auto"></canvas>
+    </div>
+    <div style="margin-bottom:6px">
+      <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">大小</label>
+      <input type="range" id="pet-img-scale" min="20" max="200" value="80" style="width:100%" oninput="rePetPreview()">
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:6px">
+      <div style="flex:1">
+        <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">左右位置</label>
+        <input type="range" id="pet-img-ox" min="-60" max="60" value="0" style="width:100%" oninput="rePetPreview()">
+      </div>
+      <div style="flex:1">
+        <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">上下位置</label>
+        <input type="range" id="pet-img-oy" min="-60" max="60" value="0" style="width:100%" oninput="rePetPreview()">
+      </div>
+    </div>
+    <!-- 旋转控制 -->
+    <div style="margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+        <label style="font-size:.68rem;color:var(--muted)">旋转角度</label>
+        <span style="font-size:.68rem;color:var(--dgreen);font-weight:600" id="pet-img-rot-val">0°</span>
+        <button onclick="document.getElementById('pet-img-rot').value=0;document.getElementById('pet-img-rot-val').textContent='0°';rePetPreview()" style="padding:1px 7px;border-radius:5px;border:1px solid var(--border);background:transparent;font-size:.6rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;margin-left:auto">重置</button>
+      </div>
+      <input type="range" id="pet-img-rot" min="0" max="360" value="0" style="width:100%" oninput="document.getElementById('pet-img-rot-val').textContent=this.value+'°';rePetPreview()">
+    </div>
+    <!-- 衣服应用范围（仅衣服模式显示） -->
+    <div id="cloth-scope-wrap" style="display:none;margin-bottom:8px;background:rgba(74,144,217,.06);border-radius:9px;padding:8px 10px">
+      <div style="font-size:.68rem;color:#2060a0;font-weight:600;margin-bottom:6px">👗 衣服图片应用范围</div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <label style="font-size:.7rem;display:flex;align-items:center;gap:7px;cursor:pointer">
+          <input type="radio" name="cloth-scope" value="all" checked style="accent-color:var(--green)"> 应用于全部宠物（全局）
+        </label>
+        <label style="font-size:.7rem;display:flex;align-items:center;gap:7px;cursor:pointer">
+          <input type="radio" name="cloth-scope" value="pet" style="accent-color:var(--green)"> 仅应用于当前宠物
+        </label>
+        <label style="font-size:.7rem;display:flex;align-items:center;gap:7px;cursor:pointer">
+          <input type="radio" name="cloth-scope" value="stage" style="accent-color:var(--green)"> 仅应用于当前宠物·当前阶段
+        </label>
+      </div>
+    </div>
+    <div class="mbrow">
+      <button class="mbtn mb-cancel" onclick="document.getElementById('pet-img-preview-ov').classList.remove('on')">取消</button>
+      <button class="mbtn mb-ok on" onclick="confirmPetImgUpload()">✅ 确认使用</button>
+    </div>
+  </div>
+</div>
+
+<!-- 恢复默认外观选择弹窗 -->
+<div class="overlay" id="clear-pet-img-ov">
+  <div class="modal">
+    <div class="mttl">↩ 恢复默认外观</div>
+    <div style="font-size:.74rem;color:var(--muted);margin-bottom:12px">请选择要恢复的内容：</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button onclick="doClearPetImg('pet')" style="padding:10px;border-radius:10px;border:1.5px solid var(--green);background:rgba(100,160,100,.07);color:var(--dgreen);font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🐾 恢复宠物本体默认（像素画）</button>
+      <button onclick="doClearPetImg('cloth')" style="padding:10px;border-radius:10px;border:1.5px solid #4a90d9;background:rgba(74,144,217,.07);color:#2060a0;font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">👗 恢复当前衣服默认</button>
+      <button onclick="doClearPetImg('all')" style="padding:10px;border-radius:10px;border:1.5px solid var(--red);background:rgba(224,85,85,.05);color:var(--red);font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">⚠️ 全部恢复默认</button>
+    </div>
+    <div style="margin-top:10px">
+      <button class="mbtn mb-cancel" style="width:100%" onclick="document.getElementById('clear-pet-img-ov').classList.remove('on')">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 教师管理班级弹窗（不需要教师在班内） -->
+<div class="overlay" id="teacher-class-manage-ov">
+  <div class="modal" style="max-height:85vh;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="mttl" style="margin-bottom:0" id="tcm-title">管理班级</div>
+      <span onclick="document.getElementById('teacher-class-manage-ov').classList.remove('on')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);padding:2px 6px">✕</span>
+    </div>
+    <div id="tcm-body" style="flex:1;overflow-y:auto"></div>
+  </div>
+</div>
+
+<!-- 额外积分排行弹窗 -->
+<div class="overlay" id="extra-score-ov">
+  <div class="modal" style="max-height:88vh;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="mttl" style="margin-bottom:0">📊 额外积分排行</div>
+      <span onclick="document.getElementById('extra-score-ov').classList.remove('on')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);padding:2px 6px">✕</span>
+    </div>
+    <div style="font-size:.66rem;color:var(--muted);margin-bottom:8px">按积分来源分类汇总，点击类别查看详细名单</div>
+    <div id="extra-score-tabs" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px"></div>
+    <div id="extra-score-body" style="flex:1;overflow-y:auto"></div>
+  </div>
+</div>
+
+<script>/* questions.js optional */</script>
 <script src="subject_geo7.js"></script>
 <script src="subject_geo8.js"></script>
 <script src="subject_history8.js"></script>

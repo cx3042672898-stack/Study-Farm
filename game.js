@@ -10,6 +10,7 @@ let CURRENT_ACC_ID=null;
 window.ACTIVE_SUBJECT_ID=localStorage.getItem('jbfarm_subject')||'teacher';
 let S={};
 let petWalking=false; // 默认立正
+const _petImgCache={}; // 自定义宠物图片缓存
 
 // ─── 缩放 ────────────────────────────────────────
 let currentZoom=1;
@@ -83,7 +84,252 @@ function confirmReset(){
 }
 
 // ─── 登录界面 ─────────────────────────────────────
+let SELECTED_ROLE=localStorage.getItem('jbfarm_role')||'student';
+
+function selectRole(role){
+  SELECTED_ROLE=role;
+  localStorage.setItem('jbfarm_role',role);
+  document.getElementById('role-student').classList.toggle('on',role==='student');
+  document.getElementById('role-teacher').classList.toggle('on',role==='teacher');
+  document.getElementById('student-view').style.display=role==='student'?'':'none';
+  document.getElementById('teacher-view').style.display=role==='teacher'?'':'none';
+  if(role==='teacher')renderTeacherClassView();
+}
+
 function renderLoginScreen(){
+  // 恢复上次角色选择
+  const roleStudent=document.getElementById('role-student');
+  const roleTeacher=document.getElementById('role-teacher');
+  const studentView=document.getElementById('student-view');
+  const teacherView=document.getElementById('teacher-view');
+  if(roleStudent)roleStudent.classList.toggle('on',SELECTED_ROLE==='student');
+  if(roleTeacher)roleTeacher.classList.toggle('on',SELECTED_ROLE==='teacher');
+  if(studentView)studentView.style.display=SELECTED_ROLE==='student'?'':'none';
+  if(teacherView)teacherView.style.display=SELECTED_ROLE==='teacher'?'':'none';
+
+  const bar=document.getElementById('ls-subject-bar');
+  if(bar){bar.innerHTML='';SUBJECTS.forEach(sub=>{const b=document.createElement('div');b.className='ls-sub-btn'+(sub.id===ACTIVE_SUBJECT_ID?' on':'');if(sub.id===ACTIVE_SUBJECT_ID)b.style.background=sub.color||'#5a9a5a';b.textContent=sub.icon+' '+sub.name;b.onclick=()=>{setSubject(sub.id);renderLoginScreen();};bar.appendChild(b);});}
+  // 学生视图
+  const listEl=document.getElementById('account-list');if(!listEl)return;listEl.innerHTML='';
+  let accounts=getAllAccounts().filter(a=>!a.isTeacher);
+  if(accounts.length===0){for(const k of OLD_KEYS){const old=localStorage.getItem(k);if(old){try{const od=JSON.parse(old);const nid='acc_migrated_'+Date.now();const na={id:nid,name:od.playerName||'老玩家',pin:'',classId:od.classId||'',level:od.level||1,score:od.score||0,lastActive:Date.now()};accounts=[na];saveAllAccounts(accounts);localStorage.setItem(getAccKey(nid),JSON.stringify(Object.assign({},DEFAULT_SAVE,od)));showToast('✅ 旧存档已自动迁移！');break;}catch(e){}}};} 
+  if(accounts.length===0){listEl.innerHTML='<div style="font-size:.78rem;color:var(--muted);text-align:center;padding:18px 0">还没有账号，点击下方新建！</div>';}
+  accounts.forEach(acc=>{
+    const d=document.createElement('div');d.className='acc-card';
+    // 检查是否有上传的头像图片
+    const imgKey='jbfarm_profileimg_'+acc.id;
+    const imgData=localStorage.getItem(imgKey);
+    let avatarHtml='';
+    if(imgData){
+      avatarHtml=`<img src="${imgData}" style="width:42px;height:42px;border-radius:50%;object-fit:cover;display:block">`;
+    } else {
+      const ico=acc.playerAvatar||(acc.level>=5?'🌟':acc.level>=3?'⭐':'🌾');
+      avatarHtml=ico;
+    }
+    d.innerHTML=`<div class="acc-avatar">${avatarHtml}</div><div class="acc-info"><div class="acc-name">${acc.name}</div><div class="acc-meta">Lv.${acc.level||1} · ⭐${acc.score||0}分${acc.classId?' · '+acc.classId:''}</div></div><div class="acc-arrow">${acc.pin?'🔒':'▶'}</div>`;
+    d.onclick=()=>loginAcc(acc);listEl.appendChild(d);
+  });
+  // 如果当前是教师视图，也刷新
+  if(SELECTED_ROLE==='teacher')renderTeacherClassView();
+}
+
+function renderTeacherClassView(){
+  const classListEl=document.getElementById('class-list');
+  if(!classListEl)return;
+  classListEl.innerHTML='';
+  const cd=getClassData();
+  const classes=Object.keys(cd);
+  if(classes.length===0){
+    classListEl.innerHTML='<div style="font-size:.78rem;color:var(--muted);text-align:center;padding:18px 0">还没有班级，点击下方创建！</div>';
+    return;
+  }
+  const admins=getClassAdmins();
+  classes.forEach(className=>{
+    const members=cd[className]||[];
+    const students=members.filter(m=>!m.isTeacher);
+    const teachers=members.filter(m=>m.isTeacher);
+    const asstAdmin=admins[className];
+    const classCard=document.createElement('div');
+    classCard.className='class-card';
+    let teacherChips=teachers.map(t=>`<span class="student-chip teacher" title="点击以教师身份登录" onclick="event.stopPropagation();loginByName('${encodeURIComponent(t.name)}','${encodeURIComponent(className)}')">👨‍🏫 ${t.name}</span>`).join('');
+    let studentChips=students.slice(0,8).map(s=>{
+      const isAsst=asstAdmin&&asstAdmin.name===s.name;
+      return `<span class="student-chip${isAsst?' asst-admin':''}" onclick="event.stopPropagation();loginByName('${encodeURIComponent(s.name)}','${encodeURIComponent(className)}')">${isAsst?'🎖️ ':''}${s.name}</span>`;
+    }).join('');
+    const more=students.length>8?`<span class="student-chip">+${students.length-8}人</span>`:'';
+    classCard.innerHTML=`<div class="class-header"><div class="class-ico">🏫</div><div class="class-info"><div class="class-name">${className}</div><div class="class-meta">👥 ${students.length}名学生${teachers.length>0?' · 👨‍🏫 '+teachers.length+'位教师':''}</div></div></div><div class="class-students">${teacherChips}${studentChips}${more}</div>`;
+    classCard.onclick=()=>viewClassDetail(className);
+    classListEl.appendChild(classCard);
+  });
+}
+
+function loginByName(encodedName,encodedClass){
+  const name=decodeURIComponent(encodedName);
+  const className=decodeURIComponent(encodedClass);
+  const accounts=getAllAccounts();
+  let acc=accounts.find(a=>a.name===name&&a.classId===className)||accounts.find(a=>a.name===name);
+  if(acc)loginAcc(acc);else showToast('未找到该账号');
+}
+
+function openCreateClass(){
+  const el1=document.getElementById('cc-name');if(el1)el1.value='';
+  // 填充已有教师账号下拉列表（排除课代表身份）
+  const accounts=getAllAccounts();
+  const admins=getClassAdmins();
+  // 课代表名单（所有班级的课代表）
+  const asstAdminNames=new Set(Object.values(admins).map(a=>a&&a.name).filter(Boolean));
+  // 只显示 isTeacher=true 且不是课代表的账号
+  const existingTeachers=accounts.filter(a=>a.isTeacher&&!asstAdminNames.has(a.name));
+  const pickerWrap=document.getElementById('cc-teacher-picker-wrap');
+  const inputWrap=document.getElementById('cc-teacher-input-wrap');
+  const picker=document.getElementById('cc-teacher-select');
+  const el2=document.getElementById('cc-teacher');if(el2)el2.value='';
+  if(picker){
+    picker.innerHTML='<option value="">— 新建教师账号 —</option>';
+    existingTeachers.forEach(t=>{
+      const managed=(loadAccSave(t.id).managedClasses||[]).join('、')||'暂无班级';
+      picker.innerHTML+=`<option value="${t.name}">${t.name}（管理：${managed}）</option>`;
+    });
+  }
+  if(pickerWrap&&inputWrap){
+    if(existingTeachers.length>0){
+      pickerWrap.style.display='';
+      inputWrap.style.display='none';
+    } else {
+      pickerWrap.style.display='none';
+      inputWrap.style.display='';
+    }
+  }
+  document.getElementById('create-class-ov').classList.add('on');
+}
+function toggleNewTeacherInput(){
+  const pickerWrap=document.getElementById('cc-teacher-picker-wrap');
+  const inputWrap=document.getElementById('cc-teacher-input-wrap');
+  const picker=document.getElementById('cc-teacher-select');
+  if(!inputWrap||!pickerWrap)return;
+  const showInput=inputWrap.style.display==='none';
+  inputWrap.style.display=showInput?'':'none';
+  if(showInput&&picker)picker.value=''; // 切换到新建时清空已选
+}
+
+function createClass(){
+  const className=((document.getElementById('cc-name')||{}).value||'').trim();
+  // 优先读取下拉选中的已有教师，其次读取手动输入
+  const picker=document.getElementById('cc-teacher-select');
+  const pickedTeacher=((picker||{}).value||'').trim();
+  const typedTeacher=((document.getElementById('cc-teacher')||{}).value||'').trim();
+  const teacherName=pickedTeacher||typedTeacher;
+  if(!className){showToast('请输入班级名称！');return;}
+  if(!teacherName){showToast('请输入教师姓名！');return;}
+  const cd=getClassData();
+  if(cd[className]){showToast('该班级已存在！');return;}
+  const accounts=getAllAccounts();
+  // 同名教师账号复用
+  let tAcc=accounts.find(a=>a.name===teacherName&&a.isTeacher);
+  if(!tAcc){
+    const tid='acc_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+    tAcc={id:tid,name:teacherName,pin:'',classId:className,level:1,score:0,lastActive:Date.now(),isTeacher:true};
+    accounts.push(tAcc);
+    saveAllAccounts(accounts);
+    const fresh=JSON.parse(JSON.stringify(DEFAULT_SAVE));
+    fresh.playerName=teacherName;fresh.classId=className;fresh.isTeacher=true;
+    fresh.managedClasses=[className];fresh.teacherParticipateRank=false;
+    localStorage.setItem(getAccKey(tAcc.id),JSON.stringify(fresh));
+  } else {
+    const save=loadAccSave(tAcc.id);
+    if(!save.managedClasses)save.managedClasses=[];
+    if(!save.managedClasses.includes(className))save.managedClasses.push(className);
+    localStorage.setItem(getAccKey(tAcc.id),JSON.stringify(save));
+  }
+  cd[className]=[{name:teacherName,score:0,level:1,isTeacher:true}];
+  saveClassData(cd);
+  document.getElementById('create-class-ov').classList.remove('on');
+  showToast('✅ 班级「'+className+'」和教师账号「'+teacherName+'」创建成功！');
+  renderTeacherClassView();
+}
+
+function viewClassDetail(className){
+  const cd=getClassData();
+  const allMembers=cd[className]||[];
+  const students=sortMembers(allMembers.filter(m=>!m.isTeacher));
+  const teachers=allMembers.filter(m=>m.isTeacher);
+  const admins=getClassAdmins();const asstAdmin=admins[className];
+  let html='<div style="max-height:55vh;overflow-y:auto">';
+  if(teachers.length>0){
+    html+='<div style="margin-bottom:10px"><div style="font-size:.68rem;color:var(--muted);margin-bottom:5px">👨‍🏫 班级教师</div>';
+    teachers.forEach(t=>{html+=`<div style="padding:5px 10px;background:rgba(232,160,32,.08);border-radius:8px;margin-bottom:3px;font-size:.74rem;font-weight:600;cursor:pointer" onclick="loginByName('${encodeURIComponent(t.name)}','${encodeURIComponent(className)}')">👨‍🏫 ${t.name} <span style="font-size:.6rem;color:#a06000;float:right">点击登录 ▶</span></div>`;});
+    html+='</div>';
+  }
+  if(asstAdmin){html+=`<div style="font-size:.68rem;color:#2060a0;margin-bottom:8px">🎖️ 课代表（辅助管理员）：<b>${asstAdmin.name}</b></div>`;}
+  html+='<div style="font-size:.68rem;color:var(--muted);margin-bottom:5px">📋 学生名单 ('+students.length+'人)</div>';
+  students.forEach((s,i)=>{
+    const isMonitor=asstAdmin&&asstAdmin.name===s.name;
+    const monitorBadge=isMonitor?'<span style="font-size:.58rem;background:rgba(74,144,217,.13);color:#2060a0;border-radius:4px;padding:0 4px;margin-left:4px;font-weight:700">★课代表</span>':'';
+    html+=`<div class="rank-item" style="cursor:pointer" onclick="loginByName('${encodeURIComponent(s.name)}','${encodeURIComponent(className)}')">`
+      +`<div class="rank-num ${i===0?'top1':i===1?'top2':i===2?'top3':''}">${i+1}</div>`
+      +`<div class="rank-name">${s.name}${monitorBadge}</div>`
+      +`<div class="rank-score">Lv.${s.level||1} ⭐ ${s.score||0}</div></div>`;
+  });
+// 教师可批量导入/管理
+const isMgr=S.isTeacher&&(S.managedClasses||[]).includes(className);
+if(isMgr){
+  const safeClassName = encodeURIComponent(className).replace(/'/g, "\'");
+  html+=`
+  <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+    <button onclick="openBatchImport('${safeClassName}')" style="width:100%;padding:9px;border-radius:10px;border:1.5px solid var(--green);background:rgba(100,160,100,.06);color:var(--dgreen);font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;margin-bottom:8px">📋 批量导入学生名单</button>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button onclick="exportClassList('${safeClassName}')" style="flex:1;min-width:80px;padding:7px 6px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--ink);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📤 导出名单</button>
+      <button onclick="batchResetStudentPin('${safeClassName}')" style="flex:1;min-width:80px;padding:7px 6px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--ink);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🔓 重置密码</button>
+      <button onclick="teacherDeleteClassFromDetail('${safeClassName}')" style="flex:1;min-width:80px;padding:7px 6px;border-radius:8px;border:1.5px solid var(--red);background:rgba(224,85,85,.05);color:var(--red);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">💥 注销班级</button>
+    </div>
+  </div>`;
+}
+html+='</div>';
+openConfirm('🏫',className,()=>{},false,html);
+}
+
+function teacherDeleteClassFromDetail(encodedClass){
+  document.querySelectorAll('.overlay').forEach(ov=>ov.classList.remove('on'));
+  teacherDeleteClass(encodedClass);
+}
+function openBatchImport(encodedClass){
+  document.querySelectorAll('.overlay').forEach(ov=>ov.classList.remove('on'));
+  const className=decodeURIComponent(encodedClass);
+  const ov=document.getElementById('batch-import-ov');if(!ov)return;
+  const nm=document.getElementById('bi-class-name');if(nm)nm.textContent=className;
+  const ky=document.getElementById('bi-class-key');if(ky)ky.value=className;
+  const ta=document.getElementById('batch-import-names');if(ta)ta.value='';
+  ov.classList.add('on');
+}
+
+function doBatchImport(){
+  const className=(document.getElementById('bi-class-key')||{}).value||'';
+  const raw=(document.getElementById('batch-import-names')||{}).value||'';
+  if(!className||!raw.trim()){showToast('请填写完整信息！');return;}
+  const lines=raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  const accounts=getAllAccounts();const cd=getClassData();
+  if(!cd[className])cd[className]=[];
+  let created=0,skipped=0;
+  lines.forEach(line=>{
+    const parts=line.split(/[,，]/);const name=parts[0].trim();const pin=(parts[1]||'').trim();
+    if(!name)return;
+    if(accounts.some(a=>a.name===name&&a.classId===className)){skipped++;return;}
+    if(pin&&!/^\d{4}$/.test(pin)){skipped++;return;}
+    const id='acc_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)+created;
+    accounts.push({id,name,pin:pin||'',classId:className,level:1,score:0,lastActive:Date.now(),isTeacher:false});
+    const fresh=JSON.parse(JSON.stringify(DEFAULT_SAVE));fresh.playerName=name;fresh.classId=className;
+    localStorage.setItem(getAccKey(id),JSON.stringify(fresh));
+    if(!cd[className].some(m=>m.name===name))cd[className].push({name,score:0,level:1,isTeacher:false});
+    created++;
+  });
+  saveAllAccounts(accounts);saveClassData(cd);
+  document.getElementById('batch-import-ov').classList.remove('on');
+  renderTeacherClassView();renderLoginScreen();
+  showToast('✅ 导入'+created+'名学生'+(skipped?'，'+skipped+'个已跳过':''));
+}
+
+/* ======原始renderLoginScreen已被下面替代，保留占位避免引用报错====== */
+function _orig_renderLoginScreen_unused(){
   const bar=document.getElementById('ls-subject-bar');
   if(bar){bar.innerHTML='';SUBJECTS.forEach(sub=>{const b=document.createElement('div');b.className='ls-sub-btn'+(sub.id===ACTIVE_SUBJECT_ID?' on':'');if(sub.id===ACTIVE_SUBJECT_ID)b.style.background=sub.color||'#5a9a5a';b.textContent=sub.icon+' '+sub.name;b.onclick=()=>{setSubject(sub.id);renderLoginScreen();};bar.appendChild(b);});}
   const listEl=document.getElementById('account-list');listEl.innerHTML='';
@@ -148,19 +394,374 @@ function renderAccountSettings(){
   const el=document.getElementById('account-settings');if(!el)return;
   const list=getAllAccounts();const acc=list.find(a=>a.id===CURRENT_ACC_ID);
   const hasPin=acc&&acc.pin;
-  el.innerHTML=`<div style="font-size:.74rem;color:var(--muted);margin-bottom:8px;line-height:1.7">
-    当前密码状态：<b style="color:${hasPin?'var(--dgreen)':'var(--muted)'}">${hasPin?'✓ 已设置':'未设置'}</b>
+  el.innerHTML=`
+  <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px">
+    <button onclick="openNameModal('player')" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.08);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">✏️ 修改昵称</button>
+    <button onclick="openProfileAvatarUpload()" style="padding:7px 14px;border-radius:9px;border:1.5px solid #4a90d9;background:rgba(74,144,217,.08);color:#2060a0;font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🖼️ 上传头像</button>
+    <button onclick="openAvatarPicker()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--border);background:transparent;font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">😀 Emoji头像</button>
   </div>
-  <div style="display:flex;gap:7px">
-    <button onclick="openSetPin()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.08);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">${hasPin?'修改密码':'设置密码'}</button>
-    ${hasPin?`<button onclick="removePin()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--border);background:transparent;font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">移除密码</button>`:''}
+  <div style="display:flex;flex-wrap:wrap;gap:7px">
+    ${!hasPin
+      ? `<button onclick="openSetPin()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.08);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🔐 设置密码</button>`
+      : `<button onclick="openSetPin()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--border);background:transparent;font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🔑 修改密码</button>
+         <button onclick="removePin()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🔓 移除密码</button>`
+    }
   </div>`;
 }
 
+// 注销当前账号
+function deleteCurrentAccount(){
+  if(!CURRENT_ACC_ID)return;
+  const list=getAllAccounts();
+  const acc=list.find(a=>a.id===CURRENT_ACC_ID);
+  if(!acc)return;
+  const doDelete=()=>{
+    openConfirm('⚠️',`确定注销账号「${acc.name}」？\n\n所有游戏数据将彻底清除，无法恢复！`,()=>{
+      // 从班级排名中移除
+      if(acc.classId){
+        const cd=getClassData();
+        if(cd[acc.classId]){
+          cd[acc.classId]=cd[acc.classId].filter(m=>m.name!==acc.name);
+          saveClassData(cd);
+        }
+      }
+      // 删除存档
+      localStorage.removeItem(getAccKey(CURRENT_ACC_ID));
+      // 从账号列表删除
+      const newList=list.filter(a=>a.id!==CURRENT_ACC_ID);
+      saveAllAccounts(newList);
+      CURRENT_ACC_ID=null;
+      if(petAF){cancelAnimationFrame(petAF);petAF=null;}
+      document.getElementById('app').classList.remove('active');
+      document.getElementById('login-screen').style.display='flex';
+      renderLoginScreen();
+      showToast('账号已注销');
+    },true);
+  };
+  if(acc.pin){
+    openPinPad(acc.name,entered=>{
+      if(entered===acc.pin){document.getElementById('pin-ov').classList.remove('on');doDelete();return true;}
+      showToast('密码错误！');return false;
+    });
+  } else {
+    doDelete();
+  }
+}
+
+// 上传头像图片
+function openProfileAvatarUpload(){
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='image/*';
+  inp.onchange=function(e){
+    const file=e.target.files[0];if(!file)return;
+    if(file.size>512*1024){showToast('头像不能超过500KB');return;}
+    const reader=new FileReader();
+    reader.onload=function(ev){
+      const data=ev.target.result;
+      const key='jbfarm_profileimg_'+(CURRENT_ACC_ID||'');
+      localStorage.setItem(key,data);
+      S.playerAvatar='__img__';
+      persistAccount();
+      // 更新所有头像显示位置
+      _applyProfileImgToUI(data);
+      showToast('✅ 头像已更新！');
+    };
+    reader.readAsDataURL(file);
+  };
+  inp.click();
+}
+
+function _applyProfileImgToUI(src){
+  // 把头像显示为图片元素（不再用emoji文字）
+  const makeImgEl=(size)=>{
+    const img=document.createElement('img');
+    img.src=src;img.style.cssText=`width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;display:block`;
+    return img;
+  };
+  const targets=[
+    {id:'prof-av',size:72},
+    {id:'avatar',size:30},
+    {id:'sb-av',size:30}
+  ];
+  targets.forEach(({id,size})=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    el.innerHTML='';
+    el.appendChild(makeImgEl(size));
+  });
+}
+
+function _loadProfileImgIfAny(){
+  if(!CURRENT_ACC_ID)return;
+  const key='jbfarm_profileimg_'+CURRENT_ACC_ID;
+  const data=localStorage.getItem(key);
+  if(data)_applyProfileImgToUI(data);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ★ 教师独立管理班级面板（无需加入班级）
+// ══════════════════════════════════════════════════════════════
+function openTeacherClassManage(encodedClass){
+  const className=decodeURIComponent(encodedClass);
+  if(!S.isTeacher||(S.managedClasses||[]).indexOf(className)===-1){showToast('无权管理该班级');return;}
+  const ttl=document.getElementById('tcm-title');
+  if(ttl)ttl.textContent='🏫 '+className+' · 管理';
+  _renderTCMBody(className);
+  document.getElementById('teacher-class-manage-ov').classList.add('on');
+}
+
+function _renderTCMBody(className){
+  const body=document.getElementById('tcm-body');if(!body)return;
+  const cd=getClassData();
+  const admins=getClassAdmins();
+  const asstAdmin=admins[className];
+  const clsData=cd[className]||[];
+  const students=sortMembers(clsData.filter(function(m){return !m.isTeacher;}));
+  const safe=encodeURIComponent(className);
+  let html='';
+
+// 课代表信息
+html += '<div style="background:rgba(74,144,217,.07);border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:.74rem">';
+if (asstAdmin) {
+    html += '<span style="color:#2060a0;font-weight:600">🎖️ 课代表：' + asstAdmin.name + '</span>'
+        + '<button onclick="_tcmChangeMonitor(\'' + safe + '\')" style="float:right;padding:2px 8px;border-radius:6px;border:1px solid #4a90d9;background:transparent;color:#2060a0;font-size:.62rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">更换</button>';
+} else {
+    html += '<span style="color:var(--muted)">暂无课代表</span>'
+        + '<button onclick="_tcmChangeMonitor(\'' + safe + '\')" style="float:right;padding:2px 8px;border-radius:6px;border:none;background:#4a90d9;color:#fff;font-size:.62rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">任命</button>';
+}
+html += '</div>';
+
+// 快捷操作按钮
+html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
+    + '<button onclick="openAddScorePanel(\'' + className + '\')" style="flex:1;min-width:100px;padding:8px;border-radius:9px;border:none;background:var(--green);color:#fff;font-size:.74rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">⭐ 积分管理</button>'
+    + '<button onclick="_tcmBatchAdd(\'' + safe + '\')" style="flex:1;min-width:100px;padding:8px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.07);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">📋 批量导入</button>'
+    + '<button onclick="_tcmImportUnbound(\'' + safe + '\')" style="flex:1;min-width:100px;padding:8px;border-radius:9px;border:1.5px solid #4a90d9;background:rgba(74,144,217,.07);color:#2060a0;font-size:.74rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">🔗 导入无班学生</button>'
+    + '</div>';
+
+// 学生名单
+html+='<div style="font-size:.68rem;color:var(--muted);margin-bottom:5px">📋 学生名单（'+students.length+'人）</div>';
+html+='<div style="max-height:35vh;overflow-y:auto;margin-bottom:10px">';
+if(!students.length){
+  html+='<div style="text-align:center;padding:12px;color:var(--muted);font-size:.74rem">暂无学生</div>';
+} else {
+  students.forEach(function(s,i){
+    const isMonitor=asstAdmin&&asstAdmin.name===s.name;
+    html+='<div style="display:flex;align-items:center;padding:7px 10px;border-bottom:1px solid var(--border);font-size:.74rem">'
+      +'<div style="width:22px;color:var(--muted);font-size:.65rem">'+(i+1)+'</div>'
+      +'<div style="flex:1;font-weight:'+(isMonitor?'700':'400')+'">'+s.name+(isMonitor?' <span style="font-size:.58rem;color:#2060a0">★课代表</span>':'')+'</div>'
+      +'<div style="color:var(--muted);font-size:.68rem;margin-right:6px">⭐'+(s.score||0)+'</div>'
+      +'<button onclick="_tcmRemoveStudent(\''+encodeURIComponent(s.name)+'\',\''+safe+'\')" style="padding:2px 6px;border-radius:5px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:.58rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">移除</button>'
+      +'</div>';
+  });
+}
+html+='</div>';
+
+// 危险区
+html+='<div style="border-top:1px solid var(--border);padding-top:10px">'
+  +'<button onclick="teacherDeleteClassFromDetail(\''+safe+'\')" style="width:100%;padding:8px;border-radius:9px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.74rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">💥 注销该班级</button>'
+  +'</div>';
+
+body.innerHTML=html;
+}
+
+function _tcmChangeMonitor(encodedClass){
+  const className=decodeURIComponent(encodedClass);
+  const cd=getClassData();
+  const members=(cd[className]||[]).filter(function(m){return !m.isTeacher;});
+  let html='<div style="font-size:.7rem;color:var(--muted);margin-bottom:8px">选择课代表：</div><div style="max-height:45vh;overflow-y:auto">';
+  members.forEach(function(s){
+    html+='<div style="padding:9px 12px;border-radius:8px;border:1px solid var(--border);margin-bottom:4px;cursor:pointer;background:var(--panel);font-size:.76rem" onclick="_tcmSetMonitor(\''+encodeURIComponent(s.name)+'\',\''+encodedClass+'\')">'+s.name+' · ⭐'+(s.score||0)+'</div>';
+  });
+  html+='</div>';
+  document.getElementById('tcm-body').innerHTML=html;
+}
+
+function _tcmSetMonitor(encodedName,encodedClass){
+  const name=decodeURIComponent(encodedName);
+  const className=decodeURIComponent(encodedClass);
+  openConfirm('🎖️','将「'+name+'」设为【'+className+'】的课代表？',function(){
+    const admins=getClassAdmins();
+    admins[className]={name:name,pin:''};
+    saveClassAdmins(admins);
+    _renderTCMBody(className);
+    showToast('✅ 已设置课代表：'+name);
+  });
+}
+
+function _tcmBatchAdd(encodedClass){
+  document.getElementById('teacher-class-manage-ov').classList.remove('on');
+  setTimeout(function(){openBatchImport(encodedClass);},100);
+}
+
+function _tcmImportUnbound(encodedClass){
+  const className=decodeURIComponent(encodedClass);
+  const accounts=getAllAccounts();
+  // 没有班级归属的学生账号
+  const unbound=accounts.filter(function(a){return !a.isTeacher&&(!a.classId||a.classId==='');});
+  if(!unbound.length){showToast('没有无班级归属的学生账号');return;}
+  let html='<div style="font-size:.7rem;color:var(--muted);margin-bottom:8px">选择要加入【'+className+'】的学生（可多选）：</div>';
+  html+='<div id="unbound-list" style="max-height:45vh;overflow-y:auto">';
+  unbound.forEach(function(a){
+    html+='<div data-accid="'+a.id+'" data-name="'+encodeURIComponent(a.name)+'" onclick="toggleUnboundSel(this)" style="padding:9px 12px;border-radius:8px;border:2px solid var(--border);margin-bottom:4px;cursor:pointer;background:var(--panel);font-size:.76rem;display:flex;align-items:center;gap:8px">'
+      +'<div class="ub-chk" style="width:16px;height:16px;border-radius:4px;border:2px solid var(--border);background:transparent;flex-shrink:0"></div>'
+      +'<span>'+a.name+'</span></div>';
+  });
+  // 修复了两处引号转义错误
+  html+='</div><button onclick="_tcmDoImportUnbound(\''+encodeURIComponent(className)+'\')" style="margin-top:10px;width:100%;padding:9px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.78rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">✅ 加入班级</button>';
+  document.getElementById('tcm-body').innerHTML=html;
+}
+function toggleUnboundSel(el){
+  const chk=el.querySelector('.ub-chk');
+  const sel=el.dataset.sel==='1';
+  if(sel){el.dataset.sel='0';el.style.borderColor='var(--border)';el.style.background='var(--panel)';if(chk){chk.style.background='transparent';chk.style.borderColor='var(--border)';chk.textContent='';}}
+  else{el.dataset.sel='1';el.style.borderColor='var(--green)';el.style.background='rgba(100,160,100,.1)';if(chk){chk.style.background='var(--green)';chk.style.borderColor='var(--green)';chk.textContent='✓';chk.style.color='#fff';chk.style.fontSize='.6rem';chk.style.textAlign='center';chk.style.lineHeight='12px';}}
+}
+
+function _tcmDoImportUnbound(encodedClass){
+  const className=decodeURIComponent(encodedClass);
+  const selected=document.querySelectorAll('#unbound-list [data-sel="1"]');
+  if(!selected.length){showToast('请先选择学生！');return;}
+  const accounts=getAllAccounts();
+  const cd=getClassData();
+  if(!cd[className])cd[className]=[];
+  let count=0;
+  selected.forEach(function(el){
+    const accId=el.dataset.accid;
+    const name=decodeURIComponent(el.dataset.name);
+    const acc=accounts.find(function(a){return a.id===accId;});
+    if(acc){
+      acc.classId=className;
+      const save=loadAccSave(acc.id);
+      save.classId=className;
+      localStorage.setItem(getAccKey(acc.id),JSON.stringify(save));
+      if(!cd[className].some(function(m){return m.name===name;})){
+        cd[className].push({name:name,score:acc.score||0,level:acc.level||1,isTeacher:false});
+      }
+      count++;
+    }
+  });
+  saveAllAccounts(accounts);saveClassData(cd);
+  _renderTCMBody(className);
+  showToast('✅ 已将 '+count+' 位学生加入班级【'+className+'】');
+}
+
+function _tcmRemoveStudent(encodedName, encodedClass) {
+  const name = decodeURIComponent(encodedName);
+  const className = decodeURIComponent(encodedClass);
+  
+  openConfirm('⚠️', `将「${name}」从【${className}】移除？
+学生账号本身不会删除，仅移除班级归属。`, function() {
+    const cd = getClassData();
+    // 1. 从班级排名中移除
+    if (cd[className]) {
+      cd[className] = cd[className].filter(m => m.name !== name);
+      saveClassData(cd);
+    }
+    
+    // 2. 清空学生账号的班级归属
+    const accounts = getAllAccounts();
+    const acc = accounts.find(a => a.name === name && a.classId === className);
+    if (acc) {
+      acc.classId = '';
+      const sv = localStorage.getItem(getAccKey(acc.id));
+      if (sv) {
+        try {
+          const s = JSON.parse(sv);
+          s.classId = '';
+          localStorage.setItem(getAccKey(acc.id), JSON.stringify(s));
+        } catch (e) {
+          console.warn('更新学生存档失败:', e);
+        }
+      }
+      saveAllAccounts(accounts);
+    }
+    
+    // ✅ 关键修复：传入编码后的班级名（_renderTCMBody要求接收encoded参数）
+    _renderTCMBody(encodedClass);
+    showToast(`✅ 已移除「${name}」`);
+  });
+}
+
+
+// 教师注销班级（含密码验证）
+function teacherDeleteClass(encodedClass){
+  const className=decodeURIComponent(encodedClass);
+  if(!S.isTeacher||(S.managedClasses||[]).indexOf(className)===-1){showToast('无权操作');return;}
+  const list=getAllAccounts();
+  const acc=list.find(a=>a.id===CURRENT_ACC_ID);
+
+  const doDeleteClass=(alsoDeleteAccounts)=>{
+    // 先弹确认
+    const extraMsg=alsoDeleteAccounts?'\n⚠️ 同时注销所有学生账号（不可恢复！）':'';
+    openConfirm('💥',`确定注销班级「${className}」？${extraMsg}\n班级数据将彻底清除。`,()=>{
+      const cd=getClassData();
+      const members=cd[className]||[];
+      const accounts=getAllAccounts();
+      const studentMembers=members.filter(m=>!m.isTeacher);
+      studentMembers.forEach(m=>{
+        const a=accounts.find(x=>x.name===m.name&&x.classId===className);
+        if(a){
+          if(alsoDeleteAccounts){
+            // 彻底删除账号及存档
+            localStorage.removeItem(getAccKey(a.id));
+          } else {
+            a.classId='';
+            const sv=localStorage.getItem(getAccKey(a.id));
+            if(sv){try{const s=JSON.parse(sv);s.classId='';localStorage.setItem(getAccKey(a.id),JSON.stringify(s));}catch(e){}}
+          }
+        }
+      });
+      const newAccList=alsoDeleteAccounts
+        ?accounts.filter(a=>!(studentMembers.some(m=>m.name===a.name&&a.classId===className)))
+        :accounts;
+      saveAllAccounts(newAccList);
+      delete cd[className];
+      saveClassData(cd);
+      const admins=getClassAdmins();delete admins[className];saveClassAdmins(admins);
+      if(S.managedClasses){S.managedClasses=S.managedClasses.filter(c=>c!==className);persistAccount();}
+      renderAccountSettings();
+      renderTeacherClassView();
+      showToast('✅ 班级「'+className+'」已注销'+(alsoDeleteAccounts?'，学生账号已同步删除':''));
+    },true);
+  };
+
+  // 先弹选择弹窗（是否同时删账号）
+  const _runAfterPin=()=>{
+    // 自制选择弹窗
+    const ovHTML=`<div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px" id="_del-class-choice-ov">
+      <div style="background:var(--panel);border-radius:18px;padding:20px 18px;max-width:360px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.18)">
+        <div style="font-size:1.2rem;text-align:center;margin-bottom:6px">💥</div>
+        <div style="font-family:'Ma Shan Zheng',cursive;font-size:1rem;color:var(--dgreen);text-align:center;margin-bottom:10px">注销「${className}」</div>
+        <div style="font-size:.76rem;color:var(--muted);line-height:1.8;margin-bottom:14px;text-align:center">请选择注销方式：</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button onclick="document.getElementById('_del-class-choice-ov').remove();window._doDeleteClassChoice('${encodeURIComponent(className)}',false)" style="padding:11px;border-radius:11px;border:1.5px solid var(--red);background:rgba(224,85,85,.06);color:var(--red);font-size:.8rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">
+            🏫 仅注销班级<br><span style="font-size:.65rem;font-weight:400">学生账号保留，仅清除班级数据</span>
+          </button>
+          <button onclick="document.getElementById('_del-class-choice-ov').remove();window._doDeleteClassChoice('${encodeURIComponent(className)}',true)" style="padding:11px;border-radius:11px;border:2px solid var(--red);background:rgba(224,85,85,.12);color:var(--red);font-size:.8rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;font-weight:600">
+            💥 注销班级 + 删除所有学生账号<br><span style="font-size:.65rem;font-weight:400">所有学生账号及数据将彻底清除，不可恢复</span>
+          </button>
+          <button onclick="document.getElementById('_del-class-choice-ov').remove()" style="padding:9px;border-radius:10px;border:1.5px solid var(--border);background:transparent;font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--muted)">取消</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend',ovHTML);
+    window._doDeleteClassChoice=(enc,delAccs)=>doDeleteClass(delAccs);
+  };
+
+  if(acc&&acc.pin){
+    openPinPad(acc.name,entered=>{
+      if(entered===acc.pin){document.getElementById('pin-ov').classList.remove('on');_runAfterPin();return true;}
+      showToast('密码错误！');return false;
+    });
+  } else {
+    _runAfterPin();
+  }
+}
+
 function startCreateAccount(){['na-name','na-pin','na-class'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('new-acc-ov').classList.add('on');setTimeout(()=>{const el=document.getElementById('na-name');if(el)el.focus();},200);}
-function createAccount(){const name=(document.getElementById('na-name')?.value||'').trim();const pin=(document.getElementById('na-pin')?.value||'').trim();const cls=(document.getElementById('na-class')?.value||'').trim();if(!name){showToast('请输入姓名！');return;}if(pin&&!/^\d{4}$/.test(pin)){showToast('密码须为4位数字！');return;}const accounts=getAllAccounts();if(accounts.some(a=>a.name===name&&a.classId===cls)){showToast('该名字在此班级已存在！');return;}const id='acc_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);accounts.push({id,name,pin:pin||'',classId:cls,level:1,score:0,lastActive:Date.now()});saveAllAccounts(accounts);const fresh=JSON.parse(JSON.stringify(DEFAULT_SAVE));fresh.playerName=name;fresh.classId=cls;localStorage.setItem(getAccKey(id),JSON.stringify(fresh));if(cls)joinClassBoard(cls,name,0);document.getElementById('new-acc-ov').classList.remove('on');showToast(`✅ 账号「${name}」创建成功！`);renderLoginScreen();}
+function createAccount(){const name=((document.getElementById('na-name')||{}).value||'').trim();const pin=((document.getElementById('na-pin')||{}).value||'').trim();const cls=((document.getElementById('na-class')||{}).value||'').trim();if(!name){showToast('请输入姓名！');return;}if(pin&&!/^\d{4}$/.test(pin)){showToast('密码须为4位数字！');return;}const accounts=getAllAccounts();if(accounts.some(a=>a.name===name&&a.classId===cls)){showToast('该名字在此班级已存在！');return;}const id='acc_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);accounts.push({id,name,pin:pin||'',classId:cls,level:1,score:0,lastActive:Date.now()});saveAllAccounts(accounts);const fresh=JSON.parse(JSON.stringify(DEFAULT_SAVE));fresh.playerName=name;fresh.classId=cls;localStorage.setItem(getAccKey(id),JSON.stringify(fresh));if(cls)joinClassBoard(cls,name,0);document.getElementById('new-acc-ov').classList.remove('on');showToast(`✅ 账号「${name}」创建成功！`);renderLoginScreen();}
 function openImportClass(){['ic-class','ic-names'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('import-class-ov').classList.add('on');}
-function importClassList(){const cls=(document.getElementById('ic-class')?.value||'').trim();const raw=(document.getElementById('ic-names')?.value||'').trim();if(!cls){showToast('请输入班级名称！');return;}if(!raw){showToast('请输入名单！');return;}const lines=raw.split('\n').map(l=>l.trim()).filter(Boolean);const accounts=getAllAccounts();let created=0,skipped=0;lines.forEach(line=>{const parts=line.split(/[,，]/);const name=parts[0].trim();const pin=(parts[1]||'').trim();if(!name)return;if(accounts.some(a=>a.name===name&&a.classId===cls)){skipped++;return;}if(pin&&!/^\d{4}$/.test(pin)){skipped++;return;}const id='acc_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)+created;accounts.push({id,name,pin:pin||'',classId:cls,level:1,score:0,lastActive:Date.now()});const fresh=JSON.parse(JSON.stringify(DEFAULT_SAVE));fresh.playerName=name;fresh.classId=cls;localStorage.setItem(getAccKey(id),JSON.stringify(fresh));joinClassBoard(cls,name,0);created++;});saveAllAccounts(accounts);document.getElementById('import-class-ov').classList.remove('on');showToast(`✅ 创建${created}个账号${skipped?'，'+skipped+'个已跳过':''}`);renderLoginScreen();}
+function importClassList(){const cls=((document.getElementById('ic-class')||{}).value||'').trim();const raw=((document.getElementById('ic-names')||{}).value||'').trim();if(!cls){showToast('请输入班级名称！');return;}if(!raw){showToast('请输入名单！');return;}const lines=raw.split('\n').map(l=>l.trim()).filter(Boolean);const accounts=getAllAccounts();let created=0,skipped=0;lines.forEach(line=>{const parts=line.split(/[,，]/);const name=parts[0].trim();const pin=(parts[1]||'').trim();if(!name)return;if(accounts.some(a=>a.name===name&&a.classId===cls)){skipped++;return;}if(pin&&!/^\d{4}$/.test(pin)){skipped++;return;}const id='acc_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)+created;accounts.push({id,name,pin:pin||'',classId:cls,level:1,score:0,lastActive:Date.now()});const fresh=JSON.parse(JSON.stringify(DEFAULT_SAVE));fresh.playerName=name;fresh.classId=cls;localStorage.setItem(getAccKey(id),JSON.stringify(fresh));joinClassBoard(cls,name,0);created++;});saveAllAccounts(accounts);document.getElementById('import-class-ov').classList.remove('on');showToast(`✅ 创建${created}个账号${skipped?'，'+skipped+'个已跳过':''}`);renderLoginScreen();}
 
 // ─── 科目切换 ─────────────────────────────────────
 function setSubject(id){
@@ -437,7 +1038,7 @@ function submitAns() {
 }
 
 function quizNext(){if(QZ.correct>=QZ.needed){closeQuiz(true);return;}loadNextQ();}
-function closeQuiz(ok=false){document.getElementById('quiz-ov').classList.remove('on');const ctx=QZ;QZ=null;if(ok&&ctx?.onSuccess)ctx.onSuccess();else if(!ok&&ctx?.onFail)ctx.onFail();}
+function closeQuiz(ok=false){document.getElementById('quiz-ov').classList.remove('on');const ctx=QZ;QZ=null;if(ok&&(ctx||{}).onSuccess)ctx.onSuccess();else if(!ok&&(ctx||{}).onFail)ctx.onFail();}
 // ─── QUIZ ENGINE END ─────────────────────────────
 
 
@@ -451,7 +1052,7 @@ function gainExp(n){
 
 // ─── 宠物多存档 ──────────────────────────────────
 function saveCurPet(){if(!S.petSaves)S.petSaves={};S.petSaves[S.activePet]={petBreed:S.petBreed,petName:S.petName,petLevel:S.petLevel,petFood:S.petFood,petHappy:S.petHappy,petClean:S.petClean,petEnergy:S.petEnergy,petLearnExp:S.petLearnExp||0,petFeedCount:S.petFeedCount,equippedCloth:S.equippedCloth};}
-function loadPetSave(petId){const breed=SHOP_PETS.find(p=>p.id===petId)?.breed||'hamster';if(S.petSaves&&S.petSaves[petId]){const ps=S.petSaves[petId];S.petBreed=ps.petBreed||breed;S.petName=ps.petName||PET_NAMES[0];S.petLevel=ps.petLevel||1;S.petFood=ps.petFood??65;S.petHappy=ps.petHappy??55;S.petClean=ps.petClean??72;S.petEnergy=ps.petEnergy??80;S.petLearnExp=ps.petLearnExp||0;S.petFeedCount=ps.petFeedCount||0;S.equippedCloth=ps.equippedCloth||null;}else{S.petBreed=breed;S.petName=PET_NAMES[Math.floor(Math.random()*PET_NAMES.length)];S.petLevel=1;S.petFood=65;S.petHappy=55;S.petClean=72;S.petEnergy=80;S.petLearnExp=0;S.petFeedCount=0;S.equippedCloth=null;}}
+function loadPetSave(petId){const breed=(SHOP_PETS.find(function(p){return p.id===petId;})||{breed:'hamster'}).breed;if(S.petSaves&&S.petSaves[petId]){const ps=S.petSaves[petId];S.petBreed=ps.petBreed||breed;S.petName=ps.petName||PET_NAMES[0];S.petLevel=ps.petLevel||1;S.petFood=ps.petFood!=null?ps.petFood:65;S.petHappy=ps.petHappy!=null?ps.petHappy:55;S.petClean=ps.petClean!=null?ps.petClean:72;S.petEnergy=ps.petEnergy!=null?ps.petEnergy:80;S.petLearnExp=ps.petLearnExp||0;S.petFeedCount=ps.petFeedCount||0;S.equippedCloth=ps.equippedCloth||null;}else{S.petBreed=breed;S.petName=PET_NAMES[Math.floor(Math.random()*PET_NAMES.length)];S.petLevel=1;S.petFood=65;S.petHappy=55;S.petClean=72;S.petEnergy=80;S.petLearnExp=0;S.petFeedCount=0;S.equippedCloth=null;}}
 
 // ─── FARM ─────────────────────────────────────────
 function totalSeeds(){return Object.values(S.seedBag).reduce((a,b)=>a+b,0);}
@@ -473,7 +1074,7 @@ function onPlotClick(idx,event){
   const sd=SEEDS[p.seed||'wheat'];const growing=['s0','s1','s2'].includes(p.s);
   let title=`第${idx+1}块地`;
   if(p.s==='empty')title+=' · 空地';else if(p.s==='s3')title+=` · ${sd.name} 🎉成熟！`;
-  else{const _ptname=(window.PLANT_TALK&&PLANT_TALK[p.seed||'wheat']?.name)||sd.name;title+=` · ${_ptname} ${Math.round(p.g)}%${p.hasBug?' 🐛':''}${p.hasCrack?' 💔裂了':''}`;}
+  else{const _ptname=(window.PLANT_TALK&&(PLANT_TALK[p.seed||'wheat']||{}).name)||sd.name;title+=` · ${_ptname} ${Math.round(p.g)}%${p.hasBug?' 🐛':''}${p.hasCrack?' 💔裂了':''}`;}
   document.getElementById('pp-title').textContent=title;
   const acts=[];
   if(p.s==='empty')acts.push({l:'🌱 播种（答1题）',fn:()=>doPlantPlot(idx)});
@@ -510,7 +1111,7 @@ function closePlotPopup(){document.getElementById('plot-popup').classList.remove
 function usePest(idx){S.pestStock--;S.plots[idx].hasBug=false;persistAccount();renderFarm();showToast('🧴 除虫药使用成功！');}
 function doPlantPlot(idx){if(!totalSeeds()){openConfirm('🌰','种子袋空空！\n需要先去商店购买种子。\n是否前往商店？',()=>switchTab('shop'));return;}openSeedPicker('plant',null,sid=>{openQuiz({title:'🌱 播种',needed:1,onSuccess:()=>{const p=S.plots[idx];p.s='s0';p.g=0;p.seed=sid;p.lastWater=Date.now();p.hasBug=false;p.hasCrack=false;S.seedBag[sid]--;S.totalPlanted++;gainExp(10);persistAccount();renderFarm();checkAchs();const sd=SEEDS[sid];showResult('🌱','播种成功！',`第${idx+1}块地种了${sd.ico}${sd.name}\n约${sd.autoGrowH*4}小时后成熟`);}});});}
 function _plantTalk(sid,type){const pt=(window.PLANT_TALK&&PLANT_TALK[sid])||null;if(!pt)return '';const lines=pt[type]||[];return lines.length?lines[Math.floor(Math.random()*lines.length)]:'';}
-function doWaterPlot(idx){openQuiz({title:'💧 浇水',needed:1,onSuccess:()=>{const p=S.plots[idx];const _sid=p.seed||'wheat';const _talk=_plantTalk(_sid,'water');p.hasCrack=false;p.lastWater=Date.now();growPlot(idx,30);S.coins+=3;S.totalCoins+=3;gainExp(12);persistAccount();renderFarm();const rt=calcReadyTime(idx);const _pname=(window.PLANT_TALK&&PLANT_TALK[_sid]?.name)||SEEDS[_sid]?.name||'作物';showResult('💧','浇水完成！',`${_talk?'「'+_talk+'」\n\n':''}第${idx+1}块地 +30% → ${Math.round(p.g)}%\n金币+3${p.s==='s3'?'\n🌾 已成熟！':rt?'\n预计还需'+rt:''}`);}});}
+function doWaterPlot(idx){openQuiz({title:'💧 浇水',needed:1,onSuccess:()=>{const p=S.plots[idx];const _sid=p.seed||'wheat';const _talk=_plantTalk(_sid,'water');p.hasCrack=false;p.lastWater=Date.now();growPlot(idx,30);S.coins+=3;S.totalCoins+=3;gainExp(12);persistAccount();renderFarm();const rt=calcReadyTime(idx);const _pname=(window.PLANT_TALK&&(PLANT_TALK[_sid]||{}).name)||(SEEDS[_sid]||{}).name||'作物';showResult('💧','浇水完成！',`${_talk?'「'+_talk+'」\n\n':''}第${idx+1}块地 +30% → ${Math.round(p.g)}%\n金币+3${p.s==='s3'?'\n🌾 已成熟！':rt?'\n预计还需'+rt:''}`);}});}
 function doFertPlot(idx){openQuiz({title:'✨ 施肥（需答对2题）',needed:2,onSuccess:()=>{const p=S.plots[idx];const _sid=p.seed||'wheat';const _talk=_plantTalk(_sid,'fert');p.hasCrack=false;p.lastWater=Date.now();growPlot(idx,60);S.coins+=8;S.totalCoins+=8;gainExp(25);persistAccount();renderFarm();showResult('✨','施肥成功！',`${_talk?'「'+_talk+'」\n\n':''}第${idx+1}块地 +60% → ${Math.round(p.g)}%\n金币+8${p.s==='s3'?'\n🌾 已成熟！':''}`);}});}
 function doHarvestPlot(idx){openQuiz({title:'🌾 收获',needed:1,onSuccess:()=>{
   const sid=S.plots[idx].seed||'wheat';const sd=SEEDS[sid];
@@ -581,10 +1182,13 @@ function renderWarehouse(){
   const body=document.getElementById('warehouse-body');
   const card=document.getElementById('warehouse-card');
   if(!body)return;
+  if(card)card.style.display=''; // 永远显示
   if(!S.warehouse)S.warehouse={};
   const hasItems=SEED_IDS.some(sid=>S.warehouse[sid]&&S.warehouse[sid].count>0);
-  if(card)card.style.display=hasItems?'':'none';
-  if(!hasItems){body.innerHTML='';return;}
+  if(!hasItems){
+    body.innerHTML='<div style="text-align:center;padding:14px 0;color:var(--muted);font-size:.74rem">🏪 仓库空空如也<br><span style="font-size:.62rem">收获作物后会存放在这里</span></div>';
+    return;
+  }
   let totalVal=0;
   let html='<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px">';
   SEED_IDS.forEach(sid=>{
@@ -724,7 +1328,11 @@ function startPetAnim(){
       _touchOnPet=false;_touchMoved=false;
     });
   }
-  if(petAF)return;
+  // 如果动画循环已在运行，只触发一次强制重绘（解决宠物切换后不显示的问题）
+  if(petAF){
+    setTimeout(drawPet,16);
+    return;
+  }
   const loop=()=>{
     try{
       petT+=0.04;
@@ -745,9 +1353,6 @@ function startPetAnim(){
 function getEvoStage(){const stages=(EVO_STAGES[S.petBreed||'hamster']||EVO_STAGES.hamster);return stages[Math.min(S.petLevel-1,stages.length-1)];}
 
 
-function getPetSkinColor(){if(!S.petSkinColors||!S.activePet)return null;const sid=S.petSkinColors[S.activePet];if(!sid||sid==="sc_default")return null;const sc=(window.PET_SKIN_COLORS||[]).find(s=>s.id===sid);return sc?sc.color:null;}
-
-
 // 【新增】自动颜色生成器
 function adjustColor(hex, amount) {
     if(!hex) return '#000000';
@@ -764,17 +1369,7 @@ function adjustColor(hex, amount) {
     return (usePound ? "#" : "") + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
 }
 
-// 【修复】应用皮肤颜色的逻辑
-function getPetSkinColor(){if(!S.petSkinColors||!S.activePet)return null;const sid=S.petSkinColors[S.activePet];if(!sid||sid==="sc_default")return null;const sc=(window.PET_SKIN_COLORS||[]).find(s=>s.id===sid);return sc?sc.color:null;}
-function applySkinStage(stage){
-    const skin=getPetSkinColor();
-    if(!skin) return stage;
-    if(skin==="rainbow"){
-        const cols=["#ff9090","#ffcc60","#a0e880","#60c8ff","#d080ff"];
-        return Object.assign({},stage,{color:cols[Math.floor(Date.now()/1200)%cols.length]});
-    }
-    return Object.assign({},stage,{color:skin}); // 确保颜色被正确传递
-}
+// 【修复】应用皮肤颜色的逻辑（删除了重复定义的版本）
 function applySkinStage(stage) {
   const skin = getPetSkinColor();
   if (!skin) return stage;
@@ -785,18 +1380,290 @@ function applySkinStage(stage) {
   // 关键修复：返回一个基于皮肤色生成的新stage，不再依赖绘图函数里的硬编码
   return { ...stage, color: skin };
 }
+
 function drawPetBreed(ctx,breed,cx,cy,stage){if(breed==="cat")drawCat(ctx,cx,cy,stage);else if(breed==="rabbit")drawRabbit(ctx,cx,cy,stage);else if(breed==="bird")drawBird(ctx,cx,cy,stage);else if(breed==="dog")drawDog(ctx,cx,cy,stage);else if(breed==="panda")drawPanda(ctx,cx,cy,stage);else if(breed==="fox")drawFox(ctx,cx,cy,stage);else if(breed==="deer")drawDeer(ctx,cx,cy,stage);else if(breed==="penguin")drawPenguin(ctx,cx,cy,stage);else if(breed==="dragon")drawDragon(ctx,cx,cy,stage);else if(breed==="owl")drawOwl(ctx,cx,cy,stage);else if(breed==="bear")drawBear(ctx,cx,cy,stage);else if(breed==="unicorn")drawUnicorn(ctx,cx,cy,stage);else if(breed==="tiger")drawTiger(ctx,cx,cy,stage);else drawHamster(ctx,cx,cy,stage);}
+ 
 
 
 // 【新增】颜色调节器：用于根据皮肤色自动生成深浅色，美化宠物细节
+
+// ── 自定义宠物图片系统 ──
+function getCustomPetImgKey(){return 'jbfarm_petimg_'+(S.activePet||'p_hamster');}
+function getCustomClothImgKey(){return 'jbfarm_clothimg_'+(S.equippedCloth||'none');}
+
+// 根据衣服图片范围决定是否应用
+function _getClothImgDataWithScope(clothKey){
+  const data=localStorage.getItem(clothKey);
+  if(!data)return null;
+  // 检查scope
+  const scopeKey=clothKey+'_scope';
+  const scope=localStorage.getItem(scopeKey)||'all';
+  if(scope==='all')return data;
+  if(scope==='pet'){
+    // 仅当前宠物
+    const petScopeKey=clothKey+'_scope_pet';
+    const scopedPet=localStorage.getItem(petScopeKey);
+    if(scopedPet&&scopedPet!==S.activePet)return null;
+    return data;
+  }
+  if(scope==='stage'){
+    // 仅当前宠物当前阶段
+    const petScopeKey=clothKey+'_scope_pet';
+    const stageScopeKey=clothKey+'_scope_stage';
+    const scopedPet=localStorage.getItem(petScopeKey);
+    const scopedStage=localStorage.getItem(stageScopeKey);
+    const curStage=getEvoStage();
+    if(scopedPet&&scopedPet!==S.activePet)return null;
+    if(scopedStage&&scopedStage!==curStage.name)return null;
+    return data;
+  }
+  return data;
+}
+
+function loadCustomPetImg(key, cb){
+  if(_petImgCache[key]){cb(_petImgCache[key]);return;}
+  const data=localStorage.getItem(key);
+  if(!data){cb(null);return;}
+  const img=new Image();
+  img.onload=()=>{_petImgCache[key]=img;cb(img);};
+  img.onerror=()=>cb(null);
+  img.src=data;
+}
 
 function drawPet(){
   const cvs=document.getElementById('pet-canvas');if(!cvs)return;
   const ctx=cvs.getContext('2d');ctx.clearRect(0,0,cvs.width,cvs.height);
   const bob=petWalking?Math.sin(petT*3)*1.5:Math.sin(petT)*2;
   const stage=applySkinStage(getEvoStage());const breed=S.petBreed||'hamster';
-  try{drawPetBreed(ctx,breed,petX,petY+bob,stage);}catch(e){console.warn('drawPetBreed err',e);}
-  try{drawCloth(ctx,petX,petY+bob);}catch(e){console.warn('drawCloth err',e);}
+  const petImgKey=getCustomPetImgKey();
+  const petImgData=localStorage.getItem(petImgKey);
+  const canvasW=cvs.width;
+
+  function _drawImgWithParam(img,key,cx,cy){
+    try{
+      const raw=localStorage.getItem(key+'_param');
+      const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
+      const size=Math.round(canvasW*(p.scale!=null?p.scale:0.8));
+      const dx=cx+(p.offX||0);
+      const dy=cy+(p.offY||0);
+      const rot=(p.rotation||0)*Math.PI/180;
+      if(rot!==0){
+        ctx.save();
+        ctx.translate(dx,dy);
+        ctx.rotate(rot);
+        ctx.drawImage(img,-size/2,-size/2,size,size);
+        ctx.restore();
+      } else {
+        ctx.drawImage(img,dx-size/2,dy-size/2,size,size);
+      }
+    }catch(e){}
+  }
+
+  if(petImgData){
+    loadCustomPetImg(petImgKey,function(img){
+      if(!img){
+        // 图片加载失败，回退到像素画
+        try{drawPetBreed(ctx,breed,petX,petY+bob,stage);}catch(e){}
+        return;
+      }
+      ctx.clearRect(0,0,cvs.width,cvs.height);
+      _drawImgWithParam(img,petImgKey,petX,petY+bob);
+      const clothKey=getCustomClothImgKey();
+      const clothData=S.equippedCloth?_getClothImgDataWithScope(clothKey):null;
+      if(clothData){
+        loadCustomPetImg(clothKey,function(cimg){if(cimg)_drawImgWithParam(cimg,clothKey,petX,petY+bob);});
+      } else {
+        try{drawCloth(ctx,petX,petY+bob);}catch(e){}
+      }
+    });
+  } else {
+    try{drawPetBreed(ctx,breed,petX,petY+bob,stage);}catch(e){
+      // 绘制失败时显示占位符
+      ctx.fillStyle='rgba(100,160,100,.15)';ctx.beginPath();ctx.arc(petX,petY,30,0,Math.PI*2);ctx.fill();
+      ctx.font='24px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🐾',petX,petY);
+    }
+    const clothKey=getCustomClothImgKey();
+    const clothImgData=S.equippedCloth?_getClothImgDataWithScope(clothKey):null;
+    if(clothImgData){
+      loadCustomPetImg(clothKey,function(cimg){if(cimg)_drawImgWithParam(cimg,clothKey,petX,petY+bob);});
+    } else {
+      try{drawCloth(ctx,petX,petY+bob);}catch(e){console.warn('drawCloth err',e);}
+    }
+  }
+}
+
+let _petImgUploadMode='pet'; // 'pet' | 'cloth'
+let _petImgPreviewData=null;
+let _petImgPreviewObj=null;
+let _petImgFileSize=0; // bytes
+
+function openPetImageUpload(){
+  _petImgUploadMode='pet';
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='image/*';
+  inp.onchange=function(e){
+    const file=e.target.files[0];if(!file)return;
+    if(file.size>512*1024){showToast('图片不能超过500KB，请压缩后再上传');return;}
+    _petImgFileSize=file.size;
+    const reader=new FileReader();
+    reader.onload=function(ev){
+      _petImgPreviewData=ev.target.result;
+      openPetImgPreviewModal('宠物本体图片预览');
+    };
+    reader.readAsDataURL(file);
+  };
+  inp.click();
+}
+
+function openClothImageUpload(){
+  if(!S.equippedCloth){showToast('请先装备一件衣服再上传图片');return;}
+  _petImgUploadMode='cloth';
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='image/*';
+  inp.onchange=function(e){
+    const file=e.target.files[0];if(!file)return;
+    if(file.size>512*1024){showToast('图片不能超过500KB');return;}
+    _petImgFileSize=file.size;
+    const reader=new FileReader();
+    reader.onload=function(ev){
+      _petImgPreviewData=ev.target.result;
+      openPetImgPreviewModal('衣服图片预览');
+    };
+    reader.readAsDataURL(file);
+  };
+  inp.click();
+}
+
+function openPetImgPreviewModal(title){
+  // 重置滑块
+  const sc=document.getElementById('pet-img-scale');
+  const ox=document.getElementById('pet-img-ox');
+  const oy=document.getElementById('pet-img-oy');
+  const rot=document.getElementById('pet-img-rot');
+  const rotVal=document.getElementById('pet-img-rot-val');
+  if(sc)sc.value=80;
+  if(ox)ox.value=0;
+  if(oy)oy.value=0;
+  if(rot){rot.value=0;}
+  if(rotVal)rotVal.textContent='0°';
+  document.getElementById('pet-preview-label').textContent=title+' · 调整大小、位置、旋转';
+  // 显示文件大小
+  const sizeEl=document.getElementById('pet-img-filesize');
+  if(sizeEl){
+    const kb=(_petImgFileSize/1024).toFixed(1);
+    const color=_petImgFileSize>400*1024?'var(--red)':_petImgFileSize>300*1024?'var(--gold)':'var(--dgreen)';
+    sizeEl.innerHTML=`📦 文件大小：<b style="color:${color}">${kb} KB</b> / 500 KB上限`;
+  }
+  // 衣服模式：显示范围选项
+  const scopeWrap=document.getElementById('cloth-scope-wrap');
+  if(scopeWrap)scopeWrap.style.display=_petImgUploadMode==='cloth'?'':'none';
+  // 重置范围为全部
+  const radioAll=document.querySelector('input[name="cloth-scope"][value="all"]');
+  if(radioAll)radioAll.checked=true;
+  // 显示模特预览
+  const modelWrap=document.getElementById('pet-preview-model-wrap');
+  if(modelWrap)modelWrap.style.display='';
+  // 加载图片对象
+  const img=new Image();
+  img.onload=function(){
+    _petImgPreviewObj=img;
+    rePetPreview();
+  };
+  img.src=_petImgPreviewData;
+  document.getElementById('pet-img-preview-ov').classList.add('on');
+}
+
+function rePetPreview(){
+  const cvs=document.getElementById('pet-preview-cvs');
+  if(!cvs||!_petImgPreviewObj)return;
+  const ctx=cvs.getContext('2d');
+  ctx.clearRect(0,0,cvs.width,cvs.height);
+  // 画背景格子（方便对齐透明图）
+  ctx.fillStyle='#f5f0e8';ctx.fillRect(0,0,cvs.width,cvs.height);
+  for(let xx=0;xx<cvs.width;xx+=20)for(let yy=0;yy<cvs.height;yy+=20)if((Math.floor(xx/20)+Math.floor(yy/20))%2===0){ctx.fillStyle='rgba(0,0,0,.04)';ctx.fillRect(xx,yy,20,20);}
+  const scale=parseInt(document.getElementById('pet-img-scale').value||80)/100;
+  const offX=parseInt(document.getElementById('pet-img-ox').value||0);
+  const offY=parseInt(document.getElementById('pet-img-oy').value||0);
+  const rot=parseInt(document.getElementById('pet-img-rot').value||0)*Math.PI/180;
+  const size=Math.round(cvs.width*scale);
+  const cx=cvs.width/2+offX;
+  const cy=cvs.height/2+offY;
+  ctx.save();
+  ctx.translate(cx,cy);
+  ctx.rotate(rot);
+  ctx.drawImage(_petImgPreviewObj,-size/2,-size/2,size,size);
+  ctx.restore();
+  // 画中心参考圆
+  ctx.strokeStyle='rgba(100,170,100,.3)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.arc(cvs.width/2,cvs.height/2,cvs.width*0.35,0,Math.PI*2);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 更新模特预览画布（在宠物本体上叠加预览图片效果）
+  const modelCvs=document.getElementById('pet-model-preview-cvs');
+  if(modelCvs){
+    const mctx=modelCvs.getContext('2d');
+    const mcx=modelCvs.width/2, mcy=modelCvs.height/2;
+    mctx.clearRect(0,0,modelCvs.width,modelCvs.height);
+    // 画宠物本体
+    const stage=getEvoStage?applySkinStage(getEvoStage()):null;
+    if(stage){try{drawPetBreed(mctx,S.petBreed||'hamster',mcx,mcy,stage);}catch(e){}}
+    // 叠加预览图片
+    const msize=Math.round(modelCvs.width*scale);
+    const mdx=mcx+offX,mdy=mcy+offY;
+    mctx.save();mctx.translate(mdx,mdy);mctx.rotate(rot);
+    mctx.drawImage(_petImgPreviewObj,-msize/2,-msize/2,msize,msize);
+    mctx.restore();
+  }
+}
+
+function confirmPetImgUpload(){
+  if(!_petImgPreviewData)return;
+  const scale=parseInt(document.getElementById('pet-img-scale').value||80)/100;
+  const offX=parseInt(document.getElementById('pet-img-ox').value||0);
+  const offY=parseInt(document.getElementById('pet-img-oy').value||0);
+  const rotation=parseInt(document.getElementById('pet-img-rot').value||0);
+  const key=_petImgUploadMode==='cloth'?getCustomClothImgKey():getCustomPetImgKey();
+  const paramKey=key+'_param';
+  localStorage.setItem(key,_petImgPreviewData);
+  localStorage.setItem(paramKey,JSON.stringify({scale,offX,offY,rotation}));
+  // 保存衣服范围
+  if(_petImgUploadMode==='cloth'){
+    const scopeEl=document.querySelector('input[name="cloth-scope"]:checked');
+    const scope=scopeEl?scopeEl.value:'all';
+    localStorage.setItem(key+'_scope',scope);
+    if(scope==='pet'||scope==='stage'){
+      localStorage.setItem(key+'_scope_pet',S.activePet||'p_hamster');
+      if(scope==='stage'){
+        const stg=getEvoStage();
+        localStorage.setItem(key+'_scope_stage',stg?stg.name:'');
+      }
+    }
+  }
+  delete _petImgCache[key];
+  document.getElementById('pet-img-preview-ov').classList.remove('on');
+  drawPet();
+  showToast('✅ 图片已保存！');
+}
+
+// 清除自定义图片 → 弹出选项
+function clearPetCustomImg(){
+  document.getElementById('clear-pet-img-ov').classList.add('on');
+}
+function doClearPetImg(mode){
+  document.getElementById('clear-pet-img-ov').classList.remove('on');
+  if(mode==='pet'||mode==='all'){
+    const key=getCustomPetImgKey();
+    localStorage.removeItem(key);localStorage.removeItem(key+'_param');
+    delete _petImgCache[key];
+  }
+  if(mode==='cloth'||mode==='all'){
+    const key=getCustomClothImgKey();
+    localStorage.removeItem(key);localStorage.removeItem(key+'_param');
+    localStorage.removeItem(key+'_scope');localStorage.removeItem(key+'_scope_pet');localStorage.removeItem(key+'_scope_stage');
+    delete _petImgCache[key];
+  }
+  drawPet();
+  showToast('已恢复默认外观');
 }
 
 // ── 商店宠物预览图：临时切换状态绘制缩略图 ──
@@ -820,19 +1687,33 @@ function drawPetPreviewInCanvas(cvs,breed,level){
 function drawEye(ctx, x, y, h, size) {
   size = size || 3;
   if (h > 0.6) {
-    // 开心弯弯眼
     ctx.strokeStyle = '#222'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.arc(x, y, size, Math.PI, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,200,200,0.6)'; // 笑眼下方腮红
+    ctx.fillStyle = 'rgba(255,200,200,0.6)';
   } else if (h > 0.3) {
-    // 普通圆眼
     ctx.fillStyle = '#1a1a1a'; ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = 'white'; ctx.beginPath(); ctx.ellipse(x + size * 0.4, y - size * 0.4, size * 0.38, size * 0.38, 0, 0, Math.PI * 2); ctx.fill();
   } else {
-    // 难过眯眯眼
     ctx.strokeStyle = '#222'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(x - size, y + 1); ctx.lineTo(x + size, y - 1); ctx.stroke();
   }
+}
+
+// ── 缺失的辅助函数：皮肤颜色获取 & 泪滴 ──
+function getPetSkinColor(){
+  if(!S||!S.petSkinColors||!S.activePet)return null;
+  const sid=S.petSkinColors[S.activePet];
+  if(!sid||sid==='sc_default')return null;
+  if(sid==='rainbow')return 'rainbow';
+  const found=(window.PET_SKIN_COLORS||[]).find(c=>c.id===sid);
+  return found?found.color:null;
+}
+
+function drawTears(ctx,cx,cy,h){
+  if(h>0.25)return;
+  ctx.fillStyle='rgba(100,160,220,0.6)';
+  const drop=(x,y)=>{ctx.beginPath();ctx.ellipse(x,y,2,3,0,0,Math.PI*2);ctx.fill();};
+  drop(cx-7,cy+6);drop(cx+7,cy+6);
 }
 
 function drawHamster(ctx, cx, cy, stage) {
@@ -2375,7 +3256,7 @@ function renderToolsShop(g){
     const isDevice=item.type==='auto_water'||item.type==='auto_pest';
     const installed=(item.type==='auto_water'&&S.hasAutoWater)||(item.type==='auto_pest'&&S.hasAutoPest);
     const ownedNotInstalled=isDevice&&((item.type==='auto_water'&&S.ownedAutoWater&&!S.hasAutoWater)||(item.type==='auto_pest'&&S.ownedAutoPest&&!S.hasAutoPest));
-    const dur=item.type==='auto_water'?(S.autoWaterDur??100):(item.type==='auto_pest'?(S.autoPestDur??100):null);
+    const dur=item.type==='auto_water'?(S.autoWaterDur!=null?S.autoWaterDur:100):(item.type==='auto_pest'?(S.autoPestDur!=null?S.autoPestDur:100):null);
     const durStr=installed&&dur!==null?' <span style="font-size:.65rem;color:'+(dur>50?'var(--green)':dur>20?'#e8a000':'var(--red)')+'">'+'耐久'+Math.round(dur)+'%</span>':'';
     // 金币礼包：检查是否达到购买上限
     const cgLimit=item.type==='coins_for_stars'&&(S.coinGiftBought||0)>=(item.maxBuy||5);
@@ -2393,7 +3274,7 @@ function renderToolsShop(g){
       d.onclick=()=>{
         if(ownedNotInstalled){
           // 设备已拥有，免费重装确认
-          openConfirm(item.ico,'免费重装'+item.name+'？\n耐久度将保持原值（'+Math.round(dur??100)+'%）',()=>doToolBuy(item,1));
+          openConfirm(item.ico,'免费重装'+item.name+'？\n耐久度将保持原值（'+Math.round(dur!=null?dur:100)+'%）',()=>doToolBuy(item,1));
         }else{
           item.bulkable?openBulkBuy(item):openConfirm(item.ico,'购买'+item.name+'？\n'+item.desc+'\n费用：'+priceStr,()=>doToolBuy(item,1));
         }
@@ -2544,20 +3425,30 @@ function updateClassSection(){
       <button onclick="randomPickMember()" style="padding:6px 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;white-space:nowrap;font-family:'Noto Sans SC',sans-serif">🎲 随机抽人</button>
     </div>
     <div class="rank-list" id="rank-list">${renderRankList(members)}</div>
-    <div style="margin-top:9px;display:flex;gap:7px;flex-wrap:wrap"><button onclick="leaveClass()" style="padding:7px 16px;border-radius:9px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">退出班级</button><button onclick="openClassManage()" style="padding:7px 16px;border-radius:9px;border:1.5px solid var(--border);background:transparent;font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">⚙️ 班级管理</button></div>`;
+    <div style="margin-top:9px;display:flex;gap:7px;flex-wrap:wrap">
+      <button onclick="openExtraScoreRanking()" style="padding:7px 16px;border-radius:9px;border:1.5px solid var(--purple);background:rgba(160,122,208,.08);color:var(--purple);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📊 额外积分排行</button>
+      <button onclick="leaveClass()" style="padding:7px 16px;border-radius:9px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">退出班级</button>
+      <button onclick="openClassManage()" style="padding:7px 16px;border-radius:9px;border:1.5px solid var(--border);background:transparent;font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">⚙️ 班级管理</button>
+    </div>`;
   _afterRender();
 }
 
 let _rankExp=false;
 function renderRankList(members){
   const show=_rankExp||members.length<=5;
-  const list=show?members.slice(0,15):members.slice(0,5);
+  const list=show?members:members.slice(0,5);
+  const admins=getClassAdmins();
+  const asstAdmin=S.classId?admins[S.classId]:null;
   let html=list.map((m,i)=>{
-    // 用data-rname属性存名字，避免特殊字符破坏onclick
     const isSelf=m.name===S.playerName;
-    return '<div class="rank-item '+(isSelf?'rank-self':'')+' " id="rank-'+i+'" data-rname="'+encodeURIComponent(m.name)+'" style="cursor:'+(isSelf?'default':'pointer')+'">'
+    const isMonitor=asstAdmin&&asstAdmin.name===m.name;
+    const isTeacherMember=m.isTeacher;
+    let badge='';
+    if(isTeacherMember)badge='<span style="font-size:.56rem;background:rgba(232,160,32,.18);color:#a06000;border-radius:4px;padding:0 4px;margin-left:3px;font-weight:600;vertical-align:middle">👨‍🏫教师</span>';
+    else if(isMonitor)badge='<span style="font-size:.58rem;background:rgba(74,144,217,.13);color:#2060a0;border-radius:4px;padding:0 4px;margin-left:3px;font-weight:700;vertical-align:middle">★课代表</span>';
+    return '<div class="rank-item '+(isSelf?'rank-self':'')+'" id="rank-'+i+'" data-rname="'+encodeURIComponent(m.name)+'" style="cursor:'+(isSelf?'default':'pointer')+'">'
       +'<div class="rank-num '+(i===0?'top1':i===1?'top2':i===2?'top3':'')+'">'+(i+1)+'</div>'
-      +'<div class="rank-name">'+m.name+(isSelf?' 👈':'')+'</div>'
+      +'<div class="rank-name">'+m.name+badge+(isSelf?' 👈':'')+'</div>'
       +'<div class="rank-score">Lv.'+(m.level||1)+' · ⭐'+m.score+'</div>'
       +'</div>';
   }).join('');
@@ -2615,33 +3506,136 @@ function randomPickMember(){
   document.getElementById('res-ov').classList.add('on');
 }
 
-function joinClass(){const cls=(document.getElementById('ci-class')?.value||'').trim();if(!cls){showToast('请输入班级名称！');return;}S.classId=cls;joinClassBoard(cls,S.playerName,S.score);persistAccount();updateClassSection();showToast(`✅ 已加入班级 ${cls}！`);}
-function leaveClass(){openConfirm('🏫','确定退出班级？退出后排名数据仍保留。',()=>{S.classId='';persistAccount();updateClassSection();showToast('已退出班级');});}
-// ─── 班级总览浏览器 ─────────────────────────────────
+function joinClass(){const cls=((document.getElementById('ci-class')||{}).value||'').trim();if(!cls){showToast('请输入班级名称！');return;}S.classId=cls;joinClassBoard(cls,S.playerName,S.score);persistAccount();updateClassSection();showToast(`✅ 已加入班级 ${cls}！`);}
+function leaveClass(){openConfirm('🏫','确定退出班级？\n退出后将从排名中移除。',()=>{
+  const cls=S.classId;
+  const cd=getClassData();
+  if(cd[cls]){cd[cls]=cd[cls].filter(m=>m.name!==S.playerName);saveClassData(cd);}
+  S.classId='';persistAccount();updateClassSection();showToast('已退出班级');
+});}
+
+// ─── 额外积分排行 ─────────────────────────────────────
+// 积分记录存储格式：jbfarm_scorelog_<classId> → [{name,pts,reason,time,op}]
+function getScoreLog(classId){
+  try{return JSON.parse(localStorage.getItem('jbfarm_scorelog_'+(classId||S.classId))||'[]');}
+  catch(e){return [];}
+}
+function saveScoreLog(classId,log){
+  try{localStorage.setItem('jbfarm_scorelog_'+(classId||S.classId),JSON.stringify(log));}
+  catch(e){}
+}
+
+function openExtraScoreRanking(){
+  if(!S.classId){showToast('请先加入班级');return;}
+  const log=getScoreLog(S.classId);
+  const ov=document.getElementById('extra-score-ov');
+  if(!ov)return;
+
+  // 统计各原因下每人加分总和
+  const reasonMap={};
+  log.forEach(entry=>{
+    if(!entry.reason)return;
+    if(!reasonMap[entry.reason])reasonMap[entry.reason]={};
+    if(!reasonMap[entry.reason][entry.name])reasonMap[entry.reason][entry.name]=0;
+    reasonMap[entry.reason][entry.name]+=(entry.pts||0);
+  });
+
+  const reasons=Object.keys(reasonMap);
+  const tabsEl=document.getElementById('extra-score-tabs');
+  const bodyEl=document.getElementById('extra-score-body');
+  if(!tabsEl||!bodyEl)return;
+
+  // 如果没有记录，显示提示（老数据没有log，展示总积分分类）
+  if(!reasons.length){
+    tabsEl.innerHTML='';
+    bodyEl.innerHTML='<div style="font-size:.74rem;color:var(--muted);padding:12px;text-align:center">暂无积分记录。<br><span style="font-size:.66rem">新添加的积分将自动记录在此处。</span></div>';
+    ov.classList.add('on');
+    return;
+  }
+
+  let activeReason=reasons[0];
+  function render(){
+    tabsEl.innerHTML=reasons.map(r=>`<div onclick="_switchExtraTab('${encodeURIComponent(r)}')" style="padding:4px 11px;border-radius:99px;border:1.5px solid ${r===activeReason?'var(--purple)':'var(--border)'};background:${r===activeReason?'var(--purple)':'var(--panel)'};color:${r===activeReason?'#fff':'var(--ink)'};font-size:.68rem;cursor:pointer;white-space:nowrap;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">${r}</div>`).join('');
+    const data=reasonMap[activeReason]||{};
+    const sorted=Object.entries(data).sort((a,b)=>b[1]-a[1]);
+    if(!sorted.length){bodyEl.innerHTML='<div style="font-size:.74rem;color:var(--muted);padding:12px;text-align:center">该类别暂无记录</div>';return;}
+    bodyEl.innerHTML='<div style="display:flex;flex-direction:column;gap:5px">'
+      +sorted.map(([name,pts],i)=>{
+        const rankStyle=i===0?'background:#ffd700;color:#806000':i===1?'background:#c0c0c0;color:#505050':i===2?'background:#cd7f32;color:#503010':'background:rgba(160,122,208,.12);color:var(--purple)';
+        return `<div style="display:flex;align-items:center;gap:9px;padding:8px 10px;background:var(--panel);border-radius:9px;border:1px solid var(--border)">`
+          +`<div style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;${rankStyle};flex-shrink:0">${i+1}</div>`
+          +`<div style="flex:1;font-size:.78rem;font-weight:500">${name}</div>`
+          +`<div style="font-size:.75rem;color:var(--purple);font-weight:700">+${pts}</div>`
+          +'</div>';
+      }).join('')
+      +'</div>';
+  }
+  window._switchExtraTab=function(enc){activeReason=decodeURIComponent(enc);render();};
+  render();
+  ov.classList.add('on');
+}
+// ─── 班级总览浏览器（可折叠版）────────────────────────────────────────
 let _viewingClass='';
+let classBrowserExpanded = false; // 默认收起
+
 function renderClassBrowser(){
   const el=document.getElementById('class-browser');if(!el)return;
   const cd=getClassData();const classes=Object.keys(cd);
-  if(!classes.length){el.innerHTML='<div style="font-size:.74rem;color:var(--muted)">暂无班级数据。批量导入学生后可在此查看各班情况。</div>';return;}
-  if(!_viewingClass||!cd[_viewingClass])_viewingClass=S.classId||classes[0];
-  const tabsHtml=classes.map(cls=>`<div onclick="switchViewClass('${encodeURIComponent(cls)}')" style="padding:4px 11px;border-radius:99px;border:1.5px solid ${cls===_viewingClass?'var(--green)':'var(--border)'};background:${cls===_viewingClass?'var(--green)':'var(--panel)'};color:${cls===_viewingClass?'#fff':'var(--ink)'};font-size:.68rem;cursor:pointer;white-space:nowrap;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">${cls}</div>`).join('');
-  const members=sortMembers(cd[_viewingClass]||[]);
-  const membersHtml=members.map((m,i)=>{
-    const isSelf=m.name===S.playerName&&_viewingClass===S.classId;
-    const rankStyle=i===0?'#ffd700;color:#806000':i===1?'#c0c0c0;color:#505050':i===2?'#cd7f32;color:#503010':'rgba(100,160,100,.1);color:var(--dgreen)';
-    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;border:1px solid ${isSelf?'var(--green)':'var(--border)'};background:${isSelf?'rgba(100,160,100,.06)':'#fff'}">`
-      +`<div style="width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;background:${rankStyle}">${i+1}</div>`
-      +`<div style="flex:1;font-size:.78rem;font-weight:500">${m.name}${isSelf?' 👈':''}</div>`
-      +`<div style="font-size:.65rem;color:var(--muted)">Lv.${m.level||1} · ⭐${m.score||0}</div></div>`;
-  }).join('');
-  el.innerHTML=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${tabsHtml}</div>`
-    +`<div style="font-size:.7rem;color:var(--muted);margin-bottom:7px">👥 ${_viewingClass} · 共${members.length}名学生</div>`
-    +`<div style="display:flex;flex-direction:column;gap:5px;max-height:280px;overflow-y:auto">${membersHtml||'<div style="font-size:.74rem;color:var(--muted)">班级暂无成员</div>'}</div>`
-    +(members.length?`<div style="margin-top:8px"><button onclick="randomPickFromBrowser()" style="padding:6px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🎲 随机抽人</button></div>`:'');
+  
+  // 标题栏（可点击切换展开/收起）
+  let html = `
+  <div onclick="toggleClassBrowser()" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer;background:var(--panel);border:1px solid var(--border);margin-bottom:${classBrowserExpanded?'8px':'0'}">
+    <span style="font-size:.7rem;transition:transform .2s;transform:rotate(${classBrowserExpanded?90:0}deg)">▶</span>
+    <span style="font-size:.76rem;font-weight:600">🏫 班级展开</span>
+    <span style="font-size:.65rem;color:var(--muted);margin-left:auto">${classes.length}个班级</span>
+  </div>`;
+
+  // 只有展开时才渲染内容
+  if(classBrowserExpanded){
+    if(!classes.length){
+      html += '<div style="font-size:.74rem;color:var(--muted);padding:8px">暂无班级数据。批量导入学生后可在此查看各班情况。</div>';
+      el.innerHTML=html;
+      return;
+    }
+
+    if(!_viewingClass||!cd[_viewingClass])_viewingClass=S.classId||classes[0];
+    
+    // 班级标签页
+    const tabsHtml=classes.map(cls=>`<div onclick="switchViewClass('${encodeURIComponent(cls)}')" style="padding:4px 11px;border-radius:99px;border:1.5px solid ${cls===_viewingClass?'var(--green)':'var(--border)'};background:${cls===_viewingClass?'var(--green)':'var(--panel)'};color:${cls===_viewingClass?'#fff':'var(--ink)'};font-size:.68rem;cursor:pointer;white-space:nowrap;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">${cls}</div>`).join('');
+    
+    // 成员列表
+    const members=sortMembers(cd[_viewingClass]||[]);
+    const membersHtml=members.map((m,i)=>{
+      const isSelf=m.name===S.playerName&&_viewingClass===S.classId;
+      const rankStyle=i===0?'#ffd700;color:#806000':i===1?'#c0c0c0;color:#505050':i===2?'#cd7f32;color:#503010':'rgba(100,160,100,.1);color:var(--dgreen)';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;border:1px solid ${isSelf?'var(--green)':'var(--border)'};background:${isSelf?'rgba(100,160,100,.06)':'#fff'}">`
+        +`<div style="width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;background:${rankStyle}">${i+1}</div>`
+        +`<div style="flex:1;font-size:.78rem;font-weight:500">${m.name}${isSelf?' 👈':''}</div>`
+        +`<div style="font-size:.65rem;color:var(--muted)">Lv.${m.level||1} · ⭐${m.score||0}</div></div>`;
+    }).join('');
+
+    // 拼接展开内容
+    html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${tabsHtml}</div>`
+      +`<div style="font-size:.7rem;color:var(--muted);margin-bottom:7px">👥 ${_viewingClass} · 共${members.length}名学生</div>`
+      +`<div style="display:flex;flex-direction:column;gap:5px;max-height:280px;overflow-y:auto">${membersHtml||'<div style="font-size:.74rem;color:var(--muted)">班级暂无成员</div>'}</div>`
+      +(members.length?`<div style="margin-top:8px"><button onclick="randomPickFromBrowser()" style="padding:6px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🎲 随机抽人</button></div>`:'');
+  }
+
+  el.innerHTML=html;
 }
+
+// 切换展开/收起状态
+function toggleClassBrowser(){
+  classBrowserExpanded = !classBrowserExpanded;
+  renderClassBrowser();
+}
+
+// 原有函数保持不变
 function switchViewClass(clsEncoded){
-  _viewingClass=decodeURIComponent(clsEncoded);renderClassBrowser();
+  _viewingClass=decodeURIComponent(clsEncoded);
+  renderClassBrowser();
 }
+
 function randomPickFromBrowser(){
   const cd=getClassData();const members=cd[_viewingClass]||[];
   if(!members.length){showToast('班级暂无成员！');return;}
@@ -2678,7 +3672,7 @@ function openAvatarPicker(){
 }
 function saveAvatar(){
   const ci=document.getElementById('av-custom-input');
-  const val=(ci?.value||'').trim();
+  const val=((ci||{}).value||'').trim();
   S.playerAvatar=val;
   persistAccount();updateTop();
   document.getElementById('avatar-pick-ov').classList.remove('on');
@@ -2694,30 +3688,249 @@ function saveClassAdmins(d){try{localStorage.setItem(CLASS_ADMIN_KEY,JSON.string
 
 function openClassManage(){
   if(!S.classId){showToast('你还没有加入班级');return;}
-  const ov=document.getElementById('class-manage-ov');
-  if(!ov)return;
+  const ov=document.getElementById('class-manage-ov');if(!ov)return;
   const ttl=document.getElementById('class-manage-ttl');
   if(ttl)ttl.textContent='🏫 '+S.classId+' · 班级管理';
-  const body=document.getElementById('class-manage-body');
-  if(!body)return;
-  const admins=getClassAdmins();
-  const curAdmin=admins[S.classId];
-  const isAdmin=curAdmin&&curAdmin.name===S.playerName;
+  const body=document.getElementById('class-manage-body');if(!body)return;
+  const admins=getClassAdmins();const asstAdmin=admins[S.classId];
+  const cd=getClassData();const clsMembers=cd[S.classId]||[];
+  const selfMember=clsMembers.find(m=>m.name===S.playerName);
+  const isTeacher=S.isTeacher&&(S.managedClasses||[]).includes(S.classId);
+  const isAsstAdmin=asstAdmin&&asstAdmin.name===S.playerName;
+  const teachers=clsMembers.filter(m=>m.isTeacher);
   let html='';
-  if(!curAdmin){
-    html+=`<div style="font-size:.78rem;color:var(--muted);margin-bottom:12px;line-height:1.8">该班级暂无负责人。<br>如果你是老师/班主任，可以设置自己为班级负责人。</div>
-    <button onclick="setClassAdmin()" style="width:100%;padding:10px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.82rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;margin-bottom:8px">👑 设置我为班级负责人</button>`;
+  // 教师信息
+  if(teachers.length>0)html+=`<div style="font-size:.74rem;color:#a06000;font-weight:600;margin-bottom:8px">👨‍🏫 班级教师：${teachers.map(t=>t.name).join('、')}</div>`;
+  // 辅助管理员信息
+  if(asstAdmin)html+=`<div style="font-size:.72rem;color:#2060a0;margin-bottom:8px">🎖️ 辅助管理员：<b>${asstAdmin.name}</b></div>`;
+  // 教师专属：任命辅助管理员
+  if(isTeacher&&!asstAdmin){
+    html+=`<button onclick="openSetAsstAdmin()" style="width:100%;padding:9px;border-radius:10px;border:1.5px solid #4a90d9;background:rgba(74,144,217,.06);color:#2060a0;font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;margin-bottom:8px">🎖️ 任命辅助管理员（课代表）</button>`;
+  } else if(isTeacher&&asstAdmin){
+    html+=`<button onclick="openSetAsstAdmin()" style="width:100%;padding:9px;border-radius:10px;border:1.5px solid #4a90d9;background:rgba(74,144,217,.06);color:#2060a0;font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;margin-bottom:8px">🎖️ 更换辅助管理员</button>`;
+  }
+  // 加积分（教师或辅助管理员）
+  if(isTeacher||isAsstAdmin){
+    html+=`<button onclick="openAddScorePanel()" style="width:100%;padding:9px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;margin-bottom:8px">⭐ 给学生加积分</button>`;
+  }
+  // 解散班级（教师或辅助管理员）
+  if(isTeacher||isAsstAdmin){
+    html+=`<button onclick="dissolveClass()" style="width:100%;padding:9px;border-radius:10px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">💥 解散班级</button><div style="font-size:.6rem;color:var(--muted);margin-top:4px;text-align:center">${isTeacher?'解散后所有班级数据将清除':'辅助管理员也可解散班级'}</div>`;
+  } else if(!asstAdmin&&!isTeacher){
+    // 普通学生：显示设置负责人入口
+    html+=`<div style="font-size:.74rem;color:var(--muted);margin-bottom:10px;line-height:1.8">该班级暂无负责人。<br>如果你是老师/班主任，可以设置自己为班级负责人。</div><button onclick="setClassAdmin()" style="width:100%;padding:9px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;margin-bottom:8px">👑 设置我为班级负责人</button>`;
   } else {
-    html+=`<div style="font-size:.78rem;color:var(--muted);margin-bottom:12px">班级负责人：<b style="color:var(--dgreen)">👑 ${curAdmin.name}</b></div>`;
-    if(isAdmin){
-      html+=`<button onclick="dissolveClass()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.82rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">💥 解散班级</button>
-      <div style="font-size:.6rem;color:var(--muted);margin-top:6px;text-align:center">解散后所有班级数据将清除，不可恢复</div>`;
-    } else {
-      html+=`<div style="font-size:.72rem;color:var(--muted);line-height:1.7">只有班级负责人可以解散班级。<br>如需解散，请联系 ${curAdmin.name}。</div>`;
-    }
+    html+=`<div style="font-size:.72rem;color:var(--muted);line-height:1.7">如需解散班级，请联系班级负责人。</div>`;
   }
   body.innerHTML=html;
   ov.classList.add('on');
+}
+
+function openSetAsstAdmin(){
+  const cd=getClassData();
+  const members=(cd[S.classId]||[]).filter(m=>!m.isTeacher);
+  let html='<div style="font-size:.7rem;color:var(--muted);margin-bottom:8px">选择一名学生作为辅助管理员（课代表）：</div><div style="max-height:50vh;overflow-y:auto">';
+  members.forEach(s=>{
+    html+=`<div style="padding:8px;border-radius:8px;border:1px solid var(--border);margin-bottom:4px;cursor:pointer;background:var(--panel)" onclick="setAsstAdmin('${encodeURIComponent(s.name)}')">${s.name} - Lv.${s.level||1} · ⭐${s.score||0}</div>`;
+  });
+  html+='</div>';
+  document.getElementById('class-manage-body').innerHTML=html;
+}
+
+function setAsstAdmin(encodedName){
+  const name=decodeURIComponent(encodedName);
+  openConfirm('🎖️','将「'+name+'」设为辅助管理员（课代表）？\n可给同学加积分、解散班级，不能任命其他管理员。',()=>{
+    const admins=getClassAdmins();
+    admins[S.classId]={name,pin:''};
+    saveClassAdmins(admins);
+    document.getElementById('class-manage-ov').classList.remove('on');
+    updateClassSection();
+    showToast('✅ 已将「'+name+'」设为辅助管理员！');
+  });
+}
+
+// ── 积分管理系统 ──────────────────────────────────
+let _scoreMode='add'; // 'add' | 'sub'
+let _scoreClassId=null; // 当前操作的班级（支持教师跨班操作）
+let _scoreSelected=new Set(); // 已选中学生名字集合
+
+function setScoreMode(mode){
+  _scoreMode=mode;
+  const addBtn=document.getElementById('score-mode-add');
+  const subBtn=document.getElementById('score-mode-sub');
+  const confirmBtn=document.getElementById('score-confirm-btn');
+  if(addBtn){addBtn.style.background=mode==='add'?'var(--green)':'var(--panel)';addBtn.style.color=mode==='add'?'#fff':'var(--muted)';}
+  if(subBtn){subBtn.style.background=mode==='sub'?'var(--red)':'var(--panel)';subBtn.style.color=mode==='sub'?'#fff':'var(--muted)';}
+  if(confirmBtn){confirmBtn.style.background=mode==='add'?'var(--green)':'var(--red)';confirmBtn.textContent=mode==='add'?'✅ 确认给已选学生加分':'📉 确认给已选学生减分';}
+}
+
+function openAddScorePanel(classId){
+  _scoreClassId=classId||S.classId;
+  if(!_scoreClassId){showToast('未指定班级');return;}
+  _scoreSelected=new Set();
+  setScoreMode('add');
+  const vi=document.getElementById('add-score-val');if(vi)vi.value='';
+  const rs=document.getElementById('add-score-reason');if(rs)rs.value='背书';
+  const cw=document.getElementById('score-custom-reason-wrap');if(cw)cw.style.display='none';
+  // 监听原因选择切换
+  if(rs){rs.onchange=function(){
+    const cw=document.getElementById('score-custom-reason-wrap');
+    if(cw)cw.style.display=rs.value==='自定义'?'':'none';
+  };}
+  _renderScoreList();
+  // 关闭其他弹窗
+  ['class-manage-ov','teacher-class-manage-ov'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.classList.remove('on');
+  });
+  document.getElementById('add-score-ov').classList.add('on');
+}
+
+function _renderScoreList(){
+  const list=document.getElementById('add-score-list');
+  if(!list)return;
+  const cd=getClassData();
+  const members=sortMembers((cd[_scoreClassId]||[]).filter(function(m){return !m.isTeacher;}));
+  list.innerHTML='';
+  if(!members.length){list.innerHTML='<div style="text-align:center;color:var(--muted);font-size:.74rem;padding:10px">班级暂无学生</div>';return;}
+  members.forEach(function(s){
+    const sel=_scoreSelected.has(s.name);
+    const d=document.createElement('div');
+    d.dataset.name=s.name;
+    d.style.cssText='padding:9px 12px;border-radius:9px;border:2px solid '+(sel?'var(--green)':'var(--border)')+';background:'+(sel?'rgba(100,160,100,.1)':'var(--panel)')+';cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:all .15s';
+    d.innerHTML='<div style="display:flex;align-items:center;gap:8px">'
+      +'<div style="width:18px;height:18px;border-radius:5px;border:2px solid '+(sel?'var(--green)':'var(--border)')+';background:'+(sel?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;font-size:.7rem;color:#fff">'+(sel?'✓':'')+'</div>'
+      +'<span style="font-size:.78rem;font-weight:'+(sel?'600':'400')+'">'+s.name+'</span></div>'
+      +'<span style="font-size:.7rem;color:var(--muted)">⭐'+(s.score||0)+'</span>';
+    d.onclick=function(){
+      if(_scoreSelected.has(s.name))_scoreSelected.delete(s.name);
+      else _scoreSelected.add(s.name);
+      _renderScoreList();
+      _updateSelectAllBtn();
+    };
+    list.appendChild(d);
+  });
+  _updateSelectAllBtn();
+}
+
+function _updateSelectAllBtn(){
+  const cd=getClassData();
+  const total=(cd[_scoreClassId]||[]).filter(function(m){return !m.isTeacher;}).length;
+  const btn=document.getElementById('score-select-all-btn');
+  const hint=document.getElementById('score-select-hint');
+  if(btn){btn.textContent=_scoreSelected.size===total&&total>0?'取消全选':'全选';}
+  if(hint){hint.textContent='已选 '+_scoreSelected.size+' / '+total+' 人';}
+}
+
+function toggleSelectAllScore(){
+  const cd=getClassData();
+  const members=(cd[_scoreClassId]||[]).filter(function(m){return !m.isTeacher;});
+  if(_scoreSelected.size===members.length){_scoreSelected=new Set();}
+  else{_scoreSelected=new Set(members.map(function(m){return m.name;}));}
+  _renderScoreList();
+}
+
+function applyScoreBatch(){
+  // 1. 基础空值检查
+  if(!_scoreSelected.size){
+    showToast('请先选择学生！');
+    return;
+  }
+  if(!_scoreClassId){
+    showToast('未指定班级！');
+    return;
+  }
+
+  // 2. 严格的分值验证
+  const ptsInput = document.getElementById('add-score-val').value || '';
+  const pts = parseInt(ptsInput, 10);
+  if(isNaN(pts) || pts < 1 || pts > 999){
+    showToast('请填写1~999之间的有效分值！');
+    return;
+  }
+
+  // 3. 获取并验证原因
+  const reasonEl = document.getElementById('add-score-reason');
+  const customEl = document.getElementById('score-custom-reason');
+  let reason = reasonEl ? reasonEl.value : '日常表现';
+  if(reason === '自定义' && customEl){
+    reason = customEl.value.trim() || '日常表现';
+  }
+
+  // 4. 权限验证（教师或班级管理员才能操作）
+  const admins = getClassAdmins();
+  const isTeacher = S.isTeacher && (S.managedClasses || []).includes(_scoreClassId);
+  const isAsstAdmin = admins[_scoreClassId] && admins[_scoreClassId].name === S.playerName;
+  if(!isTeacher && !isAsstAdmin){
+    showToast('你没有权限给学生加减分！');
+    return;
+  }
+
+  const isAdd = _scoreMode === 'add';
+  const delta = isAdd ? pts : -pts;
+  const names = Array.from(_scoreSelected);
+  const ico = isAdd ? '⭐' : '📉';
+  const actionStr = isAdd ? `加 ${pts} 积分` : `减 ${pts} 积分`;
+
+  openConfirm(ico, `给选中的 ${names.length} 位学生${actionStr}？\n原因：${reason}`, function(){
+    const cd = getClassData();
+    const accounts = getAllAccounts();
+    let successCount = 0;
+
+    // 5. 确保班级存在于数据中
+    if(!cd[_scoreClassId]){
+      cd[_scoreClassId] = [];
+    }
+
+    names.forEach(function(name){
+      // 更新班级排名数据
+      const mem = cd[_scoreClassId].find(function(m){ return m.name === name; });
+      if(mem){
+        mem.score = Math.max(0, (mem.score || 0) + delta);
+        successCount++;
+      }
+
+      // 更新学生账号和存档数据（完整同步）
+      const acc = accounts.find(function(a){ return a.name === name && a.classId === _scoreClassId; });
+      if(acc){
+        acc.score = Math.max(0, (acc.score || 0) + delta);
+        // 同步更新学生本地存档
+        try{
+          const save = loadAccSave(acc.id);
+          save.score = Math.max(0, (save.score || 0) + delta);
+          localStorage.setItem(getAccKey(acc.id), JSON.stringify(save));
+        }catch(e){
+          console.warn(`更新学生 ${name} 存档失败:`, e);
+        }
+      }
+    });
+
+    // 保存所有修改
+    saveClassData(cd);
+    saveAllAccounts(accounts);
+
+    // 记录积分日志（用于额外积分排行）
+    if(successCount>0){
+      const log=getScoreLog(_scoreClassId);
+      const ts=Date.now();
+      names.forEach(function(name){
+        log.push({name,pts:delta,reason,time:ts,op:isAdd?'add':'sub'});
+      });
+      // 只保留最近2000条
+      if(log.length>2000)log.splice(0,log.length-2000);
+      saveScoreLog(_scoreClassId,log);
+    }
+
+    // 关闭弹窗并刷新界面
+    document.getElementById('add-score-ov').classList.remove('on');
+    updateClassSection();
+    
+    // 显示操作结果
+    if(successCount === names.length){
+      showToast(`${ico} 已成功给 ${successCount} 位同学${actionStr}！`);
+    }else{
+      showToast(`${ico} 已处理 ${successCount}/${names.length} 位同学，部分学生未找到`);
+    }
+  });
 }
 function setClassAdmin(){
   const list=getAllAccounts();
@@ -2864,13 +4077,147 @@ function importAllSaves(input){
 function checkAchs(){let got=false;ACHS.forEach(a=>{if(!S.unlockedAch.includes(a.id)&&a.cond(S)){S.unlockedAch.push(a.id);if(!S.newAch.includes(a.id))S.newAch.push(a.id);triggerAchPop(a);gainExp(20);S.coins+=10;S.totalCoins+=10;got=true;}});if(got){updateTop();persistAccount();}const n=S.newAch.length;['bd-ach','sbd-ach'].forEach(id=>{const el=document.getElementById(id);if(!el)return;if(n>0){el.textContent=n;el.classList.add('on');}else{el.textContent='';el.classList.remove('on');}});renderAchs();}
 function triggerAchPop(a){document.getElementById('ap-ico').textContent=a.ico;document.getElementById('ap-nm').textContent=a.nm;const p=document.getElementById('achpop');p.classList.add('on');setTimeout(()=>p.classList.remove('on'),3000);}
 
+// ─── TOP BAR ──────────────────────────────────────
+function updateTop(){const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};const setW=(id,w)=>{const el=document.getElementById(id);if(el)el.style.width=w;};const mx=expForLv(S.level);const expPct=Math.min(100,S.exp/mx*100)+'%';set('dc',S.coins);set('ds',S.score);set('dlv','Lv.'+S.level);set('dexph',S.exp+'/'+mx);setW('dexp',expPct);const nm=S.playerName||(S.expBoostLeft>0?`📖×${S.expBoostLeft}`:'');set('pname',nm||'点击查看我的');const _avo=S.playerAvatar||'';const ico=_avo||( S.petLevel>=5?'🌟':S.petLevel>=3?'⭐':'🌾');const av=document.getElementById('avatar');if(av)av.textContent=ico;set('sb-pname',S.playerName||'-');set('sb-pmeta',`Lv.${S.level} · ⭐${S.score}`);set('sb-lv',`Lv.${S.level} · ${S.exp}/${mx} EXP`);setW('sb-expfill',expPct);set('sb-coins',S.coins);set('sb-score',S.score);const sbav=document.getElementById('sb-av');if(sbav)sbav.textContent=ico;const pav=document.getElementById('prof-av');if(pav)pav.textContent=ico;}
 
-function renderAchs(){const g=document.getElementById('ach-grid');if(!g)return;g.innerHTML='';ACHS.forEach(a=>{const got=S.unlockedAch.includes(a.id);const d=document.createElement('div');d.className='ach '+(got?'got':'no');d.innerHTML=`<div class="aico2">${a.ico}</div><div class="anm2">${a.nm}</div><div class="adesc">${a.desc}</div>${got?'<div class="atag">✓ 已解锁</div>':''}`;g.appendChild(d);});const ac=document.getElementById('ach-count');if(ac)ac.textContent=`${S.unlockedAch.length}/${ACHS.length}`;renderPetArchive();}
+// ─── PROFILE ──────────────────────────────────────
+function updateProfile(){
+  const pn=document.getElementById('prof-name');
+  if(pn){
+    if(S.isTeacher){
+      pn.innerHTML=`${S.playerName||'未命名'} <span style="font-size:.58rem;background:rgba(232,160,32,.18);color:#a06000;border-radius:5px;padding:1px 6px;vertical-align:middle;font-weight:700">👨‍🏫 教师</span>`;
+    } else {
+      pn.textContent=S.playerName||'未命名';
+    }
+  }
+  const _avo2=S.playerAvatar||(S.petLevel>=5?'🌟':S.petLevel>=3?'⭐':'🌾');
+  const pa=document.getElementById('prof-av');if(pa&&!pa.querySelector('img'))pa.textContent=_avo2;
+  const acc2=S.totalAnswered>0?Math.round(S.totalCorrect/S.totalAnswered*100):0;
+  const ps=document.getElementById('prof-stats');
+  if(ps)ps.innerHTML=`<div class="ps"><div class="psv">Lv.${S.level}</div><div class="psl">等级</div></div><div class="ps"><div class="psv">${S.totalCorrect}</div><div class="psl">答对</div></div><div class="ps"><div class="psv">${S.harvests}</div><div class="psl">收获</div></div><div class="ps"><div class="psv">${S.coins}</div><div class="psl">金币</div></div><div class="ps"><div class="psv">${S.unlockedAch.length}</div><div class="psl">成就</div></div><div class="ps"><div class="psv">${acc2}%</div><div class="psl">正确率</div></div>`;
+  const ss=document.getElementById('study-stats');
+  if(ss)ss.innerHTML=`📝 总答题：${S.totalAnswered}<br>✅ 答对：${S.totalCorrect}（${acc2}%）<br>🔥 最高连击：${S.maxStreak}<br>🐾 宠物喂食：${S.petFeedCount}次<br>💰 累计金币：${S.totalCoins}<br>🌾 累计收获：${S.harvests}次`;
+  // 教师额外：管理班级预览（插到账号设置下方）
+  let teacherInfoEl=document.getElementById('teacher-profile-info');
+  if(S.isTeacher){
+    const settingsCard=document.querySelector('#ppanel-personal .card');
+    if(settingsCard&&!teacherInfoEl){
+      teacherInfoEl=document.createElement('div');
+      teacherInfoEl.id='teacher-profile-info';
+      teacherInfoEl.className='card';
+      settingsCard.after(teacherInfoEl);
+    }
+    if(teacherInfoEl){
+      const mc=S.managedClasses&&S.managedClasses.length?S.managedClasses:[];
+      const clsRows=mc.map(c=>'<div style="display:flex;align-items:center;padding:6px 0;border-bottom:1px solid rgba(232,160,32,.1)">'
+        +'<span style="font-size:.74rem;flex:1">🏫 <b>'+c+'</b></span>'
+        +'<button onclick="openTeacherClassManage(\''+encodeURIComponent(c)+'\')" style="padding:3px 9px;border-radius:7px;border:1px solid rgba(232,160,32,.4);background:rgba(232,160,32,.1);color:#a06000;font-size:.62rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif;margin-left:6px">⚙️ 管理</button>'
+        +'</div>').join('');
+      teacherInfoEl.innerHTML='<div class="cttl">👨‍🏫 我管理的班级</div><div style="padding:6px 0">'
+        +(mc.length?clsRows:'<div style="font-size:.7rem;color:var(--muted)">暂无管理的班级</div>')+'</div>';
+    }
+  } else if(teacherInfoEl){
+    teacherInfoEl.remove();
+  }
+  // 渲染当前激活的面板内容
+  switchProfileTab(_profileTab);
+}
+
+// ─── PROFILE TAB ──────────────────────────────────
+let _profileTab='personal';
+function switchProfileTab(tab){
+  _profileTab=tab;
+  ['personal','class'].forEach(t=>{
+    const panel=document.getElementById('ppanel-'+t);
+    const btn=document.getElementById('ptab-'+t);
+    if(panel)panel.style.display=t===tab?'':'none';
+    if(btn){
+      btn.style.background=t===tab?'var(--green)':'var(--panel)';
+      btn.style.color=t===tab?'#fff':'var(--muted)';
+      btn.style.borderColor=t===tab?'var(--green)':'var(--border)';
+      btn.style.fontWeight=t===tab?'600':'400';
+    }
+  });
+  if(tab==='class'){updateClassSection();renderClassBrowser();}
+  if(tab==='personal'){renderAccountSettings();}
+}
+
+// ─── ACH TAB ──────────────────────────────────────
+const ACH_CATEGORIES={
+  study:['q_first','q_c1','q_c10','q_c30','q_c60','q_c100','streak3','streak7','streak15','lv5','lv10'],
+  farm: ['farm_seed','farm_plant','farm_h1','farm_h10','farm_h30','expand1','expand4','coins200','seed5'],
+  pet:  ['pet_f1','pet_f20','pet_lv2','pet_lv5','shop_cloth','shop_pet','pet_drag','pet14','skin_color'],
+  social:['class_rank']
+};
+let _achTab='all';
+function switchAchTab(tab){
+  _achTab=tab;
+  const tabs=['all','study','farm','pet','social','archive'];
+  tabs.forEach(t=>{
+    const el=document.getElementById('atab-'+t);
+    if(!el)return;
+    const isOn=t===tab;
+    el.style.background=isOn?'var(--green)':'var(--panel)';
+    el.style.color=isOn?'#fff':'var(--ink)';
+    el.style.borderColor=isOn?'var(--green)':'var(--border)';
+    el.style.fontWeight=isOn?'600':'400';
+  });
+  const gridWrap=document.getElementById('ach-grid-wrap');
+  const archiveWrap=document.getElementById('pet-archive-wrap');
+  const title=document.getElementById('ach-tab-title');
+  if(tab==='archive'){
+    if(gridWrap)gridWrap.style.display='none';
+    if(archiveWrap)archiveWrap.style.display='';
+    if(title)title.textContent='📜 宠物进化档案';
+    renderPetArchive();
+  } else {
+    if(gridWrap)gridWrap.style.display='';
+    if(archiveWrap)archiveWrap.style.display='none';
+    const labels={all:'🏆 全部成就',study:'📚 学习成就',farm:'🌾 农场成就',pet:'🐾 宠物成就',social:'🏆 其他成就'};
+    if(title)title.textContent=labels[tab]||'🏆 成就大厅';
+    renderAchsFiltered(tab);
+  }
+}
+
+function renderAchsFiltered(tab){
+  const g=document.getElementById('ach-grid');if(!g)return;
+  g.innerHTML='';
+  let list=ACHS;
+  if(tab!=='all'){
+    const ids=ACH_CATEGORIES[tab]||[];
+    if(tab==='social'){
+      // social = ones not in any other category
+      const allCatIds=Object.values(ACH_CATEGORIES).flat();
+      list=ACHS.filter(a=>allCatIds.includes(a.id)||ids.includes(a.id));
+      list=ACHS.filter(a=>!['study','farm','pet'].some(c=>ACH_CATEGORIES[c].includes(a.id)));
+    } else {
+      list=ACHS.filter(a=>ids.includes(a.id));
+    }
+  }
+  list.forEach(a=>{
+    const got=S.unlockedAch.includes(a.id);
+    const d=document.createElement('div');
+    d.className='ach '+(got?'got':'no');
+    d.innerHTML=`<div class="aico2">${a.ico}</div><div class="anm2">${a.nm}</div><div class="adesc">${a.desc}</div>${got?'<div class="atag">✓ 已解锁</div>':''}`;
+    g.appendChild(d);
+  });
+  const gotCount=list.filter(a=>S.unlockedAch.includes(a.id)).length;
+  const ac=document.getElementById('ach-count');
+  if(ac)ac.textContent=`${gotCount}/${list.length}`;
+}
+
+function renderAchs(){
+  renderAchsFiltered(_achTab==='archive'?'all':_achTab);
+  const allGot=S.unlockedAch.length;
+  const ac=document.getElementById('ach-count');
+  if(_achTab==='all'&&ac)ac.textContent=`${allGot}/${ACHS.length}`;
+  const n=S.newAch.length;
+  ['bd-ach','sbd-ach'].forEach(id=>{const el=document.getElementById(id);if(!el)return;if(n>0){el.textContent=n;el.classList.add('on');}else{el.textContent='';el.classList.remove('on');}});
+  if(_achTab==='archive')renderPetArchive();
+}
 
 function renderPetArchive(){
-  const g=document.getElementById('pet-archive-grid');
-  const cnt=document.getElementById('pet-archive-count');
-  if(!g)return;
+  const g=document.getElementById('pet-archive-grid');if(!g)return;
   if(!S.petReachedLevels)S.petReachedLevels={};
   g.innerHTML='';
   const ownedIds=S.ownedPets||['p_hamster'];
@@ -2881,7 +4228,7 @@ function renderPetArchive(){
     const maxStage=stages.length;
     const reached=Math.max(S.petReachedLevels[petId]||1,S.activePet===petId?S.petLevel:1);
     const pct=Math.round((reached/maxStage)*100);
-    const stageName=stages[Math.min(reached-1,stages.length-1)]?.name||'未知';
+    const stageName=(stages[Math.min(reached-1,stages.length-1)]||{}).name||'未知';
     const isActive=S.activePet===petId;
     const d=document.createElement('div');
     d.style.cssText='background:var(--panel);border-radius:11px;border:1.5px solid '+(isActive?'var(--green)':'var(--border)')+';padding:9px;text-align:center';
@@ -2894,20 +4241,11 @@ function renderPetArchive(){
       +`<div style="font-size:.58rem;color:var(--muted)">Lv.${reached} / ${maxStage}阶 · ${pct}%</div>`;
     g.appendChild(d);
   });
-  if(cnt)cnt.textContent=ownedIds.length+'只';
 }
-
-// ─── TOP BAR ──────────────────────────────────────
-function updateTop(){const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};const setW=(id,w)=>{const el=document.getElementById(id);if(el)el.style.width=w;};const mx=expForLv(S.level);const expPct=Math.min(100,S.exp/mx*100)+'%';set('dc',S.coins);set('ds',S.score);set('dlv','Lv.'+S.level);set('dexph',S.exp+'/'+mx);setW('dexp',expPct);const nm=S.playerName||(S.expBoostLeft>0?`📖×${S.expBoostLeft}`:'');set('pname',nm||'点击查看我的');const _avo=S.playerAvatar||'';const ico=_avo||( S.petLevel>=5?'🌟':S.petLevel>=3?'⭐':'🌾');const av=document.getElementById('avatar');if(av)av.textContent=ico;set('sb-pname',S.playerName||'-');set('sb-pmeta',`Lv.${S.level} · ⭐${S.score}`);set('sb-lv',`Lv.${S.level} · ${S.exp}/${mx} EXP`);setW('sb-expfill',expPct);set('sb-coins',S.coins);set('sb-score',S.score);const sbav=document.getElementById('sb-av');if(sbav)sbav.textContent=ico;const pav=document.getElementById('prof-av');if(pav)pav.textContent=ico;}
-
-// ─── PROFILE ──────────────────────────────────────
-function updateProfile(){const pn=document.getElementById('prof-name');if(pn)pn.textContent=S.playerName||'未命名';const _avo2=S.playerAvatar||(S.petLevel>=5?'🌟':S.petLevel>=3?'⭐':'🌾');const pa=document.getElementById('prof-av');if(pa)pa.textContent=_avo2;const acc2=S.totalAnswered>0?Math.round(S.totalCorrect/S.totalAnswered*100):0;const ps=document.getElementById('prof-stats');if(ps)ps.innerHTML=`<div class="ps"><div class="psv">Lv.${S.level}</div><div class="psl">等级</div></div><div class="ps"><div class="psv">${S.totalCorrect}</div><div class="psl">答对</div></div><div class="ps"><div class="psv">${S.harvests}</div><div class="psl">收获</div></div><div class="ps"><div class="psv">${S.coins}</div><div class="psl">金币</div></div><div class="ps"><div class="psv">${S.unlockedAch.length}</div><div class="psl">成就</div></div><div class="ps"><div class="psv">${acc2}%</div><div class="psl">正确率</div></div>`;const ss=document.getElementById('study-stats');if(ss)ss.innerHTML=`📝 总答题：${S.totalAnswered}<br>✅ 答对：${S.totalCorrect}（${acc2}%）<br>🔥 最高连击：${S.maxStreak}<br>🐾 宠物喂食：${S.petFeedCount}次<br>💰 累计金币：${S.totalCoins}<br>🌾 累计收获：${S.harvests}次`;updateClassSection();renderAccountSettings();renderClassBrowser();}
-
-// ─── NAME MODAL ───────────────────────────────────
 let nameTarget='player';
 function openNameModal(t){nameTarget=t;const mttl=document.getElementById('name-mttl');if(mttl)mttl.textContent=t==='pet'?'给宠物起名字':'设置名字';const ni=document.getElementById('name-input');if(ni)ni.value=t==='pet'?(S.petName||''):(S.playerName||'');document.getElementById('name-ov').classList.add('on');setTimeout(()=>{const ni=document.getElementById('name-input');if(ni)ni.focus();},200);}
 function randomName(){const ni=document.getElementById('name-input');if(!ni)return;ni.value=nameTarget==='pet'?PET_NAMES[Math.floor(Math.random()*PET_NAMES.length)]:PLAYER_NAMES[Math.floor(Math.random()*PLAYER_NAMES.length)];}
-function saveName(){const v=(document.getElementById('name-input')?.value||'').trim();if(!v){showToast('名字不能为空！');return;}if(nameTarget==='pet'){S.petName=v;saveCurPet();persistAccount();updatePetUI();showPetTalk('rename_ok');}else{S.playerName=v;persistAccount();updateTop();const list=getAllAccounts();const acc=list.find(a=>a.id===CURRENT_ACC_ID);if(acc){acc.name=v;saveAllAccounts(list);}}document.getElementById('name-ov').classList.remove('on');showToast('✅ 名字已保存！');}
+function saveName(){const v=((document.getElementById('name-input')||{}).value||'').trim();if(!v){showToast('名字不能为空！');return;}if(nameTarget==='pet'){S.petName=v;saveCurPet();persistAccount();updatePetUI();showPetTalk('rename_ok');}else{S.playerName=v;persistAccount();updateTop();const list=getAllAccounts();const acc=list.find(a=>a.id===CURRENT_ACC_ID);if(acc){acc.name=v;saveAllAccounts(list);}updateProfile();}document.getElementById('name-ov').classList.remove('on');showToast('✅ 名字已保存！');}
 
 // ─── CONFIRM（支持取消回调）────────────────────────
 let confirmCb=null,confirmCancelCb=null;
@@ -2923,7 +4261,22 @@ function showToast(msg){const t=document.getElementById('toast');t.textContent=m
 function spawnP(emojis){for(let i=0;i<5;i++){setTimeout(()=>{const p=document.createElement('div');p.className='ptcl';p.textContent=emojis[Math.floor(Math.random()*emojis.length)];p.style.left=(25+Math.random()*50)+'vw';p.style.top=(25+Math.random()*45)+'vh';document.body.appendChild(p);setTimeout(()=>p.remove(),1300);},i*90);}}
 
 // ─── TAB ──────────────────────────────────────────
-function switchTab(name){['farm','pet','shop','ach','profile'].forEach(n=>{document.getElementById('page-'+n)?.classList.toggle('active',n===name);const tb=document.getElementById('tb-'+n);if(tb)tb.classList.toggle('on',n===name);});const sbn=document.querySelector('.sb-nav');if(sbn){sbn.querySelectorAll('.sb-item').forEach((el,i)=>el.classList.toggle('on',['farm','pet','shop','ach','profile'][i]===name));}if(name==='ach'){S.newAch=[];persistAccount();['bd-ach','sbd-ach'].forEach(id=>{const el=document.getElementById(id);if(el){el.textContent='';el.classList.remove('on');}});}if(name==='shop')renderShop();if(name==='profile')updateProfile();if(name==='pet'){updatePetUI();if(!petAF)startPetAnim();drawPet();setTimeout(drawPet,50);setTimeout(drawPet,200);}}
+function switchTab(name){
+  ['farm','pet','shop','ach','profile'].forEach(n=>{
+    (document.getElementById('page-'+n)||{classList:{toggle:function(){}}}).classList.toggle('active',n===name);
+    const tb=document.getElementById('tb-'+n);if(tb)tb.classList.toggle('on',n===name);
+  });
+  const sbn=document.querySelector('.sb-nav');
+  if(sbn){sbn.querySelectorAll('.sb-item').forEach((el,i)=>el.classList.toggle('on',['farm','pet','shop','ach','profile'][i]===name));}
+  if(name==='ach'){
+    S.newAch=[];persistAccount();
+    ['bd-ach','sbd-ach'].forEach(id=>{const el=document.getElementById(id);if(el){el.textContent='';el.classList.remove('on');}});
+    switchAchTab(_achTab||'all');
+  }
+  if(name==='shop')renderShop();
+  if(name==='profile')updateProfile();
+  if(name==='pet'){updatePetUI();if(!petAF)startPetAnim();drawPet();setTimeout(drawPet,50);setTimeout(drawPet,200);}
+}
 
 // ─── EXPORT / IMPORT ──────────────────────────────
 function exportSave(){const data={version:6,playerName:S.playerName,save:S,exportTime:new Date().toISOString()};const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`学习农场_${S.playerName||'存档'}_${new Date().toLocaleDateString('zh-CN')}.json`;a.click();URL.revokeObjectURL(url);showToast('✅ 存档已导出！');}
@@ -2975,8 +4328,9 @@ function initGame(){petX=75;petY=76;petWalking=false;
   const sbp=document.getElementById('sb-pause-btn');if(sbp)sbp.classList.remove('paused');
   const sbpi=document.getElementById('sb-pause-ico');if(sbpi)sbpi.textContent='⏸';
   const sbpl=document.getElementById('sb-pause-lbl');if(sbpl)sbpl.textContent='暂停游戏';
-  document.getElementById('pause-ov')?.classList.remove('on');
+  (document.getElementById('pause-ov')||{}).classList.remove('on');
   renderFarm();updatePetUI();updateTop();renderAchs();checkAchs();renderSubjectBars();startPetAnim();updateProfile();switchTab('farm');
+  _loadProfileImgIfAny();
   // 更新行走开关UI
   const tog=document.getElementById('walk-toggle'),ico=document.getElementById('walk-ico'),lbl=document.getElementById('walk-lbl');
   if(tog)tog.classList.remove('on');if(ico)ico.textContent='🧍';if(lbl)lbl.textContent='立正模式';
@@ -2984,3 +4338,195 @@ function initGame(){petX=75;petY=76;petWalking=false;
 
 (function init(){renderLoginScreen();setInterval(naturalDecay,60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden&&CURRENT_ACC_ID){if(!petAF)startPetAnim();else setTimeout(drawPet,100);}});})();
 
+
+function toggleTeacherRank(){S.teacherParticipateRank=!S.teacherParticipateRank;if(S.classId){const cd=getClassData();if(cd[S.classId]){const m=cd[S.classId].find(x=>x.name===S.playerName);if(m)m.hideFromRank=!S.teacherParticipateRank;saveClassData(cd);}}persistAccount();updateClassSection();showToast(S.teacherParticipateRank?'✅ 已开启参与排名':'已关闭参与排名');}
+
+// ========== 班级管理增强功能 ==========
+// 导出班级学生名单
+function exportClassList(encodedClassName){
+  const className = decodeURIComponent(encodedClassName);
+  const cd = getClassData();
+  const members = cd[className] || [];
+  const students = members.filter(m=>!m.isTeacher);
+  
+  if(students.length===0){
+    showToast('班级暂无学生，无法导出');
+    return;
+  }
+
+  // 生成CSV内容
+  let csvContent = '姓名,班级,等级,积分,密码\n';
+  const accounts = getAllAccounts();
+  students.forEach(s=>{
+    const acc = accounts.find(a=>a.name===s.name && a.classId===className);
+    const pin = (acc||{}).pin || '未设置';
+    csvContent += `${s.name},${className},${s.level||1},${s.score||0},${pin}\n`;
+  });
+
+  // 下载文件
+  const blob = new Blob(['\ufeff' + csvContent], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${className}_学生名单_${new Date().toLocaleDateString('zh-CN')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`✅ 已导出${students.length}名学生名单`);
+}
+
+// 批量重置班级学生密码（清空密码）
+function batchResetStudentPin(encodedClassName){
+  const className = decodeURIComponent(encodedClassName);
+  openConfirm('🔓',`确定重置【${className}】所有学生的密码？\n重置后学生账号将无密码，可直接登录`,()=>{
+    const accounts = getAllAccounts();
+    let resetCount = 0;
+    accounts.forEach(acc=>{
+      if(acc.classId===className && !acc.isTeacher && acc.pin){
+        acc.pin = '';
+        resetCount++;
+      }
+    });
+    saveAllAccounts(accounts);
+    showToast(`✅ 已重置${resetCount}名学生的密码`);
+  },true);
+}
+
+// 清空班级学生数据
+function clearClassStudents(encodedClassName){
+  const className = decodeURIComponent(encodedClassName);
+  openConfirm('💥',`确定清空【${className}】的所有学生数据？\n此操作仅移除班级排名，不会删除学生本地账号！`,()=>{
+    const cd = getClassData();
+    if(cd[className]){
+      // 保留教师，清空学生
+      const teachers = cd[className].filter(m=>m.isTeacher);
+      cd[className] = teachers;
+      saveClassData(cd);
+    }
+    renderTeacherClassView();
+    showToast('✅ 班级学生数据已清空');
+  },true);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ★ 拖拽布局调整系统（桌面端）
+// ══════════════════════════════════════════════════════════════
+const LAYOUT_KEY='jbfarm_layout_v2';
+let _layoutEditMode=false;
+
+function getLayoutConfig(){
+  try{return JSON.parse(localStorage.getItem(LAYOUT_KEY)||'{}');}
+  catch(e){return {};}
+}
+function saveLayoutConfig(cfg){
+  try{localStorage.setItem(LAYOUT_KEY,JSON.stringify(cfg));}catch(e){}
+}
+
+// 初始化所有页面的 resize handles
+function _initResizeHandles(){
+  // 农场页：dtwo 左右比例
+  _makeHorizHandle('page-farm','.dtwo','farm');
+  // 宠物页：dpet 左右比例（宠物展示/照顾宽度）
+  _makeHorizHandle('page-pet','.dpet','pet');
+  // 我的页：两栏（个人/班级面板）—— 这一页改为单列，跳过
+}
+
+function _makeHorizHandle(pageId, gridSel, key){
+  const page=document.getElementById(pageId);if(!page)return;
+  const grid=page.querySelector(gridSel);if(!grid)return;
+  if(grid.querySelector('.resize-handle'))return; // 已存在
+  // 将 grid 设为 relative
+  grid.style.position='relative';
+  const handle=document.createElement('div');
+  handle.className='resize-handle resize-handle-h';
+  handle.title='拖动调整左右比例';
+  // 初始位置居中
+  _positionHandle(handle,grid);
+  grid.appendChild(handle);
+
+  let startX=0,startCols=null;
+  const onDown=(e)=>{
+    if(!_layoutEditMode)return;
+    e.preventDefault();
+    startX=e.clientX||(e.touches&&e.touches[0].clientX)||0;
+    startCols=grid.style.gridTemplateColumns||getComputedStyle(grid).gridTemplateColumns;
+    handle.classList.add('dragging');
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('touchmove',onMoveT,{passive:false});
+    document.addEventListener('mouseup',onUp);
+    document.addEventListener('touchend',onUp);
+  };
+  const onMove=(e)=>{
+    const dx=(e.clientX||(e.touches&&e.touches[0].clientX)||startX)-startX;
+    const totalW=grid.offsetWidth;
+    const newLeftPx=Math.max(100,Math.min(totalW-100,(totalW/2)+dx));
+    const fr1=newLeftPx/totalW;
+    const fr2=1-fr1;
+    grid.style.gridTemplateColumns=`${fr1.toFixed(3)}fr ${fr2.toFixed(3)}fr`;
+    _positionHandle(handle,grid);
+  };
+  const onMoveT=(e)=>{e.preventDefault();onMove(e);};
+  const onUp=()=>{
+    handle.classList.remove('dragging');
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('touchmove',onMoveT);
+    document.removeEventListener('mouseup',onUp);
+    document.removeEventListener('touchend',onUp);
+    // 保存
+    const cfg=getLayoutConfig();
+    cfg[key]=grid.style.gridTemplateColumns;
+    saveLayoutConfig(cfg);
+    showToast('✅ 布局已保存');
+  };
+  handle.addEventListener('mousedown',onDown);
+  handle.addEventListener('touchstart',onDown,{passive:false});
+}
+
+function _positionHandle(handle,grid){
+  // 找到第一列宽度
+  const cols=getComputedStyle(grid).gridTemplateColumns.split(' ');
+  if(cols.length>=2){
+    const firstW=parseFloat(cols[0]);
+    handle.style.left=firstW+'px';
+  } else {
+    handle.style.left='50%';
+  }
+}
+
+function applyLayoutConfig(){
+  const cfg=getLayoutConfig();
+  const apply=(pageId,sel,val)=>{
+    if(!val)return;
+    const p=document.getElementById(pageId);if(!p)return;
+    const g=p.querySelector(sel);if(g)g.style.gridTemplateColumns=val;
+  };
+  apply('page-farm','.dtwo',cfg.farm);
+  apply('page-pet','.dpet',cfg.pet);
+}
+
+function toggleLayoutEditMode(){
+  _layoutEditMode=!_layoutEditMode;
+  const btn=document.getElementById('layout-edit-btn');
+  const pages=document.getElementById('pages');
+  if(btn){btn.textContent=_layoutEditMode?'✅ 完成布局调整':'⚙️ 调整布局';btn.classList.toggle('active',_layoutEditMode);}
+  if(pages)pages.classList.toggle('layout-edit-mode',_layoutEditMode);
+  if(_layoutEditMode){
+    showToast('💡 拖动分隔线调整板块大小');
+    _initResizeHandles();
+  }
+}
+
+function resetLayout(){
+  localStorage.removeItem(LAYOUT_KEY);
+  ['page-farm','page-pet'].forEach(pid=>{
+    const p=document.getElementById(pid);if(!p)return;
+    ['dtwo','dpet'].forEach(cls=>{const g=p.querySelector('.'+cls);if(g)g.style.gridTemplateColumns='';});
+  });
+  showToast('已恢复默认布局');
+}
+
+// 废弃旧接口，保留兼容性
+function openLayoutEdit(){toggleLayoutEditMode();}
+function saveLayoutEdit(){}
+
+// 初始化时应用布局
+(function(){setTimeout(()=>{applyLayoutConfig();_initResizeHandles();},200);})();

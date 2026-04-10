@@ -411,7 +411,8 @@ window.ACHS=[
 
 // ─── 默认存档 ───
 window.DEFAULT_SAVE={
-  ver:6, playerName:'', classId:'',
+  ver:6, playerName:'', classId:'', isTeacher:false,
+  managedClasses:[], // 教师管理的班级列表
   level:1, exp:0, score:0, coins:50, totalCoins:50,
   totalAnswered:0, totalCorrect:0, maxStreak:0, curStreak:0,
   catCorrect:{基础:0,人物:0,属性:0,形态:0,心理:0,教师:0,课程:0,德育:0},

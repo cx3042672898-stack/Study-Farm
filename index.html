@@ -17,7 +17,7 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 
 /* ══ LOGIN ══ */
 #login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;
-  min-height:100vh;padding:20px;background:linear-gradient(135deg,#e8f5e8,#f5f0e8)}
+  min-height:100vh;padding:20px;background:var(--bg);transition:background .3s}
 .ls-logo{font-size:3rem;margin-bottom:6px}
 .ls-title{font-family:'Ma Shan Zheng',cursive;font-size:2rem;color:var(--dgreen);margin-bottom:2px}
 .ls-sub{font-size:.78rem;color:var(--muted);margin-bottom:18px}
@@ -77,7 +77,7 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
   background:var(--panel);font-size:.66rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;
   color:var(--ink);white-space:nowrap;flex-shrink:0;transition:all .18s}
 #pause-btn.paused{background:var(--gold);color:#fff;border-color:var(--gold)}
-@media(min-width:900px){#pause-btn{display:none}}
+@media(min-width:900px){#pause-btn{display:none}#theme-mobile-btn{display:none}}
 #expbar{background:var(--panel);padding:4px 12px 6px;flex-shrink:0;border-bottom:1px solid var(--border)}
 .exprow{display:flex;align-items:center;gap:6px}
 .lvtag{background:linear-gradient(135deg,var(--gold),#c87010);color:#fff;font-size:.6rem;
@@ -118,14 +118,37 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 
 /* ══ DESKTOP ≥900px ══ */
 @media(min-width:900px){
-  body{background:#c8d8c8}
+  body{background:var(--bg)}
+  /* 登录页桌面端：两栏居中布局，不挤在中间 */
+  #login-screen{
+    flex-direction:row;align-items:stretch;justify-content:center;
+    padding:0;min-height:100vh;
+  }
+  #login-screen > .ls-logo,
+  #login-screen > .ls-title,
+  #login-screen > .ls-sub{display:none}
+  .login-desktop-wrap{
+    display:flex;flex-direction:row;width:100%;max-width:900px;
+    margin:auto;padding:40px 24px;gap:40px;align-items:flex-start;
+  }
+  .login-desktop-left{
+    flex:1;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;padding:40px 20px;
+    background:var(--panel);border-radius:20px;border:1.5px solid var(--border);
+    box-shadow:0 4px 24px var(--shadow);
+  }
+  .login-desktop-right{
+    flex:1;display:flex;flex-direction:column;gap:10px;
+  }
   #app.active{flex-direction:row;height:100vh;max-width:100%}
   #topbar,#expbar,#tabbar,#subject-bar-mobile{display:none!important}
   #sidebar{display:flex!important}
   /* pages区域：可滚动，非绝对定位 */
-  #pages{flex:1;overflow-y:auto;overflow-x:hidden;position:static}
+  #pages{flex:1;overflow-y:auto;overflow-x:hidden;position:relative}
   .page{position:static;overflow:visible;padding:20px 22px;display:none;background:transparent}
   .page.active{display:block}
+  /* 我的页面在桌面端：绝对定位覆盖整个pages区域 */
+  #page-profile.active{position:absolute;inset:0}
   /* 两栏布局 */
   .dtwo{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   /* 宠物页：左列固定宽度 */
@@ -184,12 +207,12 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 .sb-stat-chip{font-size:.65rem;color:rgba(255,255,255,.65)}
 /* 缩放按钮 */
 #zoom-ctrl{display:none;position:fixed;bottom:16px;right:16px;z-index:100;
-  background:rgba(42,90,42,.85);border-radius:99px;padding:4px 6px;gap:2px;
-  backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,.15)}
+  background:var(--panel);border-radius:99px;padding:4px 6px;gap:2px;
+  backdrop-filter:blur(4px);border:1.5px solid var(--border);box-shadow:0 2px 8px var(--shadow)}
 .zoom-btn{width:28px;height:28px;display:flex;align-items:center;justify-content:center;
-  cursor:pointer;border-radius:50%;font-size:.9rem;color:rgba(255,255,255,.8);
+  cursor:pointer;border-radius:50%;font-size:.9rem;color:var(--ink);
   transition:all .15s}
-.zoom-btn:hover{background:rgba(255,255,255,.15);color:#fff}
+.zoom-btn:hover{background:rgba(100,160,100,.12);color:var(--dgreen)}
 
 /* ── COMMON ── */
 .card{background:var(--panel);border-radius:14px;border:1.5px solid var(--border);
@@ -319,6 +342,11 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
   font-family:'Noto Sans SC',sans-serif;font-size:.88rem;color:var(--ink);
   background:#fff;outline:none}
 .ci:focus{border-color:var(--green)}
+.score-preset-btn{padding:5px 10px;border-radius:8px;border:1.5px solid var(--border);
+  background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;
+  color:var(--dgreen);transition:all .15s;flex-shrink:0}
+.score-preset-btn:hover{background:rgba(100,160,100,.12);border-color:var(--green)}
+.score-preset-btn.active{background:var(--green);color:#fff;border-color:var(--green)}
 .import-area{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:9px 12px;
   font-family:'Noto Sans SC',sans-serif;font-size:.82rem;height:100px;resize:vertical;
   color:var(--ink);background:#fff;outline:none;user-select:text}
@@ -475,17 +503,23 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 .sb-pause-item.paused{color:#f0c040;background:rgba(240,192,64,.1)}
 @media(max-width:899px){.sb-pause-item{display:none}}
 /* ── 拖拽布局调整 ── */
-.resize-handle{position:absolute;background:rgba(100,160,100,.0);transition:background .2s;z-index:10;cursor:col-resize;display:none}
-.resize-handle:hover,.resize-handle.dragging{background:rgba(100,160,100,.35)}
-.resize-handle-h{width:8px;top:0;bottom:0;transform:translateX(-50%)}
-.resize-handle-v{height:8px;left:0;right:0;cursor:row-resize;transform:translateY(-50%)}
+.resize-handle{position:absolute;background:rgba(100,160,100,.0);transition:all .2s;z-index:10;cursor:col-resize;display:none;color:var(--green)}
+.resize-handle:hover,.resize-handle.dragging{background:rgba(100,160,100,.18)}
+.resize-handle-h{width:20px;top:0;bottom:0;transform:translateX(-50%)}
+.resize-handle-v{height:20px;left:0;right:0;cursor:row-resize;transform:translateY(-50%)}
 @media(min-width:900px){.resize-handle{display:block}}
-/* 布局编辑模式激活时高亮 */
-.layout-edit-mode .resize-handle{background:rgba(100,160,100,.18);border:1px dashed rgba(100,160,100,.5)}
-.layout-edit-btn{position:fixed;bottom:16px;left:16px;z-index:100;background:rgba(42,90,42,.85);border-radius:99px;padding:5px 12px;font-size:.65rem;color:rgba(255,255,255,.8);cursor:pointer;border:1px solid rgba(255,255,255,.15);backdrop-filter:blur(4px);display:none;font-family:'Noto Sans SC',sans-serif;transition:all .2s}
-.layout-edit-btn:hover{background:rgba(42,90,42,1);color:#fff}
-.layout-edit-btn.active{background:var(--green);color:#fff}
-@media(min-width:900px){.layout-edit-btn{display:block}}
+/* 布局编辑模式：分隔线高亮 + 卡片可拖动提示 */
+.layout-edit-mode .resize-handle{background:rgba(100,160,100,.15);border:1.5px dashed rgba(100,160,100,.6)}
+.layout-edit-mode .resize-handle:hover{background:rgba(100,160,100,.3)}
+.layout-edit-mode .card[id]{cursor:grab;transition:box-shadow .2s}
+.layout-edit-mode .card[id]:hover{box-shadow:0 0 0 2px var(--green),0 4px 16px var(--shadow)}
+.layout-edit-btn{position:fixed;bottom:16px;left:16px;z-index:100;
+  background:var(--panel);border-radius:99px;padding:5px 12px;font-size:.65rem;
+  color:var(--dgreen);cursor:pointer;border:1.5px solid var(--border);
+  box-shadow:0 2px 8px var(--shadow);display:none;font-family:'Noto Sans SC',sans-serif;transition:all .2s}
+.layout-edit-btn:hover{background:rgba(100,160,100,.1)}
+.layout-edit-btn.active{background:var(--green);color:#fff;border-color:var(--green)}
+@media(min-width:900px){.layout-edit-btn{display:block;left:calc(var(--sidebar-w) + 16px)}}
 .avatar-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-bottom:10px}
 .av-item{aspect-ratio:1;border-radius:10px;border:2px solid var(--border);display:flex;align-items:center;
   justify-content:center;font-size:1.4rem;cursor:pointer;transition:all .15s;background:#fff}
@@ -496,39 +530,269 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
   outline:none;text-align:center;letter-spacing:4px}
 .av-custom-input:focus{border-color:var(--green)}
 
+
+/* ── 农场页手机端布局（仓库在操作下方） ── */
+@media(max-width:899px){
+  .farm-right-col .farm-warehouse-mobile{order:10}
+  .farm-main-grid{display:flex;flex-direction:column}
+  .farm-left-col{order:1}
+  .farm-right-col{order:2;display:flex;flex-direction:column}
+  .farm-right-col>.card:first-child{order:1} /* 快捷操作 */
+  .farm-warehouse-mobile{order:2!important;margin-top:0}
+}
+@media(min-width:900px){
+  .farm-warehouse-mobile{display:block} /* 在右栏底部 */
+}
+/* ── 主题CSS变量 ── */
+body[data-theme="dark"]{
+  --bg:#111e12;--panel:#1a2e1b;--green:#50c050;--dgreen:#30a030;
+  --gold:#d4a820;--brown:#8b6040;--ink:#d0e8d0;--muted:#6a8a68;
+  --red:#e06060;--border:rgba(80,180,80,.22);--shadow:rgba(0,0,0,.4);
+}
+body[data-theme="dark"] #sidebar{background:linear-gradient(180deg,#0a1a0a,#050f05)}
+body[data-theme="dark"] .page{background:var(--bg)}
+body[data-theme="sakura"]{
+  --bg:#fff0f5;--panel:#fff5f8;--green:#d06080;--dgreen:#a03060;
+  --gold:#e8a030;--brown:#c07890;--ink:#3a1520;--muted:#a87888;
+  --red:#e04060;--border:rgba(220,100,140,.18);--shadow:rgba(200,80,120,.09);
+}
+body[data-theme="sakura"] #sidebar{background:linear-gradient(180deg,#5a1030,#3a0820)}
+body[data-theme="ocean"]{
+  --bg:#f0f5ff;--panel:#f5f8ff;--green:#3a80c0;--dgreen:#1a5090;
+  --gold:#e0a000;--brown:#6080a0;--ink:#0a1530;--muted:#6080a0;
+  --red:#e04050;--border:rgba(60,120,200,.18);--shadow:rgba(40,80,160,.09);
+}
+body[data-theme="ocean"] #sidebar{background:linear-gradient(180deg,#0a2050,#060f30)}
+body[data-theme="forest"]{
+  --bg:#f0f8f0;--panel:#f5fbf5;--green:#2a8a2a;--dgreen:#1a5a1a;
+  --gold:#c0a010;--brown:#5a7840;--ink:#0a200a;--muted:#5a7a5a;
+  --red:#c03030;--border:rgba(50,140,50,.2);--shadow:rgba(30,100,30,.1);
+}
+body[data-theme="forest"] #sidebar{background:linear-gradient(180deg,#0a2a0a,#050f05)}
+/* 主题弹窗 */
+.theme-modal{padding:18px 14px}
+.theme-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
+.theme-card{padding:12px;border-radius:12px;border:2px solid var(--border);cursor:pointer;text-align:center;transition:all .2s;background:var(--panel)}
+.theme-card.active{border-color:var(--gold);box-shadow:0 0 0 2px rgba(232,160,32,.3)}
+.theme-card:hover{transform:scale(1.03)}
+.theme-preview{height:36px;border-radius:8px;margin-bottom:6px;display:flex;gap:4px;overflow:hidden}
+.theme-preview-bar{flex:1;border-radius:4px}
+.theme-card-name{font-size:.72rem;font-weight:600}
+/* 主题按钮 */
+.theme-btn{display:none;position:fixed;bottom:58px;right:16px;z-index:100;
+  background:var(--panel);border-radius:99px;padding:5px 12px;font-size:.65rem;
+  color:var(--dgreen);cursor:pointer;border:1.5px solid var(--border);
+  box-shadow:0 2px 8px var(--shadow);font-family:'Noto Sans SC',sans-serif;transition:all .2s}
+.theme-btn:hover{background:rgba(100,160,100,.1);color:var(--dgreen)}
+@media(min-width:900px){.theme-btn{display:block;bottom:58px;right:16px}}
+@media(max-width:899px){.theme-btn{display:block;bottom:calc(var(--tab-h)+10px)}}
+/* 衣服位置调整按钮 */
+.cloth-adjust-btn{margin-top:4px;width:100%;padding:5px;border-radius:7px;border:1px dashed rgba(74,144,217,.5);background:rgba(74,144,217,.06);color:#2060a0;font-size:.64rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif}
+
+
+/* ── 我的页面 桌面端双栏布局 ── */
+@media(min-width:900px){
+  .profile-desktop-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+  .profile-left-col{display:flex;flex-direction:column;gap:14px}
+  .profile-right-col{display:flex;flex-direction:column;gap:14px}
+  /* 桌面端 profile active 时：absolute fill + flex column */
+  #page-profile.active{
+    display:flex!important;flex-direction:column;
+    position:absolute;inset:0;
+    overflow:hidden;padding:0;background:var(--bg);
+  }
+  /* 头像卡片：顶部固定风格，去圆角边 */
+  #page-profile.active #prof-header-card{
+    flex-shrink:0;border-radius:0;border-left:none;border-right:none;border-top:none;margin:0;box-shadow:none;
+  }
+  /* tab行固定 */
+  #page-profile.active #profile-tab-row{flex-shrink:0;margin-bottom:0}
+  /* 滚动区域 */
+  #profile-scroll-body{flex:1;overflow-y:auto;min-height:0;padding:12px 12px 20px}
+  /* 卡片圆角 */
+  .profile-left-col .card,.profile-right-col .card{border-radius:12px;border:1.5px solid var(--border);margin-bottom:0}
+}
+/* ── 答题弹窗 桌面端横向 ── */
+@media(min-width:900px){
+  /* 布局切换按钮 */
+  #quiz-layout-btn{display:block!important}
+
+  /* 横版模式（默认） */
+  #quiz-ov:not([data-layout="v"]) .modal{
+    max-width:740px;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    column-gap:24px;
+    row-gap:6px;
+    align-items:start;
+    position:relative;
+  }
+  #quiz-ov:not([data-layout="v"]) .modal .mttl    {grid-column:1/-1;grid-row:1}
+  #quiz-ov:not([data-layout="v"]) .modal .qprog   {grid-column:1/-1;grid-row:2;margin-bottom:4px}
+  #quiz-ov:not([data-layout="v"]) .modal .qhint   {grid-column:1/-1;grid-row:3;font-size:.68rem}
+  #quiz-ov:not([data-layout="v"]) .modal #sub-badge{grid-column:1;grid-row:4;justify-self:start}
+  #quiz-ov:not([data-layout="v"]) .modal .qcat    {grid-column:2;grid-row:4;justify-self:end}
+  #quiz-ov:not([data-layout="v"]) .modal .qtxt    {grid-column:1;grid-row:5;font-size:1rem;line-height:1.85;align-self:start;padding-right:8px}
+  #quiz-ov:not([data-layout="v"]) .modal .qopts-wrap{grid-column:2;grid-row:5/8;align-self:start}
+  #quiz-ov:not([data-layout="v"]) .modal .explain {grid-column:1/-1;grid-row:8}
+  #quiz-ov:not([data-layout="v"]) .modal .mbrow   {grid-column:1/-1;grid-row:9}
+
+  /* 竖版模式：单列，最大宽度400 */
+  #quiz-ov[data-layout="v"] .modal{
+    max-width:420px;display:block;
+  }
+}
+/* ── 主题修正：消除绿色底色 ── */
+/* 各主题不再用绿色border/shadow覆盖，用中性色 */
+body[data-theme="night"]{
+  --bg:#141820;--panel:#1e2530;--green:#5a9cf0;--dgreen:#3a7ad0;
+  --gold:#d4a030;--brown:#7080a0;--ink:#c8d8f0;--muted:#607090;
+  --red:#e06070;--border:rgba(80,120,200,.2);--shadow:rgba(0,0,0,.5);
+  --purple:#9080e0;
+}
+body[data-theme="night"] #sidebar{background:linear-gradient(180deg,#1a2040,#0e1428)}
+body[data-theme="night"] .card{background:#1e2530;border-color:rgba(80,120,200,.18)}
+body[data-theme="night"] .plot.empty{background:linear-gradient(145deg,#2a3040,#202838)}
+body[data-theme="spring"]{
+  --bg:#f0fdf0;--panel:#f8fff8;--green:#3aaa3a;--dgreen:#1a8a1a;
+  --gold:#c8a000;--brown:#6a9060;--ink:#0a2010;--muted:#5a8060;
+  --red:#e05060;--border:rgba(60,160,60,.18);--shadow:rgba(30,120,30,.08);
+}
+body[data-theme="spring"] #sidebar{background:linear-gradient(180deg,#1a4a1a,#0a2a0a)}
+body[data-theme="summer"]{
+  --bg:#f0f8ff;--panel:#f8fbff;--green:#0090c0;--dgreen:#006890;
+  --gold:#e08000;--brown:#408090;--ink:#002840;--muted:#4070a0;
+  --red:#e04050;--border:rgba(0,120,180,.15);--shadow:rgba(0,80,140,.08);
+}
+body[data-theme="summer"] #sidebar{background:linear-gradient(180deg,#003860,#001830)}
+body[data-theme="autumn"]{
+  --bg:#fdf5e8;--panel:#fff9f0;--green:#c06820;--dgreen:#a04800;
+  --gold:#d08000;--brown:#8b5020;--ink:#2a1000;--muted:#8a6040;
+  --red:#d03020;--border:rgba(180,100,30,.2);--shadow:rgba(140,80,20,.1);
+}
+body[data-theme="autumn"] #sidebar{background:linear-gradient(180deg,#4a2008,#2a1004)}
+body[data-theme="winter"]{
+  --bg:#f5f8ff;--panel:#fafdff;--green:#5080b0;--dgreen:#3060a0;
+  --gold:#9080c0;--brown:#6878a0;--ink:#101830;--muted:#7080a8;
+  --red:#c04050;--border:rgba(80,110,180,.15);--shadow:rgba(50,70,140,.07);
+}
+body[data-theme="winter"] #sidebar{background:linear-gradient(180deg,#203060,#101828)}
+body[data-theme="sakura"]{
+  --bg:#fff5f8;--panel:#fff8fa;--green:#c85080;--dgreen:#a03060;
+  --gold:#e09020;--brown:#c08090;--ink:#300820;--muted:#a06880;
+  --red:#e04060;--border:rgba(200,80,120,.15);--shadow:rgba(180,60,100,.08);
+}
+body[data-theme="sakura"] #sidebar{background:linear-gradient(180deg,#6a1030,#380818)}
+/* 自定义主题 */
+body[data-theme="custom"]{
+  --bg:var(--custom-bg,#fdf6ee);--panel:var(--custom-panel,#fffcf7);
+  --green:var(--custom-green,#6aaa6a);--dgreen:var(--custom-dgreen,#3d7a3d);
+  --gold:var(--custom-gold,#e8a020);--ink:var(--custom-ink,#1e1814);
+}
+/* 登录页：手机/桌面布局切换 */
+.ls-desktop-wrap{display:none}
+.ls-mobile-wrap{display:contents}
+@media(min-width:900px){
+  .ls-logo,.ls-title,.ls-sub{display:none!important}
+  #login-screen{align-items:stretch;justify-content:center;background:var(--bg)}
+  .ls-desktop-wrap{
+    display:flex;flex-direction:row;width:100%;max-width:920px;
+    min-height:100vh;margin:0 auto;padding:32px 28px;gap:28px;align-items:center;
+  }
+  .ls-desktop-left{
+    flex:0 0 240px;display:flex;flex-direction:column;align-items:center;
+    background:var(--panel);border-radius:18px;border:1.5px solid var(--border);
+    box-shadow:0 4px 20px var(--shadow);padding:28px 18px;align-self:stretch;
+    justify-content:flex-start;
+  }
+  .ls-desktop-right{
+    flex:1;display:flex;flex-direction:column;
+    background:var(--panel);border-radius:18px;border:1.5px solid var(--border);
+    box-shadow:0 4px 20px var(--shadow);padding:24px 22px;
+    max-height:calc(100vh - 64px);overflow-y:auto;
+  }
+  .ls-mobile-wrap{display:none}
+  /* 桌面端科目按钮纵向 */
+  #ls-subject-bar-dt{flex-direction:column!important;align-items:stretch!important;width:100%!important}
+  #ls-subject-bar-dt .ls-sub-btn{width:100%;text-align:left;margin-bottom:4px;box-sizing:border-box}
+  /* 班级卡片在桌面右栏 */
+  .class-card{margin-bottom:0}
+}
+
 </style>
 </head>
 <body>
 
 <!-- ══ 登录 ══ -->
 <div id="login-screen">
+  <!-- 手机端品牌标题 -->
   <div class="ls-logo">🌾</div>
   <div class="ls-title">学习农场</div>
   <div class="ls-sub">选择你的身份开始学习</div>
-  <!-- 角色选择 -->
-  <div class="role-select-wrap">
-    <div class="role-btn on" id="role-student" onclick="selectRole('student')">
-      <div class="role-ico">🎓</div>
-      <div class="role-nm">我是学生</div>
-      <div class="role-sub">加入班级学习</div>
+
+  <!-- 桌面端两栏容器 -->
+  <div class="ls-desktop-wrap">
+    <!-- 左栏：品牌 + 科目选择 -->
+    <div class="ls-desktop-left">
+      <div style="font-size:3.5rem;margin-bottom:8px">🌾</div>
+      <div style="font-family:'Ma Shan Zheng',cursive;font-size:2.2rem;color:var(--dgreen);margin-bottom:4px">学习农场</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:20px">答题养成游戏 · 选择科目开始学习</div>
+      <div style="font-size:.7rem;color:var(--muted);margin-bottom:8px;font-weight:600">📚 选择题库科目</div>
+      <div class="ls-subject-bar" id="ls-subject-bar-dt" style="flex-direction:column;align-items:stretch;width:100%;max-width:200px"></div>
     </div>
-    <div class="role-btn" id="role-teacher" onclick="selectRole('teacher')">
-      <div class="role-ico">👨‍🏫</div>
-      <div class="role-nm">我是教师</div>
-      <div class="role-sub">管理班级</div>
+    <!-- 右栏：角色选择 + 账号/班级列表 -->
+    <div class="ls-desktop-right">
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:10px;font-weight:600">选择你的身份</div>
+      <div class="role-select-wrap" style="margin-bottom:14px">
+        <div class="role-btn on" id="role-student-dt" onclick="selectRole('student')">
+          <div class="role-ico">🎓</div>
+          <div class="role-nm">我是学生</div>
+          <div class="role-sub">加入班级学习</div>
+        </div>
+        <div class="role-btn" id="role-teacher-dt" onclick="selectRole('teacher')">
+          <div class="role-ico">👨‍🏫</div>
+          <div class="role-nm">我是教师</div>
+          <div class="role-sub">管理班级</div>
+        </div>
+      </div>
+      <div id="student-view-dt" style="width:100%">
+        <div class="account-list" id="account-list-dt"></div>
+        <div class="new-acc-btn" onclick="startCreateAccount()">➕ 新建账号</div>
+        <div class="ls-import-link" onclick="openImportClass()">🏫 批量导入班级名单</div>
+      </div>
+      <div id="teacher-view-dt" style="width:100%;display:none">
+        <div id="class-list-dt" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+        <div class="new-acc-btn" onclick="openCreateClass()">➕ 创建新班级</div>
+      </div>
     </div>
   </div>
-  <div class="ls-subject-bar" id="ls-subject-bar"></div>
-  <!-- 学生视图：账号列表 -->
-  <div id="student-view" style="width:100%;max-width:420px">
-    <div class="account-list" id="account-list"></div>
-    <div class="new-acc-btn" onclick="startCreateAccount()">➕ 新建账号</div>
-    <div class="ls-import-link" onclick="openImportClass()">🏫 批量导入班级名单</div>
-  </div>
-  <!-- 教师视图：班级列表 -->
-  <div id="teacher-view" style="width:100%;max-width:420px;display:none">
-    <div id="class-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
-    <div class="new-acc-btn" id="new-class-btn" onclick="openCreateClass()">➕ 创建新班级</div>
+
+  <!-- 手机端（原始布局保留） -->
+  <div class="ls-mobile-wrap">
+    <div class="role-select-wrap">
+      <div class="role-btn on" id="role-student" onclick="selectRole('student')">
+        <div class="role-ico">🎓</div>
+        <div class="role-nm">我是学生</div>
+        <div class="role-sub">加入班级学习</div>
+      </div>
+      <div class="role-btn" id="role-teacher" onclick="selectRole('teacher')">
+        <div class="role-ico">👨‍🏫</div>
+        <div class="role-nm">我是教师</div>
+        <div class="role-sub">管理班级</div>
+      </div>
+    </div>
+    <div class="ls-subject-bar" id="ls-subject-bar"></div>
+    <!-- 学生视图：账号列表 -->
+    <div id="student-view" style="width:100%;max-width:420px">
+      <div class="account-list" id="account-list"></div>
+      <div class="new-acc-btn" onclick="startCreateAccount()">➕ 新建账号</div>
+      <div class="ls-import-link" onclick="openImportClass()">🏫 批量导入班级名单</div>
+    </div>
+    <!-- 教师视图：班级列表 -->
+    <div id="teacher-view" style="width:100%;max-width:420px;display:none">
+      <div id="class-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+      <div class="new-acc-btn" id="new-class-btn" onclick="openCreateClass()">➕ 创建新班级</div>
+    </div>
   </div>
 </div>
 
@@ -605,19 +869,31 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
       <div id="score-mode-sub" onclick="setScoreMode('sub')" style="flex:1;text-align:center;padding:7px;font-size:.78rem;cursor:pointer;background:var(--panel);color:var(--muted)">📉 减分</div>
     </div>
     <!-- 分值 + 原因 -->
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-      <input class="ci" id="add-score-val" placeholder="分值（1~100）" type="number" min="1" max="100" style="width:90px;user-select:text">
-      <select id="add-score-reason" class="ci" style="flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.78rem;font-family:'Noto Sans SC',sans-serif">
-        <option value="背书">📖 背书</option>
-        <option value="测试">📝 测试</option>
-        <option value="听写">✏️ 听写</option>
-        <option value="作业">📋 作业</option>
-        <option value="答题">🙋 答题</option>
-        <option value="课堂表现">🌟 课堂表现</option>
-        <option value="日常表现">😊 日常表现</option>
-        <option value="违纪">⚠️ 违纪</option>
-        <option value="自定义">✍️ 自定义原因</option>
-      </select>
+    <div style="margin-bottom:6px">
+      <div style="font-size:.65rem;color:var(--muted);margin-bottom:5px">快捷分值（点击填入，也可手动输入）</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px" id="score-preset-btns">
+        <button onclick="setScoreVal(1)"  class="score-preset-btn">+1</button>
+        <button onclick="setScoreVal(2)"  class="score-preset-btn">+2</button>
+        <button onclick="setScoreVal(3)"  class="score-preset-btn">+3</button>
+        <button onclick="setScoreVal(5)"  class="score-preset-btn">+5</button>
+        <button onclick="setScoreVal(10)" class="score-preset-btn">+10</button>
+        <button onclick="setScoreVal(20)" class="score-preset-btn">+20</button>
+        <button onclick="setScoreVal(50)" class="score-preset-btn">+50</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input class="ci" id="add-score-val" placeholder="自定义分值" type="number" min="1" max="100" style="width:110px;user-select:text">
+        <select id="add-score-reason" class="ci" style="flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.78rem;font-family:'Noto Sans SC',sans-serif">
+          <option value="背书">📖 背书</option>
+          <option value="测试">📝 测试</option>
+          <option value="听写">✏️ 听写</option>
+          <option value="作业">📋 作业</option>
+          <option value="答题">🙋 答题</option>
+          <option value="课堂表现">🌟 课堂表现</option>
+          <option value="日常表现">😊 日常表现</option>
+          <option value="违纪">⚠️ 违纪</option>
+          <option value="自定义">✍️ 自定义原因</option>
+        </select>
+      </div>
     </div>
     <div id="score-custom-reason-wrap" style="display:none;margin-bottom:8px">
       <input class="ci" id="score-custom-reason" placeholder="请输入自定义原因" maxlength="30" style="width:100%;user-select:text">
@@ -708,6 +984,7 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
   <div id="topbar">
     <div id="avatar" onclick="openAvatarPicker()" title="点击更换头像">🌾</div>
     <div id="pname" onclick="switchTab('profile')">-</div>
+    <button id="theme-mobile-btn" onclick="openThemeModal()" style="padding:3px 10px;border-radius:99px;border:1.5px solid var(--border);background:var(--panel);font-size:.66rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--ink);white-space:nowrap;flex-shrink:0;transition:all .18s">🎨 主题</button>
     <button id="pause-btn" onclick="togglePause()">⏸ 暂停</button>
     <div class="topchips">
       <div class="tc">🪙<b id="dc">0</b></div>
@@ -726,19 +1003,15 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
   <div id="pages">
     <!-- FARM -->
     <div class="page active" id="page-farm">
-      <div class="dtwo">
-        <div>
+      <div class="dtwo farm-main-grid">
+        <div class="farm-left-col">
           <div class="card">
             <div class="cttl">🌱 我的农场</div>
             <div class="farm-grid" id="farm-grid"></div>
             <div id="farm-stat" style="font-size:.7rem;color:var(--muted);line-height:1.9"></div>
           </div>
-          <div class="card" id="warehouse-card">
-            <div class="cttl">🏪 收获仓库 <span style="font-size:.6rem;color:var(--muted);margin-left:auto">收获→仓库→售卖得金币</span></div>
-            <div id="warehouse-body"></div>
-          </div>
         </div>
-        <div>
+        <div class="farm-right-col">
           <div class="card">
             <div class="cttl">⚡ 快捷操作</div>
             <div class="actgrid" style="margin-bottom:7px">
@@ -750,6 +1023,11 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
               <div class="act" onclick="farmBulk('pest_all')"><span class="aico">🧴</span><div class="anm">全部除虫</div><div class="acost">有虫时可用</div></div>
             </div>
             <div style="font-size:.62rem;color:var(--muted);text-align:center">💡 点击地块进行单格操作</div>
+          </div>
+          <!-- 仓库（手机端在操作下方，电脑端在左栏底部） -->
+          <div class="card farm-warehouse-mobile" id="warehouse-card">
+            <div class="cttl">🏪 收获仓库 <span style="font-size:.6rem;color:var(--muted);margin-left:auto">收获→仓库→售卖得金币</span></div>
+            <div id="warehouse-body"></div>
           </div>
         </div>
       </div>
@@ -803,6 +1081,7 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
               <div style="display:flex;gap:6px;flex-wrap:wrap">
                 <button onclick="openPetImageUpload()" style="flex:1;padding:7px 6px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.07);color:var(--dgreen);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📤 上传宠物图片</button>
                 <button onclick="openClothImageUpload()" style="flex:1;padding:7px 6px;border-radius:9px;border:1.5px solid #4a90d9;background:rgba(74,144,217,.07);color:#2060a0;font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">👗 上传衣服图片</button>
+                <button onclick="openSystemClothAdjust()" style="flex:1;padding:7px 6px;border-radius:9px;border:1.5px solid var(--purple);background:rgba(160,122,208,.07);color:var(--purple);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📐 调整衣服位置</button>
                 <button onclick="clearPetCustomImg()" style="padding:7px 10px;border-radius:9px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">↩ 恢复默认</button>
               </div>
               <div style="font-size:.58rem;color:var(--muted);margin-top:4px">支持 PNG/JPG，建议正方形，≤500KB；图片存储在本地，不上传服务器</div>
@@ -860,65 +1139,73 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 
     <!-- PROFILE -->
     <div class="page" id="page-profile">
-      <!-- 顶部头像+姓名+等级数据 -->
-      <div class="card" style="text-align:center;padding:16px 12px">
-        <div class="prof-av" id="prof-av" onclick="openAvatarPicker()" style="cursor:pointer" title="点击更换头像">🌾</div>
-        <div style="font-family:'Ma Shan Zheng',cursive;font-size:1.1rem;color:var(--dgreen);margin-bottom:10px" id="prof-name">-</div>
+      <!-- 顶部头像区 -->
+      <div id="prof-header-card" class="card" style="text-align:center;padding:14px 12px">
+        <div class="prof-av" id="prof-av" onclick="openAvatarPickerModal()" style="cursor:pointer" title="点击修改头像">🌾</div>
+        <div style="font-family:'Ma Shan Zheng',cursive;font-size:1.1rem;color:var(--dgreen);margin-bottom:8px" id="prof-name">-</div>
         <div class="prof-stats" id="prof-stats"></div>
       </div>
-      <!-- 标签切换 -->
-      <div style="display:flex;gap:6px;margin-bottom:10px">
-        <div id="ptab-personal" onclick="switchProfileTab('personal')" style="flex:1;text-align:center;padding:9px;border-radius:11px;border:1.5px solid var(--green);background:var(--green);color:#fff;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Noto Sans SC',sans-serif">👤 个人</div>
-        <div id="ptab-class" onclick="switchProfileTab('class')" style="flex:1;text-align:center;padding:9px;border-radius:11px;border:1.5px solid var(--border);background:var(--panel);color:var(--muted);font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🏫 班级</div>
+      <!-- 标签切换行 -->
+      <div id="profile-tab-row" style="display:flex;gap:6px;padding:8px 12px;background:var(--panel);border-bottom:1.5px solid var(--border);margin-bottom:10px">
+        <div id="ptab-personal" onclick="switchProfileTab('personal')" style="flex:1;text-align:center;padding:8px;border-radius:10px;border:1.5px solid var(--green);background:var(--green);color:#fff;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Noto Sans SC',sans-serif">👤 个人</div>
+        <div id="ptab-class" onclick="switchProfileTab('class')" style="flex:1;text-align:center;padding:8px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);color:var(--muted);font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🏫 班级</div>
       </div>
+      <!-- 内容区（mobile: normal flow; desktop: flex scroll via CSS） -->
+      <div id="profile-scroll-body">
 
-      <!-- 个人面板 -->
-      <div id="ppanel-personal">
-        <div class="card">
-          <div class="cttl">🔐 账号设置</div>
-          <div id="account-settings"></div>
-        </div>
-        <div class="card">
-          <div class="cttl">📊 学习统计</div>
-          <div id="study-stats" style="font-size:.74rem;color:var(--muted);line-height:2"></div>
-        </div>
-        <div class="card" style="border-color:rgba(224,85,85,.25)">
-          <div class="cttl" style="color:var(--red)">⚠️ 危险区</div>
-          <div style="display:flex;gap:7px;flex-wrap:wrap">
-            <button onclick="confirmReset()" style="padding:7px 16px;border-radius:99px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">重置当前账号</button>
-            <button onclick="deleteCurrentAccount()" style="padding:7px 16px;border-radius:99px;border:1.5px solid var(--red);background:rgba(224,85,85,.08);color:var(--red);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">注销当前账号</button>
-            <button onclick="goToLogin()" style="padding:7px 16px;border-radius:99px;border:1.5px solid var(--border);background:transparent;font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">切换账号</button>
+        <!-- 个人面板：左→学习统计+我管理的班级，右→账号设置+数据管理 -->
+        <div id="ppanel-personal">
+          <div class="profile-desktop-grid" id="profile-personal-grid">
+            <div class="profile-left-col" id="profile-col-left">
+              <div class="card" id="pcard-stats">
+                <div class="cttl">📊 学习统计</div>
+                <div id="study-stats"></div>
+              </div>
+              <!-- 教师：我管理的班级（JS动态插入 id=pcard-teacher-mgr） -->
+            </div>
+            <div class="profile-right-col" id="profile-col-right">
+              <div class="card" id="pcard-account">
+                <div class="cttl">🔐 账号设置</div>
+                <div id="account-settings"></div>
+              </div>
+              <div class="card" id="pcard-data">
+                <div class="cttl">💾 数据管理</div>
+                <div style="font-size:.7rem;color:var(--muted);margin-bottom:8px;line-height:1.7">
+                  导出存档可在其他设备导入。<br>
+                  <span style="color:var(--red);font-size:.62rem">⚠️ 不支持自动云同步，请手动操作。</span>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <button onclick="exportSave()" style="padding:7px 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📤 导出存档</button>
+                  <button onclick="document.getElementById('import-file').click()" style="padding:7px 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📥 导入存档</button>
+                  <button onclick="exportAllSaves()" style="padding:7px 12px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.06);color:var(--dgreen);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📦 全部导出</button>
+                  <button onclick="document.getElementById('import-all-file').click()" style="padding:7px 12px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.06);color:var(--dgreen);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📥 全部导入</button>
+                  <input type="file" id="import-file" accept=".json" style="display:none" onchange="importSave(this)">
+                  <input type="file" id="import-all-file" accept=".json" style="display:none" onchange="importAllSaves(this)">
+                </div>
+              </div>
+            </div>
           </div>
-          <div style="font-size:.6rem;color:var(--muted);margin-top:6px">注销后账号数据将彻底清除，无法恢复</div>
         </div>
-      </div>
 
-      <!-- 班级面板 -->
-      <div id="ppanel-class" style="display:none">
-        <div class="card">
-          <div class="cttl">🏫 班级总览</div>
-          <div id="class-browser"></div>
-        </div>
-        <div class="card">
-          <div class="cttl">🏫 班级排名</div>
-          <div id="class-section"></div>
-        </div>
-        <div class="card">
-          <div class="cttl">💾 数据管理</div>
-          <div style="font-size:.72rem;color:var(--muted);margin-bottom:9px;line-height:1.7">
-            导出存档可在其他设备导入，实现数据转移。<br>
-            <span style="color:var(--red);font-size:.64rem">⚠️ 不支持自动云同步，请手动导入导出。</span>
-          </div>
-          <div style="display:flex;gap:7px;flex-wrap:wrap">
-            <button onclick="exportSave()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📤 导出存档</button>
-            <button onclick="document.getElementById('import-file').click()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📥 导入存档</button>
-            <button onclick="exportAllSaves()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.06);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📦 导出全部账号</button>
-            <button onclick="document.getElementById('import-all-file').click()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.06);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📥 导入全部账号</button>
-            <input type="file" id="import-file" accept=".json" style="display:none" onchange="importSave(this)">
-            <input type="file" id="import-all-file" accept=".json" style="display:none" onchange="importAllSaves(this)">
+        <!-- 班级面板：左→班级总览，右→班级排名 -->
+        <div id="ppanel-class" style="display:none">
+          <div class="profile-desktop-grid" id="profile-class-grid">
+            <div class="profile-left-col" id="profile-class-col-left">
+              <div class="card" id="pcard-browser">
+                <div class="cttl">🏫 班级总览</div>
+                <div id="class-browser"></div>
+              </div>
+            </div>
+            <div class="profile-right-col" id="profile-class-col-right">
+              <div class="card" id="pcard-rank">
+                <div class="cttl">📊 班级排名</div>
+                <div id="class-section"></div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+
+      </div><!-- /profile-scroll-body -->
     </div>
   </div><!-- /pages -->
 
@@ -932,6 +1219,9 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
   </div>
 </div><!-- /app -->
 
+<!-- 主题切换按钮 -->
+<div class="theme-btn" id="theme-btn" onclick="openThemeModal()">🎨 主题</div>
+
 <!-- 浮动布局编辑按钮（桌面端） -->
 <div class="layout-edit-btn" id="layout-edit-btn" onclick="toggleLayoutEditMode()">⚙️ 调整布局</div>
 
@@ -942,8 +1232,133 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
   <div class="zoom-btn" onclick="zoomPage(0.1)" title="放大">＋</div>
 </div>
 
-<!-- QUIZ -->
-<div class="overlay" id="quiz-ov"><div class="modal">
+<!-- 季节特效画布（pointer-events:none，不遮挡交互） -->
+<canvas id="season-canvas" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:5;opacity:0;transition:opacity .6s"></canvas>
+
+<!-- 主题切换弹窗 -->
+<div class="overlay" id="theme-ov">
+  <div class="modal theme-modal" style="max-width:460px">
+    <div class="mttl">🎨 界面主题</div>
+    <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">点击预览，选中后点击确认应用。</div>
+    <div class="theme-grid" id="theme-grid"></div>
+    <!-- 特效开关 -->
+    <div style="display:flex;align-items:center;justify-content:center;margin:6px 0 2px">
+      <button id="fx-toggle-btn" onclick="toggleSeasonFX()" style="padding:5px 16px;border-radius:99px;border:1.5px solid var(--border);background:var(--panel);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--muted);transition:all .2s">✨ 关闭特效</button>
+    </div>
+    <div class="mbrow">
+      <button class="mbtn mb-cancel" onclick="cancelTheme()">取消</button>
+      <button class="mbtn mb-ok on" onclick="confirmTheme()">✅ 应用主题</button>
+    </div>
+  </div>
+</div>
+
+<!-- 自定义主题弹窗 -->
+<div class="overlay" id="custom-theme-ov" style="z-index:310">
+  <div class="modal" style="max-width:560px;max-height:88vh;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="mttl" style="margin-bottom:0">🎨 自定义主题</div>
+      <span onclick="closeCustomTheme()" style="font-size:1.4rem;cursor:pointer;color:var(--muted);padding:2px 6px">✕</span>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <!-- 左：实时预览 -->
+      <div style="flex:1;min-width:180px">
+        <div style="font-size:.66rem;color:var(--muted);margin-bottom:6px;font-weight:600">👁 实时预览</div>
+        <div id="custom-preview-box" style="border-radius:14px;border:1.5px solid var(--border);overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.1)">
+          <!-- 顶栏预览 -->
+          <div id="cpv-topbar" style="padding:8px 12px;display:flex;align-items:center;gap:8px">
+            <div style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.9rem" id="cpv-avatar-bg">🌾</div>
+            <div id="cpv-name" style="font-size:.8rem;font-weight:600;flex:1">学习农场</div>
+            <div id="cpv-chip" style="font-size:.6rem;padding:2px 8px;border-radius:99px">⭐ 100</div>
+          </div>
+          <!-- 卡片预览 -->
+          <div style="padding:10px">
+            <div id="cpv-card" style="border-radius:10px;padding:10px;margin-bottom:8px;border:1.5px solid">
+              <div id="cpv-card-title" style="font-size:.72rem;font-weight:600;margin-bottom:6px">🌱 农场状态</div>
+              <div id="cpv-bar-bg" style="height:6px;border-radius:99px;overflow:hidden">
+                <div id="cpv-bar-fill" style="height:100%;width:65%;border-radius:99px"></div>
+              </div>
+              <div id="cpv-muted" style="font-size:.6rem;margin-top:4px">答对 13/20 题</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <div id="cpv-btn-main" style="flex:1;padding:7px;border-radius:9px;text-align:center;font-size:.7rem;font-weight:600;cursor:default">✅ 确认</div>
+              <div id="cpv-btn-sub" style="flex:1;padding:7px;border-radius:9px;text-align:center;font-size:.7rem;border:1.5px solid;cursor:default">取消</div>
+            </div>
+          </div>
+          <!-- logo区域 -->
+          <div id="cpv-logo-area" style="padding:8px;text-align:center;border-top:1px solid">
+            <span style="font-size:.9rem">🌾</span>
+            <span id="cpv-logo-text" style="font-size:.78rem;font-weight:600;margin-left:4px">学习农场</span>
+          </div>
+        </div>
+      </div>
+      <!-- 右：颜色调整 -->
+      <div style="flex:1;min-width:200px">
+        <div style="font-size:.66rem;color:var(--muted);margin-bottom:8px;font-weight:600">🖌 调整颜色</div>
+        <div id="custom-color-rows"></div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <div style="font-size:.64rem;color:var(--muted);margin-bottom:6px">✨ 添加特效</div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap" id="custom-preset-list"></div>
+        </div>
+      </div>
+    </div>
+    <div class="mbrow" style="margin-top:14px">
+      <button class="mbtn mb-cancel" onclick="closeCustomTheme()">取消</button>
+      <button class="mbtn mb-ok on" onclick="saveCustomTheme()">✅ 应用配色</button>
+    </div>
+  </div>
+</div>
+
+<!-- 衣服位置调整弹窗 -->
+<div class="overlay" id="cloth-adj-ov">
+  <div class="modal" style="max-width:400px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="mttl" style="margin-bottom:0">👗 调整衣服大小与位置</div>
+      <span onclick="closeOverlay('cloth-adj-ov')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);padding:2px 6px">✕</span>
+    </div>
+    <div style="text-align:center;margin:10px 0">
+      <canvas id="cloth-adj-canvas" width="180" height="180" style="border-radius:14px;border:2px solid var(--border);background:linear-gradient(135deg,#d4f0d4,#b0d8b0);display:block;margin:0 auto 4px;cursor:move"></canvas>
+      <div style="font-size:.6rem;color:var(--muted)">🖱️ 拖动预览区直接移动 · 或使用下方滑块</div>
+    </div>
+    <div style="margin-bottom:7px">
+      <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">大小 <span id="cloth-adj-scale-val" style="color:var(--dgreen)">100%</span></label>
+      <input type="range" id="cloth-adj-scale" min="40" max="200" value="100" style="width:100%" oninput="document.getElementById('cloth-adj-scale-val').textContent=this.value+'%';reClothAdjPreview()">
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <div style="flex:1">
+        <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">左右偏移</label>
+        <input type="range" id="cloth-adj-ox" min="-40" max="40" value="0" style="width:100%" oninput="reClothAdjPreview()">
+      </div>
+      <div style="flex:1">
+        <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">上下偏移</label>
+        <input type="range" id="cloth-adj-oy" min="-40" max="40" value="0" style="width:100%" oninput="reClothAdjPreview()">
+      </div>
+    </div>
+    <div class="mbrow">
+      <button class="mbtn mb-cancel" onclick="closeOverlay('cloth-adj-ov')">取消</button>
+      <button class="mbtn mb-ok on" onclick="confirmClothAdj()">✅ 保存调整</button>
+    </div>
+  </div>
+</div>
+
+<!-- 头像方式选择弹窗 -->
+<div class="overlay" id="avatar-pick-mode-ov">
+  <div class="modal" style="max-width:320px;text-align:center">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div class="mttl" style="margin-bottom:0">🖼️ 修改头像</div>
+      <span onclick="closeOverlay('avatar-pick-mode-ov')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);padding:2px 6px">✕</span>
+    </div>
+    <div style="display:flex;gap:12px">
+      <button onclick="closeOverlay('avatar-pick-mode-ov');openProfileAvatarUpload()" style="flex:1;padding:14px 10px;border-radius:13px;border:1.5px solid #4a90d9;background:rgba(74,144,217,.08);color:#2060a0;font-size:.82rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;display:flex;flex-direction:column;align-items:center;gap:6px">
+        <span style="font-size:1.6rem">📷</span>上传图片
+      </button>
+      <button onclick="closeOverlay('avatar-pick-mode-ov');openAvatarPicker()" style="flex:1;padding:14px 10px;border-radius:13px;border:1.5px solid var(--green);background:rgba(100,160,100,.08);color:var(--dgreen);font-size:.82rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;display:flex;flex-direction:column;align-items:center;gap:6px">
+        <span style="font-size:1.6rem">😀</span>Emoji头像
+      </button>
+    </div>
+  </div>
+</div>
+<div class="overlay" id="quiz-ov"><div class="modal" style="position:relative">
+  <button id="quiz-layout-btn" onclick="toggleQuizLayout()" title="切换为竖版" style="display:none;position:absolute;top:10px;left:10px;padding:3px 8px;border-radius:7px;border:1px solid var(--border);background:var(--panel);font-size:.62rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--muted);z-index:1">⇅ 布局</button>
   <div class="qprog" id="qprog"></div>
   <div class="mttl" id="qttl">答题挑战</div>
   <div id="sub-badge" style="display:inline-block;font-size:.6rem;padding:2px 9px;border-radius:99px;margin-bottom:5px;color:#fff;font-weight:500"></div>
@@ -1137,6 +1552,7 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
       <div style="font-size:.6rem;color:var(--green);margin-top:2px" id="pet-img-filesize"></div>
     </div>
     <!-- 模特预览区 -->
+    <div style="text-align:center;margin-bottom:4px"><button onclick="togglePetModelPreview()" style="padding:3px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;font-size:.62rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--muted)">👁 查看模特效果</button></div>
     <div id="pet-preview-model-wrap" style="display:none;text-align:center;margin-bottom:8px;background:rgba(100,160,100,.05);border-radius:10px;padding:6px">
       <div style="font-size:.6rem;color:var(--muted);margin-bottom:4px">📌 当前宠物模特预览效果</div>
       <canvas id="pet-model-preview-cvs" width="150" height="150" style="border-radius:10px;background:linear-gradient(135deg,#d4f0d4,#b0d8b0);display:block;margin:0 auto"></canvas>
@@ -1230,17 +1646,19 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 <script src="subject_geo7.js"></script>
 <script src="subject_geo8.js"></script>
 <script src="subject_history8.js"></script>
-<script src="subject_english.js"></script>
 <script src="gamedata.js"></script>
 <script src="subjects.js"></script>
+<script src="subject_english.js"></script>
 
 <!-- ★ 新增：各科目模块化子题库 -->
 <script src="subject_history8_mod.js"></script>
+<script src="subject_history7_mod.js"></script>
 <script src="subject_geo7_mod.js"></script>
 <script src="subject_geo8_mod.js"></script>
 <script src="subject_geoh_teacher_mod.js"></script>
 
 <script src="game.js"></script>
+
 
 
 

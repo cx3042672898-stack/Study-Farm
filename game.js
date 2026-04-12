@@ -12,10 +12,34 @@ let S={};
 let petWalking=false; // 默认立正
 const _petImgCache={}; // 自定义宠物图片缓存
 
+// ─── 弹窗层级管理 ──────────────────────────────────
+let _modalZBase=200;
+function openOverlay(id){
+  const el=document.getElementById(id);
+  if(!el)return;
+  // 计算当前最高z-index
+  let maxZ=200;
+  document.querySelectorAll('.overlay.on').forEach(ov=>{
+    const z=parseInt(ov.style.zIndex||ov.style.getPropertyValue('z-index'))||200;
+    if(z>maxZ)maxZ=z;
+  });
+  el.style.zIndex=maxZ+10;
+  el.classList.add('on');
+}
+function closeOverlay(id){
+  const el=document.getElementById(id);
+  if(el){el.classList.remove('on');el.style.zIndex='';}
+}
+
 // ─── 缩放 ────────────────────────────────────────
 let currentZoom=1;
 function zoomPage(d){currentZoom=Math.max(0.6,Math.min(1.5,currentZoom+d));document.body.style.zoom=currentZoom;document.querySelector('#zoom-ctrl .zoom-btn:nth-child(2)').textContent=Math.round(currentZoom*100)+'%';}
 function zoomReset(){currentZoom=1;document.body.style.zoom=1;document.querySelector('#zoom-ctrl .zoom-btn:nth-child(2)').textContent='100%';}
+
+// ─── 弹窗管理工具 ─────────────────────────────────────
+function closeAllOverlays(){
+  document.querySelectorAll('.overlay.on').forEach(ov=>ov.classList.remove('on'));
+}
 
 // ─── 账号管理 ────────────────────────────────────
 function getAllAccounts(){try{return JSON.parse(localStorage.getItem(ACCOUNTS_KEY)||'[]');}catch(e){return [];}}
@@ -89,15 +113,23 @@ let SELECTED_ROLE=localStorage.getItem('jbfarm_role')||'student';
 function selectRole(role){
   SELECTED_ROLE=role;
   localStorage.setItem('jbfarm_role',role);
+  // 手机端
   document.getElementById('role-student').classList.toggle('on',role==='student');
   document.getElementById('role-teacher').classList.toggle('on',role==='teacher');
   document.getElementById('student-view').style.display=role==='student'?'':'none';
   document.getElementById('teacher-view').style.display=role==='teacher'?'':'none';
+  // 桌面端（元素可能不存在，用安全取）
+  const rsdt=document.getElementById('role-student-dt');const rtdt=document.getElementById('role-teacher-dt');
+  if(rsdt)rsdt.classList.toggle('on',role==='student');
+  if(rtdt)rtdt.classList.toggle('on',role==='teacher');
+  const svdt=document.getElementById('student-view-dt');const tvdt=document.getElementById('teacher-view-dt');
+  if(svdt)svdt.style.display=role==='student'?'':'none';
+  if(tvdt)tvdt.style.display=role==='teacher'?'':'none';
   if(role==='teacher')renderTeacherClassView();
 }
 
 function renderLoginScreen(){
-  // 恢复上次角色选择
+  // 恢复上次角色选择 — 手机端
   const roleStudent=document.getElementById('role-student');
   const roleTeacher=document.getElementById('role-teacher');
   const studentView=document.getElementById('student-view');
@@ -106,60 +138,97 @@ function renderLoginScreen(){
   if(roleTeacher)roleTeacher.classList.toggle('on',SELECTED_ROLE==='teacher');
   if(studentView)studentView.style.display=SELECTED_ROLE==='student'?'':'none';
   if(teacherView)teacherView.style.display=SELECTED_ROLE==='teacher'?'':'none';
+  // 桌面端角色按钮同步
+  const rsdt=document.getElementById('role-student-dt');const rtdt=document.getElementById('role-teacher-dt');
+  if(rsdt)rsdt.classList.toggle('on',SELECTED_ROLE==='student');
+  if(rtdt)rtdt.classList.toggle('on',SELECTED_ROLE==='teacher');
+  const svdt=document.getElementById('student-view-dt');const tvdt=document.getElementById('teacher-view-dt');
+  if(svdt)svdt.style.display=SELECTED_ROLE==='student'?'':'none';
+  if(tvdt)tvdt.style.display=SELECTED_ROLE==='teacher'?'':'none';
 
+  // 科目栏 - 手机端
   const bar=document.getElementById('ls-subject-bar');
   if(bar){bar.innerHTML='';SUBJECTS.forEach(sub=>{const b=document.createElement('div');b.className='ls-sub-btn'+(sub.id===ACTIVE_SUBJECT_ID?' on':'');if(sub.id===ACTIVE_SUBJECT_ID)b.style.background=sub.color||'#5a9a5a';b.textContent=sub.icon+' '+sub.name;b.onclick=()=>{setSubject(sub.id);renderLoginScreen();};bar.appendChild(b);});}
-  // 学生视图
-  const listEl=document.getElementById('account-list');if(!listEl)return;listEl.innerHTML='';
+  // 科目栏 - 桌面端
+  const barDt=document.getElementById('ls-subject-bar-dt');
+  if(barDt){barDt.innerHTML='';SUBJECTS.forEach(sub=>{const b=document.createElement('div');b.className='ls-sub-btn'+(sub.id===ACTIVE_SUBJECT_ID?' on':'');if(sub.id===ACTIVE_SUBJECT_ID)b.style.background=sub.color||'#5a9a5a';b.textContent=sub.icon+' '+sub.name;b.onclick=()=>{setSubject(sub.id);renderLoginScreen();};barDt.appendChild(b);});}
+
+  // 辅助：生成账号卡片HTML
+  function _makeAccCards(containerEl,accounts){
+    if(!containerEl)return;containerEl.innerHTML='';
+    if(accounts.length===0){containerEl.innerHTML='<div style="font-size:.78rem;color:var(--muted);text-align:center;padding:18px 0">还没有账号，点击下方新建！</div>';return;}
+    accounts.forEach(acc=>{
+      const d=document.createElement('div');d.className='acc-card';
+      const imgKey='jbfarm_profileimg_'+acc.id;
+      const imgData=localStorage.getItem(imgKey);
+      let avatarHtml='';
+      if(imgData){avatarHtml=`<img src="${imgData}" style="width:42px;height:42px;border-radius:50%;object-fit:cover;display:block">`;}
+      else{const ico=acc.playerAvatar||(acc.level>=5?'🌟':acc.level>=3?'⭐':'🌾');avatarHtml=ico;}
+      d.innerHTML=`<div class="acc-avatar">${avatarHtml}</div><div class="acc-info"><div class="acc-name">${acc.name}</div><div class="acc-meta">Lv.${acc.level||1} · ⭐${acc.score||0}分${acc.classId?' · '+acc.classId:''}</div></div><div class="acc-arrow">${acc.pin?'🔒':'▶'}</div>`;
+      d.onclick=()=>loginAcc(acc);containerEl.appendChild(d);
+    });
+  }
+
+  // 学生视图 - 手机 + 桌面
+  const listEl=document.getElementById('account-list');
+  const listDt=document.getElementById('account-list-dt');
   let accounts=getAllAccounts().filter(a=>!a.isTeacher);
   if(accounts.length===0){for(const k of OLD_KEYS){const old=localStorage.getItem(k);if(old){try{const od=JSON.parse(old);const nid='acc_migrated_'+Date.now();const na={id:nid,name:od.playerName||'老玩家',pin:'',classId:od.classId||'',level:od.level||1,score:od.score||0,lastActive:Date.now()};accounts=[na];saveAllAccounts(accounts);localStorage.setItem(getAccKey(nid),JSON.stringify(Object.assign({},DEFAULT_SAVE,od)));showToast('✅ 旧存档已自动迁移！');break;}catch(e){}}};} 
-  if(accounts.length===0){listEl.innerHTML='<div style="font-size:.78rem;color:var(--muted);text-align:center;padding:18px 0">还没有账号，点击下方新建！</div>';}
-  accounts.forEach(acc=>{
-    const d=document.createElement('div');d.className='acc-card';
-    // 检查是否有上传的头像图片
-    const imgKey='jbfarm_profileimg_'+acc.id;
-    const imgData=localStorage.getItem(imgKey);
-    let avatarHtml='';
-    if(imgData){
-      avatarHtml=`<img src="${imgData}" style="width:42px;height:42px;border-radius:50%;object-fit:cover;display:block">`;
-    } else {
-      const ico=acc.playerAvatar||(acc.level>=5?'🌟':acc.level>=3?'⭐':'🌾');
-      avatarHtml=ico;
-    }
-    d.innerHTML=`<div class="acc-avatar">${avatarHtml}</div><div class="acc-info"><div class="acc-name">${acc.name}</div><div class="acc-meta">Lv.${acc.level||1} · ⭐${acc.score||0}分${acc.classId?' · '+acc.classId:''}</div></div><div class="acc-arrow">${acc.pin?'🔒':'▶'}</div>`;
-    d.onclick=()=>loginAcc(acc);listEl.appendChild(d);
-  });
+  _makeAccCards(listEl,accounts);
+  _makeAccCards(listDt,accounts);
+
   // 如果当前是教师视图，也刷新
   if(SELECTED_ROLE==='teacher')renderTeacherClassView();
 }
 
 function renderTeacherClassView(){
   const classListEl=document.getElementById('class-list');
-  if(!classListEl)return;
-  classListEl.innerHTML='';
-  const cd=getClassData();
+  const classListDt=document.getElementById('class-list-dt');
+  // 清理：删除班级名为乱码（非正常字符）或已空的孤立条目
+  let cd=getClassData();
+  const allAccounts=getAllAccounts();
+  let dirty=false;
+  Object.keys(cd).forEach(className=>{
+    // 班级名包含百分号（URL编码残留）→ 删除
+    if(/%[0-9A-Fa-f]{2}/.test(className)){delete cd[className];dirty=true;return;}
+    // 过滤掉账号不存在的学生成员
+    const before=cd[className].length;
+    cd[className]=cd[className].filter(m=>{
+      if(m.isTeacher)return true; // 教师条目保留
+      return allAccounts.some(a=>a.name===m.name);
+    });
+    if(cd[className].length!==before)dirty=true;
+    // 班级成员全空则删除整个班级
+    if(cd[className].length===0){delete cd[className];dirty=true;}
+  });
+  if(dirty)saveClassData(cd);
+
   const classes=Object.keys(cd);
+  const emptyHtml='<div style="font-size:.78rem;color:var(--muted);text-align:center;padding:18px 0">还没有班级，点击下方创建！</div>';
   if(classes.length===0){
-    classListEl.innerHTML='<div style="font-size:.78rem;color:var(--muted);text-align:center;padding:18px 0">还没有班级，点击下方创建！</div>';
+    if(classListEl)classListEl.innerHTML=emptyHtml;
+    if(classListDt)classListDt.innerHTML=emptyHtml;
     return;
   }
+  if(classListEl)classListEl.innerHTML='';
+  if(classListDt)classListDt.innerHTML='';
   const admins=getClassAdmins();
   classes.forEach(className=>{
     const members=cd[className]||[];
     const students=members.filter(m=>!m.isTeacher);
     const teachers=members.filter(m=>m.isTeacher);
     const asstAdmin=admins[className];
-    const classCard=document.createElement('div');
-    classCard.className='class-card';
     let teacherChips=teachers.map(t=>`<span class="student-chip teacher" title="点击以教师身份登录" onclick="event.stopPropagation();loginByName('${encodeURIComponent(t.name)}','${encodeURIComponent(className)}')">👨‍🏫 ${t.name}</span>`).join('');
     let studentChips=students.slice(0,8).map(s=>{
       const isAsst=asstAdmin&&asstAdmin.name===s.name;
       return `<span class="student-chip${isAsst?' asst-admin':''}" onclick="event.stopPropagation();loginByName('${encodeURIComponent(s.name)}','${encodeURIComponent(className)}')">${isAsst?'🎖️ ':''}${s.name}</span>`;
     }).join('');
     const more=students.length>8?`<span class="student-chip">+${students.length-8}人</span>`:'';
-    classCard.innerHTML=`<div class="class-header"><div class="class-ico">🏫</div><div class="class-info"><div class="class-name">${className}</div><div class="class-meta">👥 ${students.length}名学生${teachers.length>0?' · 👨‍🏫 '+teachers.length+'位教师':''}</div></div></div><div class="class-students">${teacherChips}${studentChips}${more}</div>`;
-    classCard.onclick=()=>viewClassDetail(className);
-    classListEl.appendChild(classCard);
+    const cardInner=`<div class="class-header"><div class="class-ico">🏫</div><div class="class-info"><div class="class-name">${className}</div><div class="class-meta">👥 ${students.length}名学生${teachers.length>0?' · 👨‍🏫 '+teachers.length+'位教师':''}</div></div></div><div class="class-students">${teacherChips}${studentChips}${more}</div>`;
+    // 手机端
+    if(classListEl){const c=document.createElement('div');c.className='class-card';c.innerHTML=cardInner;c.onclick=()=>viewClassDetail(className);classListEl.appendChild(c);}
+    // 桌面端
+    if(classListDt){const c=document.createElement('div');c.className='class-card';c.innerHTML=cardInner;c.onclick=()=>viewClassDetail(className);classListDt.appendChild(c);}
   });
 }
 
@@ -344,7 +413,8 @@ function goToLogin(){if(CURRENT_ACC_ID)persistAccount();CURRENT_ACC_ID=null;if(p
 
 // PIN PAD
 let pinInput='',pinCb=null;
-function openPinPad(name,cb){pinInput='';pinCb=cb;const ne=document.getElementById('pin-acc-name');if(ne)ne.textContent=name;buildPinDots('pin-dots');buildNumpad('numpad',false);document.getElementById('pin-ov').classList.add('on');}
+function openPinPad(name,cb){pinInput='';pinCb=cb;// 关闭其他弹窗避免叠加
+document.querySelectorAll('.overlay.on').forEach(ov=>{if(ov.id!=='pin-ov')ov.classList.remove('on');});const ne=document.getElementById('pin-acc-name');if(ne)ne.textContent=name;buildPinDots('pin-dots');buildNumpad('numpad',false);document.getElementById('pin-ov').classList.add('on');}
 function buildPinDots(id){const d=document.getElementById(id);if(!d)return;d.innerHTML='';for(let i=0;i<4;i++){const dot=document.createElement('div');dot.className='pin-dot'+(i<pinInput.length?' filled':'');d.appendChild(dot);}}
 function buildNumpad(containerId,isSetPin){
   const np=document.getElementById(containerId);if(!np)return;np.innerHTML='';
@@ -395,18 +465,31 @@ function renderAccountSettings(){
   const list=getAllAccounts();const acc=list.find(a=>a.id===CURRENT_ACC_ID);
   const hasPin=acc&&acc.pin;
   el.innerHTML=`
-  <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px">
-    <button onclick="openNameModal('player')" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.08);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">✏️ 修改昵称</button>
-    <button onclick="openProfileAvatarUpload()" style="padding:7px 14px;border-radius:9px;border:1.5px solid #4a90d9;background:rgba(74,144,217,.08);color:#2060a0;font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🖼️ 上传头像</button>
-    <button onclick="openAvatarPicker()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--border);background:transparent;font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">😀 Emoji头像</button>
-  </div>
-  <div style="display:flex;flex-wrap:wrap;gap:7px">
-    ${!hasPin
-      ? `<button onclick="openSetPin()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.08);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🔐 设置密码</button>`
-      : `<button onclick="openSetPin()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--border);background:transparent;font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🔑 修改密码</button>
-         <button onclick="removePin()" style="padding:7px 14px;border-radius:9px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.74rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🔓 移除密码</button>`
-    }
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <!-- 第1行：修改昵称 + 修改头像 -->
+    <div style="display:flex;gap:7px">
+      <button onclick="openNameModal('player')" style="flex:1;padding:9px 10px;border-radius:10px;border:1.5px solid var(--green);background:rgba(100,160,100,.08);color:var(--dgreen);font-size:.75rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;display:flex;align-items:center;justify-content:center;gap:5px">✏️ 修改昵称</button>
+      <button onclick="openAvatarPickerModal()" style="flex:1;padding:9px 10px;border-radius:10px;border:1.5px solid #4a90d9;background:rgba(74,144,217,.08);color:#2060a0;font-size:.75rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;display:flex;align-items:center;justify-content:center;gap:5px">🖼️ 修改头像</button>
+    </div>
+    <!-- 第2行：注销账号 + 切换账号 -->
+    <div style="display:flex;gap:7px">
+      <button onclick="deleteCurrentAccount()" style="flex:1;padding:9px 10px;border-radius:10px;border:1.5px solid var(--red);background:rgba(224,85,85,.06);color:var(--red);font-size:.75rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;display:flex;align-items:center;justify-content:center;gap:5px">🗑️ 注销账号</button>
+      <button onclick="goToLogin()" style="flex:1;padding:9px 10px;border-radius:10px;border:1.5px solid var(--border);background:transparent;color:var(--ink);font-size:.75rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;display:flex;align-items:center;justify-content:center;gap:5px">🔄 切换账号</button>
+    </div>
+    <!-- 第3行：密码管理 -->
+    <div style="display:flex;gap:7px">
+      ${!hasPin
+        ? `<button onclick="openSetPin()" style="flex:1;padding:9px 10px;border-radius:10px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:.75rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;display:flex;align-items:center;justify-content:center;gap:5px">🔐 设置密码</button>`
+        : `<button onclick="openSetPin()" style="flex:1;padding:9px 10px;border-radius:10px;border:1.5px solid var(--border);background:transparent;font-size:.75rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;display:flex;align-items:center;justify-content:center;gap:5px">🔑 修改密码</button>
+           <button onclick="removePin()" style="flex:1;padding:9px 10px;border-radius:10px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.75rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;display:flex;align-items:center;justify-content:center;gap:5px">🔓 移除密码</button>`
+      }
+    </div>
   </div>`;
+}
+
+// 头像选择弹窗：合并上传图片和emoji两种方式
+function openAvatarPickerModal(){
+  openOverlay('avatar-pick-mode-ov');
 }
 
 // 注销当前账号
@@ -598,7 +681,10 @@ function _tcmImportUnbound(encodedClass){
   const accounts=getAllAccounts();
   // 没有班级归属的学生账号
   const unbound=accounts.filter(function(a){return !a.isTeacher&&(!a.classId||a.classId==='');});
-  if(!unbound.length){showToast('没有无班级归属的学生账号');return;}
+  if(!unbound.length){
+    openConfirm('✅','当前所有学生账号都已归属班级，\n没有待分配的无班学生。',null);
+    return;
+  }
   let html='<div style="font-size:.7rem;color:var(--muted);margin-bottom:8px">选择要加入【'+className+'】的学生（可多选）：</div>';
   html+='<div id="unbound-list" style="max-height:45vh;overflow-y:auto">';
   unbound.forEach(function(a){
@@ -607,7 +693,11 @@ function _tcmImportUnbound(encodedClass){
       +'<span>'+a.name+'</span></div>';
   });
   // 修复了两处引号转义错误
-  html+='</div><button onclick="_tcmDoImportUnbound(\''+encodeURIComponent(className)+'\')" style="margin-top:10px;width:100%;padding:9px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.78rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">✅ 加入班级</button>';
+  html+='</div>'
+    +'<div style="display:flex;gap:8px;margin-top:10px">'
+    +'<button onclick="toggleAllUnbound()" id="toggle-all-unbound" style="flex:1;padding:9px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.74rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">全选</button>'
+    +'<button onclick="_tcmDoImportUnbound(\''+encodeURIComponent(className)+'\')" style="flex:2;padding:9px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.78rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">✅ 加入班级</button>'
+    +'</div>';
   document.getElementById('tcm-body').innerHTML=html;
 }
 function toggleUnboundSel(el){
@@ -615,6 +705,23 @@ function toggleUnboundSel(el){
   const sel=el.dataset.sel==='1';
   if(sel){el.dataset.sel='0';el.style.borderColor='var(--border)';el.style.background='var(--panel)';if(chk){chk.style.background='transparent';chk.style.borderColor='var(--border)';chk.textContent='';}}
   else{el.dataset.sel='1';el.style.borderColor='var(--green)';el.style.background='rgba(100,160,100,.1)';if(chk){chk.style.background='var(--green)';chk.style.borderColor='var(--green)';chk.textContent='✓';chk.style.color='#fff';chk.style.fontSize='.6rem';chk.style.textAlign='center';chk.style.lineHeight='12px';}}
+}
+
+function toggleAllUnbound(){
+  const items=document.querySelectorAll('#unbound-list [data-accid]');
+  const allSel=[...items].every(el=>el.dataset.sel==='1');
+  items.forEach(el=>{
+    const chk=el.querySelector('.ub-chk');
+    if(allSel){
+      el.dataset.sel='0';el.style.borderColor='var(--border)';el.style.background='var(--panel)';
+      if(chk){chk.style.background='transparent';chk.style.borderColor='var(--border)';chk.textContent='';}
+    } else {
+      el.dataset.sel='1';el.style.borderColor='var(--green)';el.style.background='rgba(100,160,100,.1)';
+      if(chk){chk.style.background='var(--green)';chk.style.borderColor='var(--green)';chk.textContent='✓';chk.style.color='#fff';chk.style.fontSize='.6rem';chk.style.textAlign='center';chk.style.lineHeight='12px';}
+    }
+  });
+  const btn=document.getElementById('toggle-all-unbound');
+  if(btn)btn.textContent=allSel?'全选':'取消全选';
 }
 
 function _tcmDoImportUnbound(encodedClass){
@@ -676,8 +783,10 @@ function _tcmRemoveStudent(encodedName, encodedClass) {
       saveAllAccounts(accounts);
     }
     
-    // ✅ 关键修复：传入编码后的班级名（_renderTCMBody要求接收encoded参数）
-    _renderTCMBody(encodedClass);
+    // 重新渲染班级管理视图（传解码后的班级名）
+    _renderTCMBody(className);
+    // 同步刷新教师登录页班级卡片
+    renderTeacherClassView();
     showToast(`✅ 已移除「${name}」`);
   });
 }
@@ -922,6 +1031,18 @@ let QZ=null, curQ=null, qAnswered=false, curSelOpts=[];
 
 function getQ(){const pool=getActiveQuestions();if(!pool||!pool.length)return QB&&QB[0]||{c:'基础',q:'加载中...',o:['A','B','C','D'],a:0,e:''};let av=pool.map((_,i)=>i).filter(i=>!S.usedQ.includes(i));if(av.length<5){S.usedQ=[];av=pool.map((_,i)=>i);}const idx=av[Math.floor(Math.random()*av.length)];S.usedQ.push(idx);if(S.usedQ.length>pool.length-3)S.usedQ=S.usedQ.slice(-15);return pool[idx];}
 
+let _quizLayoutH=localStorage.getItem('jbfarm_quiz_h')!=='0'; // 默认横版，设为'0'才是竖版
+function toggleQuizLayout(){
+  _quizLayoutH=!_quizLayoutH;
+  localStorage.setItem('jbfarm_quiz_h',_quizLayoutH?'1':'0');
+  const ov=document.getElementById('quiz-ov');
+  if(ov)ov.setAttribute('data-layout',_quizLayoutH?'h':'v');
+  const btn=document.getElementById('quiz-layout-btn');
+  if(btn)btn.textContent=_quizLayoutH?'⇅ 竖版':'⇅ 横版';
+  if(btn)btn.title=_quizLayoutH?'切换为竖版':'切换为横版';
+  showToast(_quizLayoutH?'📐 已切换为横版答题':'📐 已切换为竖版答题');
+}
+
 function openQuiz(cfg){
   const _pool=getActiveQuestions();
   if(!_pool||!_pool.length){
@@ -929,7 +1050,13 @@ function openQuiz(cfg){
     showResult('⚠️','该题库暂无题目',_ml?`「${_ml}」\n\n此模块题目待更新中 📭\n\n请点击上方科目标签切换其他模块！`:'当前题库为空\n请切换科目或选择其他模块');
     return;
   }
-  QZ={...cfg,done:0,correct:0};qAnswered=false;const sub=getActiveSubject();const badge=document.getElementById('sub-badge');if(badge){badge.textContent=(window.ACTIVE_MODULE_LABEL?sub.icon+' '+ACTIVE_MODULE_LABEL:sub.icon+' '+sub.name);badge.style.background=sub.color||'#5a9a5a';}document.getElementById('quiz-ov').classList.add('on');loadNextQ();
+  QZ={...cfg,done:0,correct:0};qAnswered=false;const sub=getActiveSubject();const badge=document.getElementById('sub-badge');if(badge){badge.textContent=(window.ACTIVE_MODULE_LABEL?sub.icon+' '+ACTIVE_MODULE_LABEL:sub.icon+' '+sub.name);badge.style.background=sub.color||'#5a9a5a';}
+  // 应用布局状态
+  const _qov=document.getElementById('quiz-ov');
+  if(_qov)_qov.setAttribute('data-layout',_quizLayoutH?'h':'v');
+  const _lbtn=document.getElementById('quiz-layout-btn');
+  if(_lbtn){_lbtn.textContent=_quizLayoutH?'⇅ 竖版':'⇅ 横版';_lbtn.title=_quizLayoutH?'切换为竖版':'切换为横版';}
+  _qov.classList.add('on');loadNextQ();
 }
 
 function loadNextQ(){
@@ -1127,18 +1254,18 @@ function doHarvestPlot(idx){openQuiz({title:'🌾 收获',needed:1,onSuccess:()=
   S.warehouse[sid].count++;S.warehouse[sid].value+=_coinVal;
   S.score+=Math.round(_coinVal*0.5);
   gainExp(_expVal);persistAccount();renderFarm();checkAchs();
-  const _soilTip=_soil!=='yellow'?`\n${_soil==='black'?'⬛黑土地':'🟥红土地'}加成×${_sm}`:'';
+  const _soilTip=_soil!=='yellow'?`\n${_soil==='diamond'?'💎钻石地':_soil==='black'?'⬛黑土地':'🟥红土地'}加成×${_sm}`:'';
   const _htalk=_plantTalk(sid,'harvest');showResult('🌾','大丰收！',`${_htalk?'「'+_htalk+'」\n\n':''}${sd.ico}${sd.name}已存入仓库🏪${_soilTip}\n经验+${_expVal}${_hb>1?' 🌈×2':''}\n去仓库售卖可得🪙${_coinVal}`);
 }});}
 
 function doPestPlot(idx){openQuiz({title:'🧴 除虫',needed:1,onSuccess:()=>{const _sid2=S.plots[idx].seed||'wheat';S.plots[idx].hasBug=false;gainExp(8);persistAccount();renderFarm();const _ptk2=_plantTalk(_sid2,'bug');showResult('🧴','除虫成功！',(_ptk2?'「'+_ptk2+'」 — 呼，终于安全了！\n\n':'')+'虫害已消灭！');}});}
 
 // ─── SOIL UPGRADE SYSTEM ──────────────────────────
-const SOIL_LEVELS=['yellow','red','black'];
-const SOIL_NAMES_MAP={yellow:'🟡黄土地',red:'🟥红土地',black:'⬛黑土地'};
-const SOIL_UPGRADE_COST={yellow:50,red:150};
-const SOIL_MULT_MAP={yellow:1.0,red:1.3,black:1.6};
-const SOIL_LV_REQ={red:3,black:7};
+const SOIL_LEVELS=['yellow','red','black','diamond'];
+const SOIL_NAMES_MAP={yellow:'🟡黄土地',red:'🟥红土地',black:'⬛黑土地',diamond:'💎钻石地'};
+const SOIL_UPGRADE_COST={yellow:80,red:250,black:600};
+const SOIL_MULT_MAP={yellow:1.0,red:1.35,black:1.8,diamond:2.5};
+const SOIL_LV_REQ={red:10,black:30,diamond:60};
 
 function canUpgradeSoil(idx){
   const p=S.plots[idx];
@@ -1154,8 +1281,12 @@ function canUpgradeSoil(idx){
     if(!allUnlocked)return{ok:false,msg:'需要先开荒全部地块\n才能升级🟥红土地'};
   }
   if(next==='black'){
-    const allRed=S.plots.every(pl=>pl.soil==='red'||pl.soil==='black');
+    const allRed=S.plots.every(pl=>pl.soil==='red'||pl.soil==='black'||pl.soil==='diamond');
     if(!allRed)return{ok:false,msg:'需要先将所有地块升级为🟥红土地\n才能升级⬛黑土地'};
+  }
+  if(next==='diamond'){
+    const allBlack=S.plots.every(pl=>pl.soil==='black'||pl.soil==='diamond');
+    if(!allBlack)return{ok:false,msg:'需要先将所有地块升级为⬛黑土地\n才能升级💎钻石地'};
   }
   const cost=SOIL_UPGRADE_COST[cur];
   if(S.coins<cost)return{ok:false,msg:`金币不足！需🪙${cost}\n（当前🪙${S.coins}）`};
@@ -1239,18 +1370,19 @@ function farmBulk(type){
   if(type==='auto_plant'){const empties=S.plots.map((p,i)=>({p,i})).filter(({p})=>p.s==='empty');if(!empties.length){showToast('没有空地！');return;}if(!totalSeeds()){showToast('种子袋空了！');return;}openSeedPicker('plant',null,sid=>{const n=Math.min(empties.length,S.seedBag[sid]||0);if(!n){showToast(SEEDS[sid].name+'种子不足！');return;}openQuiz({title:`🌱 一键播种（答对${n}题）`,needed:n,onSuccess:()=>{let cnt=0;empties.slice(0,n).forEach(({i})=>{if(S.seedBag[sid]>0){const p=S.plots[i];p.s='s0';p.g=0;p.seed=sid;p.lastWater=Date.now();p.hasBug=false;p.hasCrack=false;S.seedBag[sid]--;S.totalPlanted++;cnt++;}});gainExp(10*cnt);persistAccount();renderFarm();checkAchs();const _bpt=(window.PLANT_BULK_TALK&&PLANT_BULK_TALK.plant_all)||[];const _bpmsg=cnt>1&&_bpt.length?'「'+_bpt[Math.floor(Math.random()*_bpt.length)]+'」\n\n':'';showResult('🌱','一键播种完成！',_bpmsg+`播种了${cnt}块地 ${SEEDS[sid].ico}${SEEDS[sid].name}`);}});});return;}
   if(type==='buy_seeds'){openSeedPicker('buy',true,null);return;}
   if(type==='water_all'){const cnt=S.plots.filter(p=>growing.includes(p.s)).length;if(!cnt){showToast('没有正在生长的作物！');return;}openQuiz({title:`🌊 一键浇水（答对${cnt}题）`,needed:cnt,onSuccess:()=>{let coins=0;S.plots.forEach((p,i)=>{if(growing.includes(p.s)){p.hasCrack=false;p.lastWater=Date.now();growPlot(i,30);coins+=3;}});S.coins+=coins;S.totalCoins+=coins;gainExp(12*cnt);persistAccount();renderFarm();const _bwt=(window.PLANT_BULK_TALK&&PLANT_BULK_TALK.water_all)||[];const _bwmsg=_bwt.length?'「'+_bwt[Math.floor(Math.random()*_bwt.length)]+'」\n\n':'';showResult('🌊','全部浇水！',_bwmsg+`灌溉了${cnt}块地\n金币+${coins}`);}});return;}
-  if(type==='harvest_all'){const cnt=S.plots.filter(p=>p.s==='s3').length;if(!cnt){showToast('没有成熟的作物！');return;}openQuiz({title:`🧺 一键收获（答对${cnt}题）`,needed:cnt,onSuccess:()=>{let totalVal=0,expT=0,icons='';if(!S.warehouse)S.warehouse={};S.plots.forEach((p,i)=>{if(p.s==='s3'){const sid=p.seed||'wheat';const sd=SEEDS[sid];const _sm=p.soil==='black'?1.6:p.soil==='red'?1.3:1.0;S.plots[i].s='empty';S.plots[i].g=0;S.harvests++;const _hb=(S.harvestBoostLeft>0)?2:1;const _cv=Math.round(sd.reward*_sm*_hb);const _ev=Math.round(sd.expGain*_sm);if(!S.warehouse[sid])S.warehouse[sid]={count:0,value:0};S.warehouse[sid].count++;S.warehouse[sid].value+=_cv;totalVal+=_cv;expT+=_ev;icons+=sd.ico;S.score+=Math.round(_cv*0.5);}});if(S.harvestBoostLeft>0)S.harvestBoostLeft=Math.max(0,S.harvestBoostLeft-cnt);gainExp(expT);persistAccount();renderFarm();checkAchs();const _bht=(window.PLANT_BULK_TALK&&PLANT_BULK_TALK.harvest_all)||[];const _bhmsg=_bht.length?'「'+_bht[Math.floor(Math.random()*_bht.length)]+'」\n\n':'';showResult('🧺','一键大丰收！',_bhmsg+`收获：${icons}\n全部存入仓库🏪\n经验+${expT}\n共可售卖🪙${totalVal}`);}});return;}
+  if(type==='harvest_all'){const cnt=S.plots.filter(p=>p.s==='s3').length;if(!cnt){showToast('没有成熟的作物！');return;}openQuiz({title:`🧺 一键收获（答对${cnt}题）`,needed:cnt,onSuccess:()=>{let totalVal=0,expT=0,icons='';if(!S.warehouse)S.warehouse={};S.plots.forEach((p,i)=>{if(p.s==='s3'){const sid=p.seed||'wheat';const sd=SEEDS[sid];const _sm=p.soil==='diamond'?2.5:p.soil==='black'?1.8:p.soil==='red'?1.35:1.0;S.plots[i].s='empty';S.plots[i].g=0;S.harvests++;const _hb=(S.harvestBoostLeft>0)?2:1;const _cv=Math.round(sd.reward*_sm*_hb);const _ev=Math.round(sd.expGain*_sm);if(!S.warehouse[sid])S.warehouse[sid]={count:0,value:0};S.warehouse[sid].count++;S.warehouse[sid].value+=_cv;totalVal+=_cv;expT+=_ev;icons+=sd.ico;S.score+=Math.round(_cv*0.5);}});if(S.harvestBoostLeft>0)S.harvestBoostLeft=Math.max(0,S.harvestBoostLeft-cnt);gainExp(expT);persistAccount();renderFarm();checkAchs();const _bht=(window.PLANT_BULK_TALK&&PLANT_BULK_TALK.harvest_all)||[];const _bhmsg=_bht.length?'「'+_bht[Math.floor(Math.random()*_bht.length)]+'」\n\n':'';showResult('🧺','一键大丰收！',_bhmsg+`收获：${icons}\n全部存入仓库🏪\n经验+${expT}\n共可售卖🪙${totalVal}`);}});return;}
   if(type==='fert_all'){const cnt=S.plots.filter(p=>growing.includes(p.s)).length;if(!cnt){showToast('没有正在生长的作物！');return;}openQuiz({title:`🪣 一键施肥（答对${cnt*2}题）`,needed:cnt*2,onSuccess:()=>{let coins=0;S.plots.forEach((p,i)=>{if(growing.includes(p.s)){p.hasCrack=false;p.lastWater=Date.now();growPlot(i,60);coins+=8;}});S.coins+=coins;S.totalCoins+=coins;gainExp(25*cnt);persistAccount();renderFarm();const _bft=(window.PLANT_BULK_TALK&&PLANT_BULK_TALK.fert_all)||[];const _bfmsg=_bft.length?'「'+_bft[Math.floor(Math.random()*_bft.length)]+'」\n\n':'';showResult('🪣','全部施肥！',_bfmsg+`施肥了${cnt}块地\n金币+${coins}`);}});return;}
   if(type==='pest_all'){const bugCount=S.plots.filter(p=>p.hasBug).length;if(!bugCount){showToast('目前没有虫害！');return;}if(S.pestStock>=bugCount){S.pestStock-=bugCount;S.plots.forEach(p=>p.hasBug=false);persistAccount();renderFarm();showToast(`🧴 使用${bugCount}瓶除虫药，全部清除！`);return;}openQuiz({title:`🧴 一键除虫（答对${bugCount}题）`,needed:bugCount,onSuccess:()=>{S.plots.forEach(p=>p.hasBug=false);gainExp(8*bugCount);persistAccount();renderFarm();showResult('🧴','除虫完成！',`清除了${bugCount}块地的虫害！`);}});return;}
 }
 
 // ─── SEED PICKER ──────────────────────────────────
 let seedPickMode='buy',seedPickCb=null,selectedSeedId='wheat',buyQty=1;
-function openSeedPicker(mode,showQty,cb){seedPickMode=mode;seedPickCb=cb;selectedSeedId=S.unlockedSeeds[0]||'wheat';buyQty=1;document.getElementById('seed-ov-title').textContent=mode==='buy'?'🌰 购买种子':'🌱 选择种子';const list=document.getElementById('seed-list');list.innerHTML='';const available=mode==='plant'?SEED_IDS.filter(s=>S.seedBag[s]>0):S.unlockedSeeds;if(!available.length){showToast(mode==='plant'?'种子袋空了！':'暂无可用种子');return;}available.forEach(sid=>{const sd=SEEDS[sid];const d=document.createElement('div');d.className='seed-item'+(sid===selectedSeedId?' sel':'');d.innerHTML=`<span class="seed-ico">${sd.ico}</span><div class="seed-info"><div class="seed-nm">${sd.name}${mode==='plant'?' ×'+S.seedBag[sid]:''}</div><div class="seed-desc">${sd.desc} · 🪙${sd.reward} · ${sd.autoGrowH*4}h成熟</div></div><div class="seed-price">${mode==='buy'?'🪙'+sd.buyCoins:''}</div>`;d.onclick=()=>{selectedSeedId=sid;document.querySelectorAll('.seed-item').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');updateQtyCost();};list.appendChild(d);});const qs=document.getElementById('qty-section');qs.style.display=(mode==='buy'||showQty)?'block':'none';document.getElementById('qty-val').textContent=1;updateQtyCost();document.getElementById('seed-ov').classList.add('on');}
+function openSeedPicker(mode,showQty,cb){seedPickMode=mode;seedPickCb=cb;buyQty=1;document.getElementById('seed-ov-title').textContent=mode==='buy'?'🌰 购买种子':'🌱 选择种子';const list=document.getElementById('seed-list');list.innerHTML='';const available=mode==='plant'?SEED_IDS.filter(s=>S.seedBag[s]>0):S.unlockedSeeds;if(!available.length){showToast(mode==='plant'?'种子袋空了！去商店买种子吧':'暂无可用种子');return;}// 自动选中第一个有库存的种子，避免玩家未选种子就确认
+selectedSeedId=available[0];available.forEach(sid=>{const sd=SEEDS[sid];const d=document.createElement('div');d.className='seed-item'+(sid===selectedSeedId?' sel':'');d.innerHTML=`<span class="seed-ico">${sd.ico}</span><div class="seed-info"><div class="seed-nm">${sd.name}${mode==='plant'?' ×'+S.seedBag[sid]:''}</div><div class="seed-desc">${sd.desc} · 🪙${sd.reward} · ${sd.autoGrowH*4}h成熟</div></div><div class="seed-price">${mode==='buy'?'🪙'+sd.buyCoins:''}</div>`;d.onclick=()=>{selectedSeedId=sid;document.querySelectorAll('.seed-item').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');updateQtyCost();};list.appendChild(d);});const qs=document.getElementById('qty-section');qs.style.display=(mode==='buy'||showQty)?'block':'none';document.getElementById('qty-val').textContent=1;updateQtyCost();document.getElementById('seed-ov').classList.add('on');}
 function updateQtyCost(){const sd=SEEDS[selectedSeedId];if(document.getElementById('qty-cost'))document.getElementById('qty-cost').textContent=`费用：🪙${sd.buyCoins*buyQty} + 答对${buyQty}题`;}
 function changeQty(d){const sd=SEEDS[selectedSeedId];const max=Math.min(10,Math.max(1,Math.floor(S.coins/(sd.buyCoins||1))));buyQty=Math.max(1,Math.min(buyQty+d,max));document.getElementById('qty-val').textContent=buyQty;updateQtyCost();}
 function closeSeedOv(){document.getElementById('seed-ov').classList.remove('on');}
-function confirmSeedAction(){if(seedPickMode==='plant'){if(!S.seedBag[selectedSeedId]){showToast('该种子已用完！');return;}closeSeedOv();if(seedPickCb)seedPickCb(selectedSeedId);}else{const sd=SEEDS[selectedSeedId];const cost=sd.buyCoins*buyQty;if(S.coins<cost){showToast(`金币不足！需要🪙${cost}`);return;}closeSeedOv();openQuiz({title:`🌰 购买${sd.name}×${buyQty}（答对${buyQty}题）`,needed:buyQty,onSuccess:()=>{S.coins-=cost;S.seedBag[selectedSeedId]=(S.seedBag[selectedSeedId]||0)+buyQty;S.totalSeeds+=buyQty;gainExp(8*buyQty);persistAccount();renderFarm();checkAchs();showResult(sd.ico,'购种成功！',`获得${sd.name}×${buyQty}\n消耗🪙${cost}\n库存：${S.seedBag[selectedSeedId]}粒`);}});}}
+function confirmSeedAction(){if(seedPickMode==='plant'){const hasStock=SEED_IDS.some(s=>S.seedBag[s]>0);if(!hasStock){closeSeedOv();openConfirm('🌰','种子袋空空如也！\n需要先去商店购买种子。\n是否前往商店？',()=>switchTab('shop'));return;}if(!S.seedBag[selectedSeedId]){showToast('请先点击选择一种有库存的种子！');return;}closeSeedOv();if(seedPickCb)seedPickCb(selectedSeedId);}else{const sd=SEEDS[selectedSeedId];const cost=sd.buyCoins*buyQty;if(S.coins<cost){showToast(`金币不足！需要🪙${cost}`);return;}closeSeedOv();openQuiz({title:`🌰 购买${sd.name}×${buyQty}（答对${buyQty}题）`,needed:buyQty,onSuccess:()=>{S.coins-=cost;S.seedBag[selectedSeedId]=(S.seedBag[selectedSeedId]||0)+buyQty;S.totalSeeds+=buyQty;gainExp(8*buyQty);persistAccount();renderFarm();checkAchs();showResult(sd.ico,'购种成功！',`获得${sd.name}×${buyQty}\n消耗🪙${cost}\n库存：${S.seedBag[selectedSeedId]}粒`);}});}}
 
 // ─── RENDER FARM ──────────────────────────────────
 let farmTimerInterval=null;
@@ -1264,8 +1396,9 @@ function renderFarm(){
       const _sl=p.soil||'yellow';
       if(_sl==='red')d.style.background='linear-gradient(145deg,#b04828,#883018)';
       else if(_sl==='black')d.style.background='linear-gradient(145deg,#5a3a20,#3a2010)';
-      const _sico=_sl==='black'?'⬛':_sl==='red'?'🟥':'🟫';
-      const _snm=_sl==='yellow'?'空地':_sl==='red'?'红土空':'黑土空';
+      else if(_sl==='diamond')d.style.background='linear-gradient(145deg,#40c8e8,#2080b0)';
+      const _sico=_sl==='diamond'?'💎':_sl==='black'?'⬛':_sl==='red'?'🟥':'🟫';
+      const _snm=_sl==='diamond'?'钻石空':_sl==='yellow'?'空地':_sl==='red'?'红土空':'黑土空';
       d.innerHTML=`<span class="plot-ico">${_sico}</span><div class="plot-lbl">${_snm}</div>`;
     }
     else{const sd=SEEDS[p.seed||'wheat'];const si=p.s==='s3'?sd.stages.length-1:p.s==='s2'?2:p.s==='s1'?1:0;const ico=sd.stages[Math.min(si,sd.stages.length-1)];const rt=calcReadyTime(i);const pctStr=Math.round(p.g);const _sl2=p.soil||'yellow';const _sdot=_sl2!=='yellow'?`<div style="position:absolute;bottom:2px;left:2px;width:5px;height:5px;border-radius:50%;background:${_sl2==='black'?'#5a3a20':'#b04828'};border:1px solid rgba(255,255,255,.5)"></div>`:''+(p.s!=='s3'&&_sl2!=='yellow'?`<div style="position:absolute;bottom:2px;right:2px;font-size:.4rem">${_sl2==='black'?'⬛':'🟥'}</div>`:'');d.innerHTML=`${rt?`<div class="plot-timer">⏱${rt}</div>`:''}<div style="position:absolute;top:2px;right:2px;font-size:.48rem;line-height:1.4">${S.hasAutoWater?'🚿':''}${S.hasAutoPest?'🤖':''}</div>${_sdot}<span class="plot-ico">${ico}</span><div class="plot-lbl">${sd.name} ${p.s==='s3'?'🎉成熟':pctStr+'%'}</div><div class="plot-pg"><div class="plot-pg-f" style="width:${p.g}%"></div></div>`;}
@@ -1560,9 +1693,9 @@ function openPetImgPreviewModal(title){
   // 重置范围为全部
   const radioAll=document.querySelector('input[name="cloth-scope"][value="all"]');
   if(radioAll)radioAll.checked=true;
-  // 显示模特预览
+  // 模特预览默认隐藏（用户可自行展开）
   const modelWrap=document.getElementById('pet-preview-model-wrap');
-  if(modelWrap)modelWrap.style.display='';
+  if(modelWrap)modelWrap.style.display='none';
   // 加载图片对象
   const img=new Image();
   img.onload=function(){
@@ -1571,6 +1704,45 @@ function openPetImgPreviewModal(title){
   };
   img.src=_petImgPreviewData;
   document.getElementById('pet-img-preview-ov').classList.add('on');
+  // Enable drag on preview canvas
+  setTimeout(()=>_initPetPreviewDrag(),100);
+}
+
+function _initPetPreviewDrag(){
+  const cvs=document.getElementById('pet-preview-cvs');if(!cvs||cvs._dragInited)return;
+  cvs._dragInited=true;
+  let dragging=false,startX=0,startY=0,baseOx=0,baseOy=0;
+  const getOxOy=()=>({ox:parseInt(document.getElementById('pet-img-ox').value||0),oy:parseInt(document.getElementById('pet-img-oy').value||0)});
+  const setOxOy=(ox,oy)=>{
+    const oxEl=document.getElementById('pet-img-ox'),oyEl=document.getElementById('pet-img-oy');
+    if(oxEl){oxEl.value=Math.max(-60,Math.min(60,ox));}
+    if(oyEl){oyEl.value=Math.max(-60,Math.min(60,oy));}
+    rePetPreview();
+  };
+  const onDown=e=>{
+    dragging=true;
+    const t=e.touches?e.touches[0]:e;
+    startX=t.clientX;startY=t.clientY;
+    const {ox,oy}=getOxOy();baseOx=ox;baseOy=oy;
+    e.preventDefault();
+  };
+  const onMove=e=>{
+    if(!dragging)return;
+    const t=e.touches?e.touches[0]:e;
+    const dx=t.clientX-startX,dy=t.clientY-startY;
+    // Scale movement to canvas coords
+    const r=cvs.getBoundingClientRect();
+    const scaleX=cvs.width/r.width,scaleY=cvs.height/r.height;
+    setOxOy(baseOx+dx*scaleX,baseOy+dy*scaleY);
+    e.preventDefault();
+  };
+  const onUp=()=>{dragging=false;};
+  cvs.addEventListener('mousedown',onDown);
+  cvs.addEventListener('touchstart',onDown,{passive:false});
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('touchmove',onMove,{passive:false});
+  document.addEventListener('mouseup',onUp);
+  document.addEventListener('touchend',onUp);
 }
 
 function rePetPreview(){
@@ -2947,7 +3119,8 @@ function drawCloth(ctx,cx,cy,previewId){
     ctx.fillStyle='#4080ff';ctx.beginPath();ctx.arc(cx,cy+6,4,0,Math.PI*2);ctx.fill();
     ctx.fillStyle='#fff';ctx.font='7px sans-serif';ctx.fillText('✦',cx-3,cy+9);
   }
-  ctx.restore();
+  if(_hasAdj)ctx.restore();
+  else ctx.restore();
 }
 
 // ─── PET UI ──────────────────────────────────────
@@ -2975,7 +3148,27 @@ function updatePetUI(){
 
 // ─── PET ACTIONS ─────────────────────────────────
 let talkTimer=null;
-function showPetTalk(key){const br=S.petBreed||'hamster';const bl=(window.PET_TALK_BREED&&PET_TALK_BREED[br]&&PET_TALK_BREED[br][key])||[];const lines=bl.length?bl:(PET_TALK[key]||[]);if(!lines.length)return;let txt=lines[Math.floor(Math.random()*lines.length)];txt=txt.replace('{name}',S.petName||'我');const el=document.getElementById('pet-talk');if(!el)return;el.textContent=txt;el.classList.add('show');clearTimeout(talkTimer);talkTimer=setTimeout(()=>el.classList.remove('show'),3500);}
+function showPetTalk(key){
+  // tap时根据宠物状态决定说什么
+  if(key==='tap'){
+    const avg=Math.round((S.petFood+S.petHappy+S.petClean+S.petEnergy)/4);
+    if(S.petFood<=5||S.petEnergy<=5){key='tap_critical';}
+    else if(S.petFood<15||S.petEnergy<15){key='tap_weak';}
+    else if(S.petHappy<15){key='tap_sad';}
+    else if(avg>=80){key='tap_happy';}
+    else if(avg>=55){key='tap';} // normal tap
+    else{key='tap_tired';}
+  }
+  const br=S.petBreed||'hamster';
+  const bl=(window.PET_TALK_BREED&&PET_TALK_BREED[br]&&PET_TALK_BREED[br][key])||[];
+  const lines=bl.length?bl:(PET_TALK[key]||PET_TALK['tap']||[]);
+  if(!lines.length)return;
+  let txt=lines[Math.floor(Math.random()*lines.length)];
+  txt=txt.replace('{name}',S.petName||'我');
+  const el=document.getElementById('pet-talk');if(!el)return;
+  el.textContent=txt;el.classList.add('show');
+  clearTimeout(talkTimer);talkTimer=setTimeout(()=>el.classList.remove('show'),3500);
+}
 
 const PET_CFGS={
   feed: {t:'🍎 喂食',n:1,fd:+28,hp:+5,cl:-2,en:0,key:'feed'},
@@ -3407,7 +3600,7 @@ function openClothPreview(item){
 // ─── CLASS SYSTEM ─────────────────────────────────
 function getClassData(){try{return JSON.parse(localStorage.getItem(CLASS_KEY)||'{}');}catch(e){return {};}}
 function saveClassData(d){try{localStorage.setItem(CLASS_KEY,JSON.stringify(d));}catch(e){}}
-function joinClassBoard(cls,name,score){const cd=getClassData();if(!cd[cls])cd[cls]=[];const idx=cd[cls].findIndex(m=>m.name===name);if(idx>=0)cd[cls][idx]={name,score,level:S.level||1};else cd[cls].push({name,score:score||0,level:1});saveClassData(cd);}
+function joinClassBoard(cls,name,score){const cd=getClassData();if(!cd[cls])cd[cls]=[];const idx=cd[cls].findIndex(m=>m.name===name);if(idx>=0){const old=cd[cls][idx];cd[cls][idx]={name,score,level:S.level||1,isTeacher:old.isTeacher||false};}else cd[cls].push({name,score:score||0,level:1,isTeacher:S.isTeacher||false});saveClassData(cd);}
 function syncClassScore(){if(!S.classId||!S.playerName)return;joinClassBoard(S.classId,S.playerName,S.score);}
 
 // 排行榜：等级优先，同等级按积分
@@ -3574,53 +3767,43 @@ function openExtraScoreRanking(){
   render();
   ov.classList.add('on');
 }
-// ─── 班级总览浏览器（可折叠版）────────────────────────────────────────
+// ─── 班级总览浏览器（桌面默认展开，手机默认收起）─────────────────
 let _viewingClass='';
-let classBrowserExpanded = false; // 默认收起
+let classBrowserExpanded = window.innerWidth >= 900; // 桌面默认展开
 
 function renderClassBrowser(){
   const el=document.getElementById('class-browser');if(!el)return;
   const cd=getClassData();const classes=Object.keys(cd);
   
-  // 标题栏（可点击切换展开/收起）
+  const arrow=classBrowserExpanded?'▼':'▶';
   let html = `
-  <div onclick="toggleClassBrowser()" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer;background:var(--panel);border:1px solid var(--border);margin-bottom:${classBrowserExpanded?'8px':'0'}">
-    <span style="font-size:.7rem;transition:transform .2s;transform:rotate(${classBrowserExpanded?90:0}deg)">▶</span>
-    <span style="font-size:.76rem;font-weight:600">🏫 班级展开</span>
-    <span style="font-size:.65rem;color:var(--muted);margin-left:auto">${classes.length}个班级</span>
+  <div onclick="toggleClassBrowser()" style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;cursor:pointer;background:rgba(100,160,100,.06);border:1px solid var(--border);margin-bottom:${classBrowserExpanded?'10px':'0'};user-select:none">
+    <span style="font-size:.7rem;color:var(--dgreen);transition:transform .2s">${arrow}</span>
+    <span style="font-size:.76rem;font-weight:600;color:var(--dgreen)">🏫 班级总览</span>
+    <span style="font-size:.62rem;color:var(--muted);margin-left:auto">${classes.length}个班级 · ${classBrowserExpanded?'点击收起':'点击展开'}</span>
   </div>`;
 
-  // 只有展开时才渲染内容
   if(classBrowserExpanded){
     if(!classes.length){
-      html += '<div style="font-size:.74rem;color:var(--muted);padding:8px">暂无班级数据。批量导入学生后可在此查看各班情况。</div>';
-      el.innerHTML=html;
-      return;
+      html += '<div style="font-size:.74rem;color:var(--muted);padding:8px">暂无班级数据。</div>';
+      el.innerHTML=html;return;
     }
-
     if(!_viewingClass||!cd[_viewingClass])_viewingClass=S.classId||classes[0];
-    
-    // 班级标签页
     const tabsHtml=classes.map(cls=>`<div onclick="switchViewClass('${encodeURIComponent(cls)}')" style="padding:4px 11px;border-radius:99px;border:1.5px solid ${cls===_viewingClass?'var(--green)':'var(--border)'};background:${cls===_viewingClass?'var(--green)':'var(--panel)'};color:${cls===_viewingClass?'#fff':'var(--ink)'};font-size:.68rem;cursor:pointer;white-space:nowrap;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">${cls}</div>`).join('');
-    
-    // 成员列表
     const members=sortMembers(cd[_viewingClass]||[]);
     const membersHtml=members.map((m,i)=>{
       const isSelf=m.name===S.playerName&&_viewingClass===S.classId;
       const rankStyle=i===0?'#ffd700;color:#806000':i===1?'#c0c0c0;color:#505050':i===2?'#cd7f32;color:#503010':'rgba(100,160,100,.1);color:var(--dgreen)';
-      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;border:1px solid ${isSelf?'var(--green)':'var(--border)'};background:${isSelf?'rgba(100,160,100,.06)':'#fff'}">`
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;border:1px solid ${isSelf?'var(--green)':'var(--border)'};background:${isSelf?'rgba(100,160,100,.06)':'var(--panel)'}">`
         +`<div style="width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;background:${rankStyle}">${i+1}</div>`
         +`<div style="flex:1;font-size:.78rem;font-weight:500">${m.name}${isSelf?' 👈':''}</div>`
         +`<div style="font-size:.65rem;color:var(--muted)">Lv.${m.level||1} · ⭐${m.score||0}</div></div>`;
     }).join('');
-
-    // 拼接展开内容
-    html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${tabsHtml}</div>`
+    html+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${tabsHtml}</div>`
       +`<div style="font-size:.7rem;color:var(--muted);margin-bottom:7px">👥 ${_viewingClass} · 共${members.length}名学生</div>`
-      +`<div style="display:flex;flex-direction:column;gap:5px;max-height:280px;overflow-y:auto">${membersHtml||'<div style="font-size:.74rem;color:var(--muted)">班级暂无成员</div>'}</div>`
+      +`<div style="display:flex;flex-direction:column;gap:5px;max-height:260px;overflow-y:auto">${membersHtml||'<div style="font-size:.74rem;color:var(--muted)">班级暂无成员</div>'}</div>`
       +(members.length?`<div style="margin-top:8px"><button onclick="randomPickFromBrowser()" style="padding:6px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🎲 随机抽人</button></div>`:'');
   }
-
   el.innerHTML=html;
 }
 
@@ -3688,6 +3871,7 @@ function saveClassAdmins(d){try{localStorage.setItem(CLASS_ADMIN_KEY,JSON.string
 
 function openClassManage(){
   if(!S.classId){showToast('你还没有加入班级');return;}
+  closeAllOverlays();
   const ov=document.getElementById('class-manage-ov');if(!ov)return;
   const ttl=document.getElementById('class-manage-ttl');
   if(ttl)ttl.textContent='🏫 '+S.classId+' · 班级管理';
@@ -3762,6 +3946,15 @@ function setScoreMode(mode){
   if(addBtn){addBtn.style.background=mode==='add'?'var(--green)':'var(--panel)';addBtn.style.color=mode==='add'?'#fff':'var(--muted)';}
   if(subBtn){subBtn.style.background=mode==='sub'?'var(--red)':'var(--panel)';subBtn.style.color=mode==='sub'?'#fff':'var(--muted)';}
   if(confirmBtn){confirmBtn.style.background=mode==='add'?'var(--green)':'var(--red)';confirmBtn.textContent=mode==='add'?'✅ 确认给已选学生加分':'📉 确认给已选学生减分';}
+}
+
+function setScoreVal(v){
+  const el=document.getElementById('add-score-val');
+  if(el){el.value=v;}
+  // 高亮选中的预设按钮
+  document.querySelectorAll('.score-preset-btn').forEach(b=>{
+    b.classList.toggle('active',b.textContent==='+'+v||b.textContent===''+v);
+  });
 }
 
 function openAddScorePanel(classId){
@@ -4095,31 +4288,62 @@ function updateProfile(){
   const acc2=S.totalAnswered>0?Math.round(S.totalCorrect/S.totalAnswered*100):0;
   const ps=document.getElementById('prof-stats');
   if(ps)ps.innerHTML=`<div class="ps"><div class="psv">Lv.${S.level}</div><div class="psl">等级</div></div><div class="ps"><div class="psv">${S.totalCorrect}</div><div class="psl">答对</div></div><div class="ps"><div class="psv">${S.harvests}</div><div class="psl">收获</div></div><div class="ps"><div class="psv">${S.coins}</div><div class="psl">金币</div></div><div class="ps"><div class="psv">${S.unlockedAch.length}</div><div class="psl">成就</div></div><div class="ps"><div class="psv">${acc2}%</div><div class="psl">正确率</div></div>`;
+
+  // 学习统计：总答题、种类、累积经验、累积金币、宠物数量
   const ss=document.getElementById('study-stats');
-  if(ss)ss.innerHTML=`📝 总答题：${S.totalAnswered}<br>✅ 答对：${S.totalCorrect}（${acc2}%）<br>🔥 最高连击：${S.maxStreak}<br>🐾 宠物喂食：${S.petFeedCount}次<br>💰 累计金币：${S.totalCoins}<br>🌾 累计收获：${S.harvests}次`;
-  // 教师额外：管理班级预览（插到账号设置下方）
-  let teacherInfoEl=document.getElementById('teacher-profile-info');
-  if(S.isTeacher){
-    const settingsCard=document.querySelector('#ppanel-personal .card');
-    if(settingsCard&&!teacherInfoEl){
-      teacherInfoEl=document.createElement('div');
-      teacherInfoEl.id='teacher-profile-info';
-      teacherInfoEl.className='card';
-      settingsCard.after(teacherInfoEl);
-    }
-    if(teacherInfoEl){
-      const mc=S.managedClasses&&S.managedClasses.length?S.managedClasses:[];
-      const clsRows=mc.map(c=>'<div style="display:flex;align-items:center;padding:6px 0;border-bottom:1px solid rgba(232,160,32,.1)">'
-        +'<span style="font-size:.74rem;flex:1">🏫 <b>'+c+'</b></span>'
-        +'<button onclick="openTeacherClassManage(\''+encodeURIComponent(c)+'\')" style="padding:3px 9px;border-radius:7px;border:1px solid rgba(232,160,32,.4);background:rgba(232,160,32,.1);color:#a06000;font-size:.62rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif;margin-left:6px">⚙️ 管理</button>'
-        +'</div>').join('');
-      teacherInfoEl.innerHTML='<div class="cttl">👨‍🏫 我管理的班级</div><div style="padding:6px 0">'
-        +(mc.length?clsRows:'<div style="font-size:.7rem;color:var(--muted)">暂无管理的班级</div>')+'</div>';
-    }
-  } else if(teacherInfoEl){
-    teacherInfoEl.remove();
+  if(ss){
+    const ownedPetCount=(S.ownedPets||['p_hamster']).length;
+    const subjectsSeen=Object.keys(S.catCorrect||{}).filter(k=>(S.catCorrect[k]||0)>0).length;
+    const totalExp=S.totalExp||((S.level-1)*100+(S.exp||0));
+    ss.innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div style="background:rgba(100,160,100,.07);border-radius:10px;padding:8px 10px;border:1px solid var(--border)">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--dgreen)">${S.totalAnswered}</div>
+        <div style="font-size:.62rem;color:var(--muted)">📝 总答题数</div>
+      </div>
+      <div style="background:rgba(100,160,100,.07);border-radius:10px;padding:8px 10px;border:1px solid var(--border)">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--dgreen)">${S.totalCorrect}<span style="font-size:.7rem;color:var(--muted);font-weight:400"> · ${acc2}%</span></div>
+        <div style="font-size:.62rem;color:var(--muted)">✅ 答对数 · 正确率</div>
+      </div>
+      <div style="background:rgba(232,160,32,.07);border-radius:10px;padding:8px 10px;border:1px solid rgba(232,160,32,.2)">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--gold)">${totalExp}</div>
+        <div style="font-size:.62rem;color:var(--muted)">✨ 累计经验值</div>
+      </div>
+      <div style="background:rgba(232,160,32,.07);border-radius:10px;padding:8px 10px;border:1px solid rgba(232,160,32,.2)">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--gold)">${S.totalCoins||S.coins}</div>
+        <div style="font-size:.62rem;color:var(--muted)">🪙 累计金币</div>
+      </div>
+      <div style="background:rgba(160,122,208,.07);border-radius:10px;padding:8px 10px;border:1px solid rgba(160,122,208,.2)">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--purple)">${ownedPetCount}</div>
+        <div style="font-size:.62rem;color:var(--muted)">🐾 拥有宠物</div>
+      </div>
+      <div style="background:rgba(100,160,100,.07);border-radius:10px;padding:8px 10px;border:1px solid var(--border)">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--dgreen)">${subjectsSeen||'—'}</div>
+        <div style="font-size:.62rem;color:var(--muted)">📚 答题科目数</div>
+      </div>
+    </div>
+    <div style="margin-top:8px;font-size:.62rem;color:var(--muted);text-align:center">🔥 最高连击：${S.maxStreak} · 🌾 收获次数：${S.harvests}</div>`;
   }
-  // 渲染当前激活的面板内容
+
+  // 教师管理班级卡片 → 渲染到左栏
+  const teacherCard=document.getElementById('pcard-teacher-mgr');
+  if(S.isTeacher){
+    let tc=teacherCard;
+    if(!tc){
+      tc=document.createElement('div');tc.className='card';tc.id='pcard-teacher-mgr';
+      const leftCol=document.getElementById('profile-col-left');
+      if(leftCol)leftCol.appendChild(tc);
+    }
+    const mc=S.managedClasses&&S.managedClasses.length?S.managedClasses:[];
+    const clsRows=mc.map(c=>'<div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid rgba(232,160,32,.1)">'
+      +'<span style="font-size:.74rem;flex:1">🏫 <b>'+c+'</b></span>'
+      +'<button onclick="openTeacherClassManage(\''+encodeURIComponent(c)+'\')" style="padding:3px 10px;border-radius:7px;border:1px solid rgba(232,160,32,.4);background:rgba(232,160,32,.1);color:#a06000;font-size:.62rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">⚙️ 管理</button>'
+      +'</div>').join('');
+    tc.innerHTML='<div class="cttl">👨‍🏫 我管理的班级</div><div style="padding:4px 0">'
+      +(mc.length?clsRows:'<div style="font-size:.7rem;color:var(--muted)">暂无管理的班级</div>')+'</div>';
+  } else if(teacherCard){
+    teacherCard.remove();
+  }
   switchProfileTab(_profileTab);
 }
 
@@ -4144,10 +4368,10 @@ function switchProfileTab(tab){
 
 // ─── ACH TAB ──────────────────────────────────────
 const ACH_CATEGORIES={
-  study:['q_first','q_c1','q_c10','q_c30','q_c60','q_c100','streak3','streak7','streak15','lv5','lv10'],
-  farm: ['farm_seed','farm_plant','farm_h1','farm_h10','farm_h30','expand1','expand4','coins200','seed5'],
-  pet:  ['pet_f1','pet_f20','pet_lv2','pet_lv5','shop_cloth','shop_pet','pet_drag','pet14','skin_color'],
-  social:['class_rank']
+  study:['q_first','q_c1','q_c10','q_c30','q_c60','q_c100','q_c200','q_c500','streak3','streak7','streak15','streak20','streak30','all_cats','lv5','lv10','lv20','lv35','lv50','lv75','lv100'],
+  farm: ['farm_seed','farm_plant','farm_h1','farm_h10','farm_h30','farm_h60','farm_h100','expand1','expand4','coins200','coins1000','coins5000','seed5','all_seeds','red_soil','black_soil','diamond_soil','first_diamond'],
+  pet:  ['pet_f1','pet_f20','pet_f50','pet_f100','pet_lv2','pet_lv5','shop_cloth','shop_pet','pet_drag','pet_drag20','pet14','skin_color','pet_3pets','pet_all','pet_3cloths','pet_allcloths','multi_evolve','custom_pet','pet_3cloths'],
+  social:['class_rank','class_top3']
 };
 let _achTab='all';
 function switchAchTab(tab){
@@ -4231,14 +4455,23 @@ function renderPetArchive(){
     const stageName=(stages[Math.min(reached-1,stages.length-1)]||{}).name||'未知';
     const isActive=S.activePet===petId;
     const d=document.createElement('div');
-    d.style.cssText='background:var(--panel);border-radius:11px;border:1.5px solid '+(isActive?'var(--green)':'var(--border)')+';padding:9px;text-align:center';
-    d.innerHTML=`<div style="font-size:1.5rem;margin-bottom:3px">${info.ico}</div>`
-      +`<div style="font-size:.74rem;font-weight:700;margin-bottom:1px">${info.name}</div>`
-      +`<div style="font-size:.58rem;color:var(--dgreen);margin-bottom:5px">${isActive?'🟢 当前宠物':'　'}</div>`
-      +`<div style="font-size:.62rem;color:var(--gold);font-weight:600;margin-bottom:5px">最高：${stageName}</div>`
+    d.style.cssText='background:var(--panel);border-radius:14px;border:2px solid '+(isActive?'var(--green)':'var(--border)')+';padding:10px;text-align:center;transition:all .2s;cursor:pointer';
+    // 使用 canvas 绘制小宠物头像
+    const cvs=document.createElement('canvas');
+    cvs.width=64;cvs.height=64;
+    cvs.style.cssText='display:block;margin:0 auto 5px;border-radius:50%;background:linear-gradient(135deg,rgba(100,180,100,.18),rgba(200,230,200,.25))';
+    d.appendChild(cvs);
+    // 异步绘制（避免阻塞）
+    setTimeout(()=>{try{drawPetPreviewInCanvas(cvs,breed,reached);}catch(e){const c=cvs.getContext('2d');if(c){c.font='28px serif';c.textAlign='center';c.textBaseline='middle';c.fillText(info.ico,32,32);}}},0);
+    const lbl=document.createElement('div');
+    lbl.innerHTML=`<div style="font-size:.74rem;font-weight:700;margin-bottom:1px;color:var(--ink)">${info.name}</div>`
+      +`<div style="font-size:.58rem;color:var(--dgreen);margin-bottom:4px">${isActive?'🟢 当前宠物':'　'}</div>`
+      +`<div style="font-size:.62rem;color:var(--gold);font-weight:600;margin-bottom:5px">${stageName}</div>`
       +`<div style="background:rgba(100,160,100,.1);border-radius:99px;height:5px;overflow:hidden;margin-bottom:3px">`
       +`<div style="height:100%;background:linear-gradient(90deg,var(--green),var(--gold));border-radius:99px;width:${pct}%;transition:width .5s"></div></div>`
-      +`<div style="font-size:.58rem;color:var(--muted)">Lv.${reached} / ${maxStage}阶 · ${pct}%</div>`;
+      +`<div style="font-size:.58rem;color:var(--muted)">Lv.${reached}/${maxStage} · ${pct}%</div>`;
+    d.appendChild(lbl);
+    if(isActive)d.style.boxShadow='0 0 0 3px rgba(100,170,100,.2)';
     g.appendChild(d);
   });
 }
@@ -4249,9 +4482,9 @@ function saveName(){const v=((document.getElementById('name-input')||{}).value||
 
 // ─── CONFIRM（支持取消回调）────────────────────────
 let confirmCb=null,confirmCancelCb=null;
-function openConfirm(ico,msg,cb,danger=false,cancelCb=null){confirmCb=cb;confirmCancelCb=cancelCb;document.getElementById('confirm-ico').textContent=ico;document.getElementById('confirm-msg').textContent=msg;const yb=document.getElementById('confirm-yes-btn');yb.className='mbtn '+(danger?'mb-danger on':'mb-ok on');document.getElementById('confirm-ov').classList.add('on');}
-function confirmYes(){document.getElementById('confirm-ov').classList.remove('on');const c=confirmCb;confirmCb=null;confirmCancelCb=null;if(c)c();}
-function confirmNo(){document.getElementById('confirm-ov').classList.remove('on');const c=confirmCancelCb;confirmCb=null;confirmCancelCb=null;if(c)c();}
+function openConfirm(ico,msg,cb,danger=false,cancelCb=null){confirmCb=cb;confirmCancelCb=cancelCb;document.getElementById('confirm-ico').textContent=ico;document.getElementById('confirm-msg').textContent=msg;const yb=document.getElementById('confirm-yes-btn');yb.className='mbtn '+(danger?'mb-danger on':'mb-ok on');openOverlay('confirm-ov');}
+function confirmYes(){closeOverlay('confirm-ov');const c=confirmCb;confirmCb=null;confirmCancelCb=null;if(c)c();}
+function confirmNo(){closeOverlay('confirm-ov');const c=confirmCancelCb;confirmCb=null;confirmCancelCb=null;if(c)c();}
 
 // ─── RESULT / TOAST ───────────────────────────────
 function showResult(ico,ttl,body){document.getElementById('res-ico').textContent=ico;document.getElementById('res-ttl').textContent=ttl;document.getElementById('res-body').innerHTML=typeof body==='string'?body.replace(/\n/g,'<br>'):body;document.getElementById('res-ov').classList.add('on');}
@@ -4314,9 +4547,667 @@ function togglePause(){
 function naturalDecay(){
   if(isPaused)return;  // 暂停时跳过
   S.petFood=Math.max(0,S.petFood-3);S.petHappy=Math.max(0,S.petHappy-2);S.petClean=Math.max(0,S.petClean-1);S.petEnergy=Math.max(0,S.petEnergy-1);
-  if(S.petFood<20)showPetTalk('low_food');else if(S.petHappy<20)showPetTalk('low_happy');else if(S.petEnergy<15)showPetTalk('low_energy');
+  // 多层次状态触发，更细腻的宠物反应
+  const _rd=Math.random();
+  if(S.petFood<=0){if(_rd<0.7)showPetTalk('starving');}
+  else if(S.petFood<10){if(_rd<0.6)showPetTalk('critical_food');}
+  else if(S.petFood<20){if(_rd<0.4)showPetTalk('low_food');}
+  else if(S.petEnergy<=0){if(_rd<0.6)showPetTalk('exhausted');}
+  else if(S.petEnergy<10){if(_rd<0.5)showPetTalk('critical_energy');}
+  else if(S.petEnergy<15){if(_rd<0.35)showPetTalk('low_energy');}
+  else if(S.petClean<10){if(_rd<0.45)showPetTalk('very_dirty');}
+  else if(S.petHappy<=0){if(_rd<0.6)showPetTalk('deeply_sad');}
+  else if(S.petHappy<15){if(_rd<0.4)showPetTalk('critical_happy');}
+  else if(S.petHappy<25){if(_rd<0.25)showPetTalk('low_happy');}
+  else if(_rd<0.08){
+    // 随机触发阶段性台词
+    const stageKey='stage_'+Math.min(S.petLevel,5);
+    showPetTalk(stageKey);
+  }
   if(S.hasAutoWater){S.plots.forEach((p,i)=>{if(['s0','s1','s2'].includes(p.s)&&!p.hasCrack&&!p.hasBug){p.lastWater=Date.now();growPlot(i,0.5);}});}
   updatePetUI();persistAccount();
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// ★ 主题切换系统 + 季节特效 + 自定义配色
+// ══════════════════════════════════════════════════════════════
+const THEME_DEFS={
+  default:{name:'原木米白',ico:'🌾',desc:'温暖自然，清新田园风格',
+    preview:['#fdf6ee','#6aaa6a','#e8a020','#9b6a3c'],body:''},
+  night:{name:'星夜深蓝',ico:'🌙',desc:'深邃星空，宁静夜晚色调',
+    preview:['#141820','#5a9cf0','#d4a030','#7080a0'],body:'night'},
+  spring:{name:'春日嫩绿',ico:'🌿',desc:'春天萌芽，生机盎然的嫩绿',
+    preview:['#f0fdf0','#3aaa3a','#c8a000','#6a9060'],body:'spring'},
+  summer:{name:'夏日海蓝',ico:'🌊',desc:'清凉夏日，碧海蓝天色调',
+    preview:['#f0f8ff','#0090c0','#e08000','#408090'],body:'summer'},
+  autumn:{name:'秋收金橙',ico:'🍂',desc:'枫叶稻谷，丰收的暖橙秋色',
+    preview:['#fdf5e8','#c06820','#d08000','#8b5020'],body:'autumn'},
+  winter:{name:'冬日暖白',ico:'❄️',desc:'素净冬雪，淡雅宁静',
+    preview:['#f5f8ff','#5080b0','#9080c0','#6878a0'],body:'winter'},
+  sakura:{name:'樱花粉',ico:'🌸',desc:'柔美粉嫩，浪漫樱花绽放',
+    preview:['#fff5f8','#c85080','#e09020','#c08090'],body:'sakura'},
+  custom:{name:'自定义',ico:'🎨',desc:'自由配色，打造专属风格',
+    preview:['#fdf6ee','#6aaa6a','#e8a020','#9b6a3c'],body:'custom'},
+};
+let _previewTheme=null;
+let _currentTheme=localStorage.getItem('jbfarm_theme')||'default';
+
+// ── 季节特效画布 ──────────────────────────────────────────
+let _seasonAF=null;
+const _seasonParticles=[];
+function _initSeasonCanvas(){
+  const cvs=document.getElementById('season-canvas');if(!cvs)return;
+  cvs.width=window.innerWidth;cvs.height=window.innerHeight;
+  window.addEventListener('resize',()=>{cvs.width=window.innerWidth;cvs.height=window.innerHeight;});
+}
+function _clearSeasonEffect(){
+  if(_seasonAF){cancelAnimationFrame(_seasonAF);_seasonAF=null;}
+  _seasonParticles.length=0;
+  const cvs=document.getElementById('season-canvas');
+  if(cvs){const ctx=cvs.getContext('2d');if(ctx)ctx.clearRect(0,0,cvs.width,cvs.height);cvs.style.opacity='0';}
+}
+function _startSeasonEffect(themeId){
+  _clearSeasonEffect();
+  // 检查是否关闭特效
+  if(localStorage.getItem('jbfarm_no_fx')==='1'){
+    const cvs=document.getElementById('season-canvas');if(cvs)cvs.style.opacity='0';return;
+  }
+  const cvs=document.getElementById('season-canvas');if(!cvs)return;
+  const ctx=cvs.getContext('2d');if(!ctx)return;
+  const W=()=>cvs.width,H=()=>cvs.height;
+
+  if(themeId==='winter'){
+    // 纯净雪景：细小雪花+淡淡积雪轮廓，无雪人
+    cvs.style.opacity='1';
+    for(let i=0;i<70;i++){_seasonParticles.push({
+      x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,
+      r:0.8+Math.random()*2.8,sp:0.3+Math.random()*0.9,
+      wx:Math.sin(Math.random()*6.28)*0.5,
+      a:0.3+Math.random()*0.55,rot:Math.random()*6.28,rotS:(Math.random()-.5)*0.03
+    });}
+    const animate=()=>{
+      ctx.clearRect(0,0,W(),H());
+      // 底部淡淡积雪曲线
+      ctx.globalAlpha=0.12;ctx.fillStyle='#e8f0ff';
+      ctx.beginPath();ctx.moveTo(0,H());
+      for(let x=0;x<=W();x+=12){ctx.lineTo(x,H()-10-Math.sin(x*.008)*8-Math.cos(x*.02)*5);}
+      ctx.lineTo(W(),H());ctx.closePath();ctx.fill();
+      ctx.globalAlpha=1;
+      // 雪花
+      _seasonParticles.forEach(p=>{
+        p.y+=p.sp;p.x+=p.wx+Math.sin(p.y*.018)*0.35;p.rot+=p.rotS;
+        if(p.y>H()+8)p.y=-8;if(p.x>W()+8)p.x=-8;if(p.x<-8)p.x=W()+8;
+        ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);
+        ctx.globalAlpha=p.a;ctx.fillStyle='#ddeeff';
+        for(let i=0;i<6;i++){ctx.save();ctx.rotate(i*Math.PI/3);ctx.fillRect(-0.4,0,0.8,p.r*2);ctx.restore();}
+        ctx.globalAlpha=1;ctx.restore();
+      });
+      _seasonAF=requestAnimationFrame(animate);
+    };animate();
+
+  } else if(themeId==='spring'){
+    // 柳树虚影 + 少量粉色桃花瓣
+    cvs.style.opacity='1';
+    // 少量花瓣
+    for(let i=0;i<22;i++){_seasonParticles.push({
+      x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,
+      sp:0.25+Math.random()*0.45,wx:(Math.random()-.5)*0.6,
+      sz:7+Math.random()*8,a:0.35+Math.random()*0.35,
+      rot:Math.random()*6.28,rotS:(Math.random()-.5)*0.02
+    });}
+    const animate=()=>{
+      ctx.clearRect(0,0,W(),H());
+      // 左侧柳树虚影
+      const drawWillow=(bx,by,sc)=>{
+        ctx.save();ctx.globalAlpha=0.06;ctx.strokeStyle='#6a9060';ctx.lineWidth=sc*2;
+        ctx.beginPath();ctx.moveTo(bx,by);ctx.lineTo(bx,by-sc*80);ctx.stroke();
+        for(let i=0;i<14;i++){
+          const ang=-0.3+Math.random()*0.6;const len=sc*(30+Math.random()*50);
+          const bry=by-sc*(20+Math.random()*60);
+          ctx.beginPath();ctx.moveTo(bx,bry);
+          ctx.quadraticCurveTo(bx+len*0.4,bry-len*0.2,bx+len*Math.cos(ang),bry+len*0.6);
+          ctx.stroke();
+        }
+        ctx.restore();
+      };
+      drawWillow(40,H(),1.2);if(W()>700)drawWillow(W()-30,H(),0.9);
+      // 桃花瓣（浅粉，接近圆形花瓣）
+      _seasonParticles.forEach(p=>{
+        p.y+=p.sp;p.x+=p.wx+Math.sin(p.y*.025)*0.4;p.rot+=p.rotS;
+        if(p.y>H()+15)p.y=-10;if(p.x>W()+10)p.x=-10;if(p.x<-10)p.x=W()+10;
+        ctx.save();ctx.globalAlpha=p.a;ctx.translate(p.x,p.y);ctx.rotate(p.rot);
+        // 简单椭圆花瓣
+        ctx.beginPath();ctx.ellipse(0,0,p.sz*0.45,p.sz*0.3,0,0,Math.PI*2);
+        ctx.fillStyle='rgba(255,180,200,0.8)';ctx.fill();
+        ctx.globalAlpha=1;ctx.restore();
+      });
+      _seasonAF=requestAnimationFrame(animate);
+    };animate();
+
+  } else if(themeId==='summer'){
+    // 底部轻柔海浪，无气泡
+    cvs.style.opacity='1';
+    let waveT=0;
+    const animate=()=>{
+      ctx.clearRect(0,0,W(),H());waveT+=0.015;
+      // 两层半透明波浪
+      ctx.globalAlpha=0.1;ctx.fillStyle='#60c0e0';
+      ctx.beginPath();ctx.moveTo(0,H());
+      for(let x=0;x<=W();x+=10){ctx.lineTo(x,H()-22+Math.sin(x*.013+waveT)*12+Math.cos(x*.027+waveT*.8)*5);}
+      ctx.lineTo(W(),H());ctx.closePath();ctx.fill();
+      ctx.globalAlpha=0.07;ctx.fillStyle='#a0e0f8';
+      ctx.beginPath();ctx.moveTo(0,H());
+      for(let x=0;x<=W();x+=10){ctx.lineTo(x,H()-12+Math.sin(x*.018+waveT*1.3)*8);}
+      ctx.lineTo(W(),H());ctx.closePath();ctx.fill();
+      ctx.globalAlpha=1;
+      _seasonAF=requestAnimationFrame(animate);
+    };animate();
+
+  } else if(themeId==='autumn'){
+    // 淡色枫叶虚影缓慢飘落 + 底部淡麦浪
+    cvs.style.opacity='1';
+    for(let i=0;i<28;i++){_seasonParticles.push({
+      x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,
+      sp:0.3+Math.random()*0.5,wx:(Math.random()-.5)*0.7,
+      sz:14+Math.random()*18,a:0.12+Math.random()*0.18,
+      rot:Math.random()*6.28,rotS:(Math.random()-.5)*0.018
+    });}
+    let waveT2=0;
+    const animate=()=>{
+      ctx.clearRect(0,0,W(),H());waveT2+=0.012;
+      // 底部麦浪
+      ctx.globalAlpha=0.1;ctx.strokeStyle='#c8a040';ctx.lineWidth=2;
+      for(let x=0;x<W();x+=18){
+        ctx.beginPath();ctx.moveTo(x,H());
+        ctx.quadraticCurveTo(x+6,H()-16+Math.sin(x*.04+waveT2)*8,x+9,H()-24+Math.sin(x*.04+waveT2)*10);
+        ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+      // 枫叶虚影（不用emoji，用简单canvas绘制枫叶轮廓）
+      _seasonParticles.forEach(p=>{
+        p.y+=p.sp;p.x+=p.wx+Math.sin(p.y*.022)*0.6;p.rot+=p.rotS;
+        if(p.y>H()+20)p.y=-20;if(p.x>W()+15)p.x=-15;if(p.x<-15)p.x=W()+15;
+        ctx.save();ctx.globalAlpha=p.a;ctx.translate(p.x,p.y);ctx.rotate(p.rot);
+        ctx.fillStyle='#c05818';
+        // 简单五瓣枫叶近似
+        ctx.beginPath();
+        for(let j=0;j<5;j++){
+          const a=j*Math.PI*2/5-Math.PI/2;
+          ctx.ellipse(Math.cos(a)*p.sz*0.4,Math.sin(a)*p.sz*0.4,p.sz*0.25,p.sz*0.14,a,0,Math.PI*2);
+        }
+        ctx.fill();
+        ctx.globalAlpha=1;ctx.restore();
+      });
+      _seasonAF=requestAnimationFrame(animate);
+    };animate();
+
+  } else if(themeId==='night'){
+    // 星星 + 流星 + 淡淡月晕
+    cvs.style.opacity='1';
+    for(let i=0;i<90;i++){_seasonParticles.push({
+      x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight*0.75,
+      r:0.4+Math.random()*1.8,twinkle:Math.random()*6.28,
+      ts:0.015+Math.random()*0.04,base:0.2+Math.random()*0.7
+    });}
+    let shootT=0,sX=-100,sY=-100,sDx=0,sDy=0,sA=0;
+    const moonX=()=>W()*0.78,moonY=50;
+    const animate=()=>{
+      ctx.clearRect(0,0,W(),H());
+      // 月亮光晕
+      const mg=ctx.createRadialGradient(moonX(),moonY,8,moonX(),moonY,70);
+      mg.addColorStop(0,'rgba(220,230,255,0.12)');mg.addColorStop(1,'rgba(220,230,255,0)');
+      ctx.fillStyle=mg;ctx.beginPath();ctx.arc(moonX(),moonY,70,0,Math.PI*2);ctx.fill();
+      // 月亮
+      ctx.globalAlpha=0.55;ctx.fillStyle='#d8e8ff';ctx.beginPath();ctx.arc(moonX(),moonY,14,0,Math.PI*2);ctx.fill();
+      ctx.globalAlpha=1;
+      // 流星
+      shootT++;
+      if(shootT>180&&Math.random()<0.012){shootT=0;sX=Math.random()*W()*0.5;sY=Math.random()*H()*0.35;sA=1;const ang=Math.PI/4+Math.random()*.4;sDx=Math.cos(ang)*7;sDy=Math.sin(ang)*4;}
+      if(sA>0){ctx.save();ctx.globalAlpha=sA*0.85;ctx.strokeStyle='#c0d0ff';ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(sX,sY);ctx.lineTo(sX-sDx*14,sY-sDy*14);ctx.stroke();ctx.restore();sX+=sDx;sY+=sDy;sA-=0.035;}
+      // 星星
+      _seasonParticles.forEach(p=>{
+        p.twinkle+=p.ts;const a=p.base*(0.4+0.6*Math.sin(p.twinkle));
+        ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+        ctx.fillStyle=`rgba(210,225,255,${a})`;ctx.fill();
+      });
+      _seasonAF=requestAnimationFrame(animate);
+    };animate();
+
+  } else if(themeId==='sakura'){
+    // 樱花树虚影 + 少量花瓣轻飘
+    cvs.style.opacity='1';
+    for(let i=0;i<25;i++){_seasonParticles.push({
+      x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,
+      sp:0.2+Math.random()*0.4,wx:(Math.random()-.5)*0.5,
+      sz:6+Math.random()*9,a:0.3+Math.random()*0.4,
+      rot:Math.random()*6.28,rotS:(Math.random()-.5)*0.018
+    });}
+    const drawSakuraTree=(bx,bh,sc)=>{
+      ctx.save();ctx.globalAlpha=0.06;
+      ctx.strokeStyle='#7a4a60';ctx.lineWidth=sc*3;
+      ctx.beginPath();ctx.moveTo(bx,bh);ctx.lineTo(bx,bh-sc*50);ctx.stroke();
+      ctx.lineWidth=sc*1.5;
+      const branches=[[bx,bh-sc*30,-0.6,sc*35],[bx,bh-sc*45,0.5,sc*28],[bx,bh-sc*50,-0.2,sc*22]];
+      branches.forEach(([x,y,ang,len])=>{
+        ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+Math.cos(ang-Math.PI/2)*len,y+Math.sin(ang-Math.PI/2)*len);ctx.stroke();
+      });
+      // 花团
+      ctx.fillStyle='rgba(255,160,190,0.12)';
+      [[bx-sc*20,bh-sc*62,sc*28],[bx+sc*18,bh-sc*70,sc*22],[bx,bh-sc*75,sc*20]].forEach(([cx,cy,r])=>{
+        ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();
+      });
+      ctx.restore();
+    };
+    drawSakuraTree(50,H(),1.1);if(W()>700)drawSakuraTree(W()-45,H(),0.88);
+    const animate=()=>{
+      ctx.clearRect(0,0,W(),H());
+      // 重绘树（静态）
+      drawSakuraTree(50,H(),1.1);if(W()>700)drawSakuraTree(W()-45,H(),0.88);
+      // 花瓣
+      _seasonParticles.forEach(p=>{
+        p.y+=p.sp;p.x+=p.wx+Math.sin(p.y*.028)*0.4;p.rot+=p.rotS;
+        if(p.y>H()+12)p.y=-10;if(p.x>W()+10)p.x=-10;if(p.x<-10)p.x=W()+10;
+        ctx.save();ctx.globalAlpha=p.a;ctx.translate(p.x,p.y);ctx.rotate(p.rot);
+        ctx.beginPath();ctx.ellipse(0,0,p.sz*0.4,p.sz*0.28,0,0,Math.PI*2);
+        ctx.fillStyle='rgba(255,170,200,0.85)';ctx.fill();
+        ctx.globalAlpha=1;ctx.restore();
+      });
+      _seasonAF=requestAnimationFrame(animate);
+    };animate();
+
+  } else if(themeId==='default'){
+    // 默认：少量轻盈麦穗/嫩芽
+    cvs.style.opacity='1';
+    for(let i=0;i<12;i++){_seasonParticles.push({
+      x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,
+      ico:['🌾','🌱','🌿'][Math.floor(Math.random()*3)],
+      sp:-0.18-Math.random()*0.22,wx:(Math.random()-.5)*0.3,
+      sz:9+Math.random()*7,a:0.18+Math.random()*0.15,
+      rot:Math.random()*6.28,rotS:(Math.random()-.5)*0.008
+    });}
+    const animate=()=>{
+      ctx.clearRect(0,0,W(),H());
+      _seasonParticles.forEach(p=>{
+        p.y+=p.sp;p.x+=p.wx;p.rot+=p.rotS;
+        if(p.y<-15)p.y=H()+10;if(p.x>W()+10)p.x=-10;if(p.x<-10)p.x=W()+10;
+        ctx.save();ctx.globalAlpha=p.a;ctx.translate(p.x,p.y);ctx.rotate(p.rot);
+        ctx.font=p.sz+'px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(p.ico,0,0);
+        ctx.restore();ctx.globalAlpha=1;
+      });
+      _seasonAF=requestAnimationFrame(animate);
+    };animate();
+  } else {
+    const cvs=document.getElementById('season-canvas');if(cvs)cvs.style.opacity='0';
+  }
+}
+
+function applyTheme(themeId,save){
+  const t=THEME_DEFS[themeId];if(!t)return;
+  document.body.setAttribute('data-theme',t.body||'');
+  if(save){localStorage.setItem('jbfarm_theme',themeId);_currentTheme=themeId;}
+  // 启动季节特效
+  _initSeasonCanvas();
+  _startSeasonEffect(themeId);
+}
+
+function openThemeModal(){
+  const g=document.getElementById('theme-grid');if(!g)return;
+  g.innerHTML='';
+  Object.entries(THEME_DEFS).forEach(([id,t])=>{
+    const d=document.createElement('div');
+    d.className='theme-card'+(_currentTheme===id?' active':'');
+    if(id==='custom'){
+      d.innerHTML=`<div class="theme-preview" style="background:linear-gradient(90deg,#fdf6ee,#6aaa6a,#e8a020,#9b6a3c)"></div><div class="theme-card-name">${t.ico} ${t.name}</div><div style="font-size:.58rem;color:var(--muted);margin-top:2px">${t.desc}</div>`;
+      d.onclick=()=>{
+        document.querySelectorAll('.theme-card').forEach(x=>x.classList.remove('active'));
+        d.classList.add('active');_previewTheme='custom';
+        document.getElementById('theme-ov').classList.remove('on');
+        openCustomThemeModal();
+      };
+    } else {
+      d.innerHTML=`<div class="theme-preview">${t.preview.map(c=>`<div class="theme-preview-bar" style="background:${c}"></div>`).join('')}</div><div class="theme-card-name">${t.ico} ${t.name}</div><div style="font-size:.58rem;color:var(--muted);margin-top:2px">${t.desc}</div>`;
+      d.onclick=()=>{
+        document.querySelectorAll('.theme-card').forEach(x=>x.classList.remove('active'));
+        d.classList.add('active');_previewTheme=id;
+        applyTheme(id,false);
+      };
+    }
+    g.appendChild(d);
+  });
+  _previewTheme=_currentTheme;
+  // 更新特效按钮状态
+  const fxBtn=document.getElementById('fx-toggle-btn');
+  if(fxBtn){
+    const noFx=localStorage.getItem('jbfarm_no_fx')==='1';
+    fxBtn.textContent=noFx?'✨ 开启特效':'✨ 关闭特效';
+    fxBtn.style.opacity=noFx?'0.55':'1';
+  }
+  document.getElementById('theme-ov').classList.add('on');
+}
+
+function confirmTheme(){
+  if(_previewTheme){applyTheme(_previewTheme,true);}
+  document.getElementById('theme-ov').classList.remove('on');
+  showToast('🎨 主题已应用：'+THEME_DEFS[_currentTheme].name);
+}
+function cancelTheme(){
+  applyTheme(_currentTheme,false);
+  document.getElementById('theme-ov').classList.remove('on');
+}
+// 特效开关（在主题弹窗底部）
+function toggleSeasonFX(){
+  const off=localStorage.getItem('jbfarm_no_fx')==='1';
+  localStorage.setItem('jbfarm_no_fx',off?'0':'1');
+  const btn=document.getElementById('fx-toggle-btn');
+  if(btn){btn.textContent=off?'✨ 关闭特效':'✨ 开启特效';btn.style.opacity=off?'1':'0.55';}
+  applyTheme(_currentTheme,false);
+  showToast(off?'✨ 已开启主题特效':'🚫 已关闭主题特效');
+}
+
+// ── 自定义主题 ────────────────────────────────────────────
+const CUSTOM_COLOR_FIELDS=[
+  {key:'bg',    label:'背景色',     desc:'页面底色'},
+  {key:'panel', label:'卡片色',     desc:'卡片/弹窗底色'},
+  {key:'green', label:'主题色',     desc:'按钮/高亮色'},
+  {key:'gold',  label:'金色点缀',   desc:'经验条/金币'},
+  {key:'ink',   label:'文字色',     desc:'正文颜色'},
+  {key:'muted', label:'次要文字',   desc:'说明/提示颜色'},
+];
+let _customColors={};
+// 自定义主题附加特效
+const CUSTOM_FX_OPTIONS=[
+  {id:'none',  label:'无特效',     desc:'仅配色，无动效'},
+  {id:'snow',  label:'❄️ 飘雪',   desc:'轻柔小雪花'},
+  {id:'petal', label:'🌸 花瓣',   desc:'粉色花瓣飘落'},
+  {id:'firefly',label:'✨ 萤火虫', desc:'夜晚萤光点点'},
+  {id:'leaf',  label:'🍂 落叶',   desc:'秋叶缓缓飘落'},
+  {id:'stars', label:'⭐ 星空',   desc:'闪烁星星点点'},
+];
+let _customFX='none';
+
+function _loadCustomColors(){
+  try{const s=localStorage.getItem('jbfarm_custom_colors');if(s){const d=JSON.parse(s);_customFX=d._fx||'none';return d;}  }catch(e){}
+  return {bg:'#fdf6ee',panel:'#fffcf7',green:'#6aaa6a',gold:'#e8a020',ink:'#1e1814',muted:'#9a8a72'};
+}
+function _saveCustomColors(c){try{localStorage.setItem('jbfarm_custom_colors',JSON.stringify({...c,_fx:_customFX}));}catch(e){}}
+function _applyCustomCSSVars(c){
+  const r=document.documentElement.style;
+  if(c.bg)r.setProperty('--custom-bg',c.bg);
+  if(c.panel)r.setProperty('--custom-panel',c.panel);
+  if(c.green){r.setProperty('--custom-green',c.green);r.setProperty('--custom-dgreen',_darken(c.green,0.15));}
+  if(c.gold)r.setProperty('--custom-gold',c.gold);
+  if(c.ink)r.setProperty('--custom-ink',c.ink);
+  if(c.muted)r.setProperty('--custom-muted',c.muted);
+}
+function _darken(hex,amt){
+  try{const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return '#'+[r,g,b].map(v=>Math.max(0,Math.round(v*(1-amt))).toString(16).padStart(2,'0')).join('');}catch(e){return hex;}
+}
+
+// 自定义主题的特效复用现有引擎
+function _applyCustomFX(fxId){
+  const fxMap={snow:'winter',petal:'spring',leaf:'autumn',stars:'night',firefly:'_firefly'};
+  const themeKey=fxMap[fxId];
+  if(!themeKey||fxId==='none'){_clearSeasonEffect();const cvs=document.getElementById('season-canvas');if(cvs)cvs.style.opacity='0';return;}
+  if(fxId==='firefly'){_startFireflyFX();return;}
+  _startSeasonEffect(themeKey);
+}
+
+function _startFireflyFX(){
+  _clearSeasonEffect();
+  const cvs=document.getElementById('season-canvas');if(!cvs)return;
+  const ctx=cvs.getContext('2d');if(!ctx)return;
+  cvs.style.opacity='1';
+  const W=()=>cvs.width,H=()=>cvs.height;
+  for(let i=0;i<40;i++){_seasonParticles.push({x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,r:1.5+Math.random()*2,pulse:Math.random()*6.28,ps:0.04+Math.random()*0.06,vx:(Math.random()-.5)*0.6,vy:(Math.random()-.5)*0.5});}
+  const animate=()=>{
+    ctx.clearRect(0,0,W(),H());
+    _seasonParticles.forEach(p=>{
+      p.x+=p.vx;p.y+=p.vy;p.pulse+=p.ps;
+      if(p.x<0)p.x=W();if(p.x>W())p.x=0;if(p.y<0)p.y=H();if(p.y>H())p.y=0;
+      const a=(0.4+0.6*Math.sin(p.pulse))*0.7;
+      const grd=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.r*4);
+      grd.addColorStop(0,`rgba(200,255,150,${a})`);grd.addColorStop(1,'rgba(200,255,150,0)');
+      ctx.fillStyle=grd;ctx.beginPath();ctx.arc(p.x,p.y,p.r*4,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle=`rgba(240,255,200,${a*1.2})`;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
+    });
+    _seasonAF=requestAnimationFrame(animate);
+  };animate();
+}
+
+function openCustomThemeModal(){
+  _customColors=_loadCustomColors();
+  // 渲染颜色行
+  const rows=document.getElementById('custom-color-rows');if(!rows)return;
+  rows.innerHTML='';
+  CUSTOM_COLOR_FIELDS.forEach(f=>{
+    const val=_customColors[f.key]||'#888888';
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:9px';
+    row.innerHTML=`<input type="color" value="${val}" id="cclr-${f.key}" oninput="onCustomColorChange('${f.key}',this.value)" style="width:36px;height:28px;border:none;border-radius:6px;cursor:pointer;padding:0;background:none">`
+      +`<div style="flex:1"><div style="font-size:.72rem;font-weight:600">${f.label}</div><div style="font-size:.58rem;color:var(--muted)">${f.desc}</div></div>`
+      +`<span id="cclr-val-${f.key}" style="font-size:.6rem;color:var(--muted);font-family:monospace">${val}</span>`;
+    rows.appendChild(row);
+  });
+  // 渲染特效选择器（替代原预设）
+  const presetList=document.getElementById('custom-preset-list');
+  if(presetList){
+    presetList.innerHTML='';
+    CUSTOM_FX_OPTIONS.forEach(fx=>{
+      const b=document.createElement('div');
+      b.style.cssText=`padding:5px 10px;border-radius:8px;border:1.5px solid ${_customFX===fx.id?'var(--green)':'var(--border)'};background:${_customFX===fx.id?'rgba(100,160,100,.12)':'var(--panel)'};font-size:.62rem;cursor:pointer;color:${_customFX===fx.id?'var(--dgreen)':'var(--ink)'};transition:all .15s`;
+      b.title=fx.desc;
+      b.textContent=fx.label;
+      b.onclick=()=>{
+        _customFX=fx.id;
+        presetList.querySelectorAll('div').forEach(x=>{x.style.borderColor='var(--border)';x.style.background='var(--panel)';x.style.color='var(--ink)';});
+        b.style.borderColor='var(--green)';b.style.background='rgba(100,160,100,.12)';b.style.color='var(--dgreen)';
+        _applyCustomFX(fx.id);
+      };
+      presetList.appendChild(b);
+    });
+  }
+  _updateCustomPreview();
+  document.getElementById('custom-theme-ov').classList.add('on');
+}
+function onCustomColorChange(key,val){
+  _customColors[key]=val;
+  const sp=document.getElementById('cclr-val-'+key);if(sp)sp.textContent=val;
+  _updateCustomPreview();
+}
+function _updateCustomPreview(){
+  const c=_customColors;
+  const set=(id,style,val)=>{const el=document.getElementById(id);if(el)el.style[style]=val;};
+  set('cpv-topbar','background',c.panel||'#fff');set('cpv-topbar','borderBottom','1px solid '+(c.muted||'#aaa')+'44');
+  set('cpv-avatar-bg','background',(c.green||'#6aaa6a')+'33');
+  const cpvName=document.getElementById('cpv-name');if(cpvName)cpvName.style.color=c.ink||'#333';
+  set('cpv-chip','background',(c.green||'#6aaa6a')+'15');set('cpv-chip','color',c.muted||'#888');
+  const cardEl=document.getElementById('cpv-card');if(cardEl){cardEl.style.background=c.panel||'#fff';cardEl.style.borderColor=(c.muted||'#aaa')+'44';}
+  const ct=document.getElementById('cpv-card-title');if(ct)ct.style.color=c.ink||'#333';
+  set('cpv-bar-bg','background',(c.muted||'#aaa')+'22');
+  set('cpv-bar-fill','background',`linear-gradient(90deg,${c.green||'#6a6'},${c.gold||'#e8a'})`);
+  const cm=document.getElementById('cpv-muted');if(cm)cm.style.color=c.muted||'#888';
+  const btnMain=document.getElementById('cpv-btn-main');if(btnMain){btnMain.style.background=c.green||'#6aaa6a';btnMain.style.color='#fff';}
+  const btnSub=document.getElementById('cpv-btn-sub');if(btnSub){btnSub.style.borderColor=(c.muted||'#aaa')+'88';btnSub.style.color=c.muted||'#888';btnSub.style.background='transparent';}
+  const logoArea=document.getElementById('cpv-logo-area');if(logoArea){logoArea.style.background=c.bg||'#fdf6ee';logoArea.style.borderColor=(c.muted||'#aaa')+'33';}
+  const lt=document.getElementById('cpv-logo-text');if(lt)lt.style.color=c.ink||'#333';
+  const box=document.getElementById('custom-preview-box');if(box)box.style.background=c.bg||'#fdf6ee';
+}
+function saveCustomTheme(){
+  _saveCustomColors(_customColors);
+  _applyCustomCSSVars(_customColors);
+  applyTheme('custom',true);
+  if(_customFX!=='none')_applyCustomFX(_customFX);
+  document.getElementById('custom-theme-ov').classList.remove('on');
+  showToast('🎨 自定义主题已保存！');
+}
+function closeCustomTheme(){
+  document.getElementById('custom-theme-ov').classList.remove('on');
+  applyTheme(_currentTheme,false);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ★ 系统衣服大小/位置调整
+// ══════════════════════════════════════════════════════════════
+function openSystemClothAdjust(){
+  if(!S.equippedCloth&&!S.ownedClothes.length){showToast('请先购买并装备一件衣服');return;}
+  // 如果没装备衣服但有衣服，询问选哪件
+  const cid=S.equippedCloth||S.ownedClothes[0];
+  if(!cid){showToast('请先购买衣服');return;}
+  const key='jbfarm_clothsys_'+cid;
+  const raw=localStorage.getItem(key);
+  const p=raw?JSON.parse(raw):{offsetX:0,offsetY:0,scale:100};
+  const sc=document.getElementById('cloth-adj-scale');
+  const ox=document.getElementById('cloth-adj-ox');
+  const oy=document.getElementById('cloth-adj-oy');
+  if(sc)sc.value=p.scale||100;
+  if(ox)ox.value=p.offsetX||0;
+  if(oy)oy.value=p.offsetY||0;
+  // 显示当前调整的衣服名称
+  const cl=window.SHOP_CLOTHES&&SHOP_CLOTHES.find(c=>c.id===cid);
+  const adjTtl=document.getElementById('cloth-adj-ov')&&document.querySelector('#cloth-adj-ov .mttl');
+  if(adjTtl)adjTtl.textContent='👗 调整衣服：'+(cl?cl.name:cid);
+  // Reset drag state before reinit
+  const _adjCvs=document.getElementById('cloth-adj-canvas');
+  if(_adjCvs)_adjCvs._dragInited=false;
+  reClothAdjPreview();
+  openOverlay('cloth-adj-ov');
+  setTimeout(()=>_initClothAdjDrag(),100);
+}
+
+function _initClothAdjDrag(){
+  const cvs=document.getElementById('cloth-adj-canvas');if(!cvs||cvs._dragInited)return;
+  cvs._dragInited=true;
+  let dragging=false,startX=0,startY=0,baseOx=0,baseOy=0;
+  const onDown=e=>{
+    dragging=true;
+    const t=e.touches?e.touches[0]:e;
+    startX=t.clientX;startY=t.clientY;
+    baseOx=parseInt((document.getElementById('cloth-adj-ox')||{}).value||0);
+    baseOy=parseInt((document.getElementById('cloth-adj-oy')||{}).value||0);
+    e.preventDefault();
+  };
+  const onMove=e=>{
+    if(!dragging)return;
+    const t=e.touches?e.touches[0]:e;
+    const dx=t.clientX-startX,dy=t.clientY-startY;
+    const r=cvs.getBoundingClientRect();
+    const scale=cvs.width/r.width;
+    const nox=Math.max(-40,Math.min(40,baseOx+dx*scale));
+    const noy=Math.max(-40,Math.min(40,baseOy+dy*scale));
+    const oxEl=document.getElementById('cloth-adj-ox'),oyEl=document.getElementById('cloth-adj-oy');
+    if(oxEl)oxEl.value=Math.round(nox);
+    if(oyEl)oyEl.value=Math.round(noy);
+    reClothAdjPreview();
+    e.preventDefault();
+  };
+  const onUp=()=>{dragging=false;};
+  cvs.addEventListener('mousedown',onDown);
+  cvs.addEventListener('touchstart',onDown,{passive:false});
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('touchmove',onMove,{passive:false});
+  document.addEventListener('mouseup',onUp);
+  document.addEventListener('touchend',onUp);
+}
+
+function reClothAdjPreview(){
+  const cvs=document.getElementById('cloth-adj-canvas');if(!cvs)return;
+  const ctx=cvs.getContext('2d');
+  const cx=cvs.width/2,cy=cvs.height/2;
+  ctx.clearRect(0,0,cvs.width,cvs.height);
+  const cid=S.equippedCloth||S.ownedClothes[0];
+  if(!cid)return;
+
+  const sc=parseInt((document.getElementById('cloth-adj-scale')||{}).value||100)/100;
+  const ox=parseInt((document.getElementById('cloth-adj-ox')||{}).value||0);
+  const oy=parseInt((document.getElementById('cloth-adj-oy')||{}).value||0);
+  const scaleVal=document.getElementById('cloth-adj-scale-val');
+  if(scaleVal)scaleVal.textContent=Math.round(sc*100)+'%';
+
+  // 获取自定义宠物图片
+  const petImgKey=getCustomPetImgKey();
+  const petImgData=localStorage.getItem(petImgKey);
+  const stage=getEvoStage?applySkinStage(getEvoStage()):null;
+  const breed=S.petBreed||'hamster';
+
+  function _drawClothLayer(){
+    // 自定义衣服图片
+    const clothKey=getCustomClothImgKey();
+    const clothData=S.equippedCloth?_getClothImgDataWithScope(clothKey):null;
+    if(clothData){
+      loadCustomPetImg(clothKey,function(cimg){
+        if(!cimg)return;
+        // 应用当前滑块参数绘制衣服
+        const canvasW=cvs.width;
+        const raw=localStorage.getItem(clothKey+'_param');
+        const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
+        const baseSize=Math.round(canvasW*(p.scale!=null?p.scale:0.8));
+        const adjustedSize=Math.round(baseSize*sc);
+        const dx=cx+(p.offX||0)+ox;
+        const dy=cy+(p.offY||0)+oy;
+        ctx.save();
+        ctx.drawImage(cimg,dx-adjustedSize/2,dy-adjustedSize/2,adjustedSize,adjustedSize);
+        ctx.restore();
+      });
+    } else {
+      // 系统衣服：用当前滑块参数临时覆盖存档绘制
+      const tmpKey='jbfarm_clothsys_'+cid;
+      const savedParam=localStorage.getItem(tmpKey);
+      localStorage.removeItem(tmpKey);
+      try{
+        ctx.save();
+        ctx.translate(cx,cy);ctx.scale(sc,sc);ctx.translate(-cx,-cy);ctx.translate(ox,oy);
+        drawCloth(ctx,cx,cy,cid);
+        ctx.restore();
+      }catch(e){}
+      if(savedParam)localStorage.setItem(tmpKey,savedParam);
+    }
+  }
+
+  if(petImgData){
+    loadCustomPetImg(petImgKey,function(img){
+      if(!img){
+        if(stage){try{drawPetBreed(ctx,breed,cx,cy,stage);}catch(e){}}
+        _drawClothLayer();return;
+      }
+      ctx.clearRect(0,0,cvs.width,cvs.height);
+      // 按保存的宠物图片参数绘制
+      try{
+        const raw=localStorage.getItem(petImgKey+'_param');
+        const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
+        const size=Math.round(cvs.width*(p.scale!=null?p.scale:0.8));
+        const dx=cx+(p.offX||0),dy=cy+(p.offY||0);
+        const rot=(p.rotation||0)*Math.PI/180;
+        if(rot!==0){ctx.save();ctx.translate(dx,dy);ctx.rotate(rot);ctx.drawImage(img,-size/2,-size/2,size,size);ctx.restore();}
+        else{ctx.drawImage(img,dx-size/2,dy-size/2,size,size);}
+      }catch(e){}
+      _drawClothLayer();
+    });
+  } else {
+    if(stage){try{drawPetBreed(ctx,breed,cx,cy,stage);}catch(e){}}
+    _drawClothLayer();
+  }
+}
+
+function confirmClothAdj(){
+  const cid=S.equippedCloth||S.ownedClothes[0];
+  if(!cid)return;
+  const key='jbfarm_clothsys_'+cid;
+  const sc=parseInt((document.getElementById('cloth-adj-scale')||{}).value||100);
+  const ox=parseInt((document.getElementById('cloth-adj-ox')||{}).value||0);
+  const oy=parseInt((document.getElementById('cloth-adj-oy')||{}).value||0);
+  localStorage.setItem(key,JSON.stringify({scale:sc,offsetX:ox,offsetY:oy}));
+  closeOverlay('cloth-adj-ov');
+  drawPet();
+  showToast('✅ 衣服位置已保存！');
+}
+
+function togglePetModelPreview(){
+  const mw=document.getElementById('pet-preview-model-wrap');if(!mw)return;
+  const showing=mw.style.display!=='none';
+  mw.style.display=showing?'none':'';
+  if(!showing)rePetPreview();
 }
 
 // ─── INIT ─────────────────────────────────────────
@@ -4331,12 +5222,26 @@ function initGame(){petX=75;petY=76;petWalking=false;
   (document.getElementById('pause-ov')||{}).classList.remove('on');
   renderFarm();updatePetUI();updateTop();renderAchs();checkAchs();renderSubjectBars();startPetAnim();updateProfile();switchTab('farm');
   _loadProfileImgIfAny();
+  const _savedTheme=localStorage.getItem('jbfarm_theme')||'default';
+  // 若是自定义主题，先恢复CSS变量再应用主题
+  if(_savedTheme==='custom'){_applyCustomCSSVars(_loadCustomColors());}
+  _initSeasonCanvas();
+  applyTheme(_savedTheme,false);
   // 更新行走开关UI
   const tog=document.getElementById('walk-toggle'),ico=document.getElementById('walk-ico'),lbl=document.getElementById('walk-lbl');
   if(tog)tog.classList.remove('on');if(ico)ico.textContent='🧍';if(lbl)lbl.textContent='立正模式';
 }
 
-(function init(){renderLoginScreen();setInterval(naturalDecay,60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden&&CURRENT_ACC_ID){if(!petAF)startPetAnim();else setTimeout(drawPet,100);}});})();
+(function init(){
+  renderLoginScreen();
+  // 登录页也应用主题特效
+  const _t=localStorage.getItem('jbfarm_theme')||'default';
+  if(_t==='custom'){try{_applyCustomCSSVars(_loadCustomColors());}catch(e){}}
+  document.body.setAttribute('data-theme',(THEME_DEFS[_t]||{}).body||'');
+  _initSeasonCanvas();_startSeasonEffect(_t);
+  setInterval(naturalDecay,60000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&CURRENT_ACC_ID){if(!petAF)startPetAnim();else setTimeout(drawPet,100);}});
+})();
 
 
 function toggleTeacherRank(){S.teacherParticipateRank=!S.teacherParticipateRank;if(S.classId){const cd=getClassData();if(cd[S.classId]){const m=cd[S.classId].find(x=>x.name===S.playerName);if(m)m.hideFromRank=!S.teacherParticipateRank;saveClassData(cd);}}persistAccount();updateClassSection();showToast(S.teacherParticipateRank?'✅ 已开启参与排名':'已关闭参与排名');}
@@ -4421,34 +5326,143 @@ function saveLayoutConfig(cfg){
   try{localStorage.setItem(LAYOUT_KEY,JSON.stringify(cfg));}catch(e){}
 }
 
+// ── 卡片拖拽交换列 ────────────────────────────────────────
+let _dragCard=null,_dragOver=null;
+function _initCardDrag(){
+  // 两个面板都支持拖拽换栏：个人面板 + 班级面板
+  ['profile-personal-grid','profile-class-grid'].forEach(gridId=>{
+    const grid=document.getElementById(gridId);if(!grid)return;
+    grid.querySelectorAll('.card[id]').forEach(card=>{
+      if(card.dataset.draggable==='true')return;
+      card.dataset.draggable='true';
+      card.setAttribute('draggable','true');
+      card.addEventListener('dragstart',e=>{
+        if(!_layoutEditMode){e.preventDefault();return;}
+        _dragCard=card;card.style.opacity='.5';e.dataTransfer.effectAllowed='move';
+      });
+      card.addEventListener('dragend',()=>{card.style.opacity='';_dragCard=null;_dragOver=null;_clearDropHints();});
+      card.addEventListener('dragover',e=>{
+        if(!_layoutEditMode||!_dragCard||_dragCard===card)return;
+        e.preventDefault();e.dataTransfer.dropEffect='move';
+        if(_dragOver!==card){_dragOver=card;_clearDropHints();card.style.outline='2px dashed var(--green)';}
+      });
+      card.addEventListener('dragleave',()=>{card.style.outline='';_dragOver=null;});
+      card.addEventListener('drop',e=>{
+        e.preventDefault();if(!_dragCard||_dragCard===card)return;
+        const pA=_dragCard.parentElement,pB=card.parentElement;
+        const nA=_dragCard.nextSibling,nB=card.nextSibling;
+        if(nB===_dragCard){pA.insertBefore(card,_dragCard);}
+        else if(nA===card){pB.insertBefore(_dragCard,card);}
+        else{pA.insertBefore(card,nA);pB.insertBefore(_dragCard,nB);}
+        card.style.outline='';_dragCard.style.opacity='';
+        _saveCardOrder();showToast('✅ 卡片已移动');
+      });
+    });
+  });
+}
+function _clearDropHints(){
+  document.querySelectorAll('.card[id]').forEach(c=>c.style.outline='');
+}
+function _saveCardOrder(){
+  const cfg=getLayoutConfig();
+  cfg.profileCardOrder={};
+  ['profile-personal-grid','profile-class-grid'].forEach(gridId=>{
+    const grid=document.getElementById(gridId);if(!grid)return;
+    const cols=grid.querySelectorAll('[id$="-col-left"],[id$="-col-right"],[id^="profile-"][id$="left"],[id^="profile-"][id$="right"]');
+    const leftId=gridId==='profile-personal-grid'?'profile-col-left':'profile-class-col-left';
+    const rightId=gridId==='profile-personal-grid'?'profile-col-right':'profile-class-col-right';
+    const leftCol=document.getElementById(leftId);const rightCol=document.getElementById(rightId);
+    if(!leftCol||!rightCol)return;
+    cfg.profileCardOrder[gridId]={
+      left:[...leftCol.querySelectorAll('.card[id]')].map(c=>c.id),
+      right:[...rightCol.querySelectorAll('.card[id]')].map(c=>c.id)
+    };
+  });
+  saveLayoutConfig(cfg);
+}
+function _restoreCardOrder(){
+  const cfg=getLayoutConfig();const order=cfg.profileCardOrder;if(!order)return;
+  ['profile-personal-grid','profile-class-grid'].forEach(gridId=>{
+    const gridOrder=order[gridId];if(!gridOrder)return;
+    const grid=document.getElementById(gridId);if(!grid)return;
+    const leftId=gridId==='profile-personal-grid'?'profile-col-left':'profile-class-col-left';
+    const rightId=gridId==='profile-personal-grid'?'profile-col-right':'profile-class-col-right';
+    const leftCol=document.getElementById(leftId);const rightCol=document.getElementById(rightId);
+    if(!leftCol||!rightCol)return;
+    const allCards={};grid.querySelectorAll('.card[id]').forEach(c=>allCards[c.id]=c);
+    (gridOrder.left||[]).forEach(id=>{if(allCards[id])leftCol.appendChild(allCards[id]);});
+    (gridOrder.right||[]).forEach(id=>{if(allCards[id])rightCol.appendChild(allCards[id]);});
+  });
+}
+
 // 初始化所有页面的 resize handles
 function _initResizeHandles(){
-  // 农场页：dtwo 左右比例
-  _makeHorizHandle('page-farm','.dtwo','farm');
-  // 宠物页：dpet 左右比例（宠物展示/照顾宽度）
+  _makeHorizHandle('page-farm','.farm-main-grid','farm');
   _makeHorizHandle('page-pet','.dpet','pet');
-  // 我的页：两栏（个人/班级面板）—— 这一页改为单列，跳过
+  _initCardHeightHandles();
+  _initCardDrag();
+}
+
+function _initCardHeightHandles(){
+  const cfg=getLayoutConfig();
+  document.querySelectorAll('.page .card').forEach((card,i)=>{
+    if(card.querySelector('.card-vhandle'))return;
+    const cid='card_h_'+i+'_'+(card.id||card.parentElement.id||i);
+    if(cfg[cid])card.style.minHeight=cfg[cid];
+    const handle=document.createElement('div');
+    handle.className='card-vhandle';
+    // 底部拖动条：明显的带纹路分隔线
+    handle.style.cssText='height:12px;cursor:row-resize;border-radius:0 0 8px 8px;margin:-6px -11px -11px;display:none;position:relative;background:transparent;overflow:hidden';
+    handle.innerHTML='<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div style="width:36px;height:4px;border-radius:99px;background:rgba(100,160,100,.35);transition:background .2s"></div></div>';
+    handle.title='拖动调整卡片高度';
+    card.appendChild(handle);
+    let startY=0,startH=0;
+    const innerBar=handle.querySelector('div div');
+    const onDown=e=>{
+      if(!_layoutEditMode)return;e.preventDefault();
+      startY=e.clientY||(e.touches&&e.touches[0].clientY)||0;
+      startH=card.offsetHeight;
+      if(innerBar)innerBar.style.background='rgba(100,160,100,.75)';
+      document.addEventListener('mousemove',onMove);
+      document.addEventListener('touchmove',onMoveT,{passive:false});
+      document.addEventListener('mouseup',onUp);
+      document.addEventListener('touchend',onUp);
+    };
+    const onMove=e=>{
+      const dy=(e.clientY||(e.touches&&e.touches[0].clientY)||startY)-startY;
+      card.style.minHeight=Math.max(60,startH+dy)+'px';
+    };
+    const onMoveT=e=>{e.preventDefault();onMove(e);};
+    const onUp=()=>{
+      if(innerBar)innerBar.style.background='rgba(100,160,100,.35)';
+      document.removeEventListener('mousemove',onMove);
+      document.removeEventListener('touchmove',onMoveT);
+      document.removeEventListener('mouseup',onUp);
+      document.removeEventListener('touchend',onUp);
+      const cfg2=getLayoutConfig();cfg2[cid]=card.style.minHeight;saveLayoutConfig(cfg2);
+    };
+    handle.addEventListener('mousedown',onDown);
+    handle.addEventListener('touchstart',onDown,{passive:false});
+  });
 }
 
 function _makeHorizHandle(pageId, gridSel, key){
   const page=document.getElementById(pageId);if(!page)return;
   const grid=page.querySelector(gridSel);if(!grid)return;
-  if(grid.querySelector('.resize-handle'))return; // 已存在
-  // 将 grid 设为 relative
+  if(grid.querySelector('.resize-handle'))return;
   grid.style.position='relative';
   const handle=document.createElement('div');
   handle.className='resize-handle resize-handle-h';
-  handle.title='拖动调整左右比例';
-  // 初始位置居中
+  handle.title='← 拖动调整左右比例 →';
+  // 让分隔线更明显：带箭头提示
+  handle.innerHTML='<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none"><div style="font-size:10px;opacity:.6;line-height:1">◀</div><div style="width:2px;height:30px;border-radius:99px;background:currentColor;opacity:.4"></div><div style="font-size:10px;opacity:.6;line-height:1">▶</div></div>';
   _positionHandle(handle,grid);
   grid.appendChild(handle);
 
-  let startX=0,startCols=null;
+  let startX=0;
   const onDown=(e)=>{
-    if(!_layoutEditMode)return;
-    e.preventDefault();
+    if(!_layoutEditMode)return;e.preventDefault();
     startX=e.clientX||(e.touches&&e.touches[0].clientX)||0;
-    startCols=grid.style.gridTemplateColumns||getComputedStyle(grid).gridTemplateColumns;
     handle.classList.add('dragging');
     document.addEventListener('mousemove',onMove);
     document.addEventListener('touchmove',onMoveT,{passive:false});
@@ -4458,10 +5472,10 @@ function _makeHorizHandle(pageId, gridSel, key){
   const onMove=(e)=>{
     const dx=(e.clientX||(e.touches&&e.touches[0].clientX)||startX)-startX;
     const totalW=grid.offsetWidth;
-    const newLeftPx=Math.max(100,Math.min(totalW-100,(totalW/2)+dx));
+    const baseW=totalW/2;
+    const newLeftPx=Math.max(120,Math.min(totalW-120,baseW+dx));
     const fr1=newLeftPx/totalW;
-    const fr2=1-fr1;
-    grid.style.gridTemplateColumns=`${fr1.toFixed(3)}fr ${fr2.toFixed(3)}fr`;
+    grid.style.gridTemplateColumns=`${fr1.toFixed(3)}fr ${(1-fr1).toFixed(3)}fr`;
     _positionHandle(handle,grid);
   };
   const onMoveT=(e)=>{e.preventDefault();onMove(e);};
@@ -4471,10 +5485,7 @@ function _makeHorizHandle(pageId, gridSel, key){
     document.removeEventListener('touchmove',onMoveT);
     document.removeEventListener('mouseup',onUp);
     document.removeEventListener('touchend',onUp);
-    // 保存
-    const cfg=getLayoutConfig();
-    cfg[key]=grid.style.gridTemplateColumns;
-    saveLayoutConfig(cfg);
+    const cfg=getLayoutConfig();cfg[key]=grid.style.gridTemplateColumns;saveLayoutConfig(cfg);
     showToast('✅ 布局已保存');
   };
   handle.addEventListener('mousedown',onDown);
@@ -4482,36 +5493,37 @@ function _makeHorizHandle(pageId, gridSel, key){
 }
 
 function _positionHandle(handle,grid){
-  // 找到第一列宽度
   const cols=getComputedStyle(grid).gridTemplateColumns.split(' ');
-  if(cols.length>=2){
-    const firstW=parseFloat(cols[0]);
-    handle.style.left=firstW+'px';
-  } else {
-    handle.style.left='50%';
-  }
+  if(cols.length>=2){handle.style.left=parseFloat(cols[0])+'px';}
+  else{handle.style.left='50%';}
 }
 
 function applyLayoutConfig(){
   const cfg=getLayoutConfig();
-  const apply=(pageId,sel,val)=>{
-    if(!val)return;
-    const p=document.getElementById(pageId);if(!p)return;
-    const g=p.querySelector(sel);if(g)g.style.gridTemplateColumns=val;
-  };
-  apply('page-farm','.dtwo',cfg.farm);
+  const apply=(pageId,sel,val)=>{if(!val)return;const p=document.getElementById(pageId);if(!p)return;const g=p.querySelector(sel);if(g)g.style.gridTemplateColumns=val;};
+  apply('page-farm','.farm-main-grid',cfg.farm);
   apply('page-pet','.dpet',cfg.pet);
+  setTimeout(_restoreCardOrder,50);
 }
 
 function toggleLayoutEditMode(){
   _layoutEditMode=!_layoutEditMode;
   const btn=document.getElementById('layout-edit-btn');
   const pages=document.getElementById('pages');
-  if(btn){btn.textContent=_layoutEditMode?'✅ 完成布局调整':'⚙️ 调整布局';btn.classList.toggle('active',_layoutEditMode);}
+  if(btn){
+    btn.textContent=_layoutEditMode?'✅ 完成调整':'⚙️ 调整布局';
+    btn.classList.toggle('active',_layoutEditMode);
+    btn.title=_layoutEditMode?'点击完成，拖动分隔线或卡片底边调整':'点击进入布局调整模式';
+  }
   if(pages)pages.classList.toggle('layout-edit-mode',_layoutEditMode);
   if(_layoutEditMode){
-    showToast('💡 拖动分隔线调整板块大小');
     _initResizeHandles();
+    document.querySelectorAll('.card-vhandle').forEach(h=>{h.style.display='block';});
+    document.querySelectorAll('.resize-handle').forEach(h=>{h.style.color='var(--green)';});
+    // 显示操作提示
+    showToast('💡 拖动底部小横条调高度 · 拖卡片换栏位 · 拖中线调宽度');
+  } else {
+    document.querySelectorAll('.card-vhandle').forEach(h=>h.style.display='none');
   }
 }
 
@@ -4519,14 +5531,12 @@ function resetLayout(){
   localStorage.removeItem(LAYOUT_KEY);
   ['page-farm','page-pet'].forEach(pid=>{
     const p=document.getElementById(pid);if(!p)return;
-    ['dtwo','dpet'].forEach(cls=>{const g=p.querySelector('.'+cls);if(g)g.style.gridTemplateColumns='';});
+    ['dtwo','dpet','farm-main-grid'].forEach(cls=>{const g=p.querySelector('.'+cls);if(g)g.style.gridTemplateColumns='';});
   });
   showToast('已恢复默认布局');
 }
 
-// 废弃旧接口，保留兼容性
 function openLayoutEdit(){toggleLayoutEditMode();}
 function saveLayoutEdit(){}
 
-// 初始化时应用布局
-(function(){setTimeout(()=>{applyLayoutConfig();_initResizeHandles();},200);})();
+(function(){setTimeout(()=>{applyLayoutConfig();_initResizeHandles();},300);})();

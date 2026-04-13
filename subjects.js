@@ -6,7 +6,7 @@ window.ACTIVE_MODULE_ID    = localStorage.getItem('jbfarm_module')       || null
 window.ACTIVE_MODULE_LABEL = localStorage.getItem('jbfarm_module_label') || '';
 
 window.SUBJECTS = [
-  { id:'teacher',  name:'教师编制',  icon:'📚', color:'#5a9a5a',
+  { id:'teacher',  name:'教师',  icon:'📚', color:'#5a9a5a',
     desc:'教育学·普通心理学·教育心理学·小三门', qbKey: null },
   { id:'history7', name:'七年级历史', icon:'🏺', color:'#c07030',
     desc:'史前·夏商周·秦汉·三国两晋·隋唐·辽宋元·明清', qbKey: null },
@@ -25,7 +25,7 @@ window.SUBJECTS = [
 window.SUBJECT_MODULES = {
 
   // ════════════════════════════════════════════════════════
-  //  教师编制
+  //  教师
   // ════════════════════════════════════════════════════════
   'teacher': {
     groups: [

@@ -233,8 +233,10 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 .plot.s3{background:linear-gradient(145deg,#f0d840,#d8b020);animation:glow .9s ease-in-out infinite alternate}
 .plot.locked{background:linear-gradient(145deg,#c8c0b0,#aaa090);cursor:default}
 .plot.cracked{filter:saturate(.4)}
-.plot.bugged::after{content:'🐛';position:absolute;top:2px;right:3px;font-size:.7rem}
+/* bug badge moved to JS only */
 @keyframes glow{0%{box-shadow:0 0 4px rgba(240,180,20,.3)}100%{box-shadow:0 0 14px rgba(240,180,20,.8)}}
+@keyframes wobble{0%,100%{transform:rotate(-12deg) scale(1.1)}50%{transform:rotate(12deg) scale(0.9)}}
+@keyframes bounce{0%{transform:translateY(0)}100%{transform:translateY(-3px)}}
 .plot-ico{font-size:1.45rem;line-height:1}
 .plot-lbl{font-size:.44rem;color:rgba(255,255,255,.9);text-shadow:0 1px 2px rgba(0,0,0,.4);text-align:center;margin-top:1px}
 .plot-pg{position:absolute;bottom:3px;left:3px;right:3px;height:3px;
@@ -289,6 +291,11 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 .stab{padding:3px 11px;border-radius:99px;border:1.5px solid var(--border);
   font-size:.68rem;cursor:pointer;background:var(--panel);transition:all .18s}
 .stab.on{background:var(--dgreen);color:#fff;border-color:var(--dgreen)}
+.cw-section{background:var(--panel);border-radius:12px;border:1.5px solid var(--border);padding:11px 13px}
+.cw-label{font-size:.74rem;font-weight:600;color:var(--text);margin-bottom:8px}
+.cw-btn{padding:7px 12px;border-radius:10px;border:none;background:var(--dgreen);color:#fff;font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;white-space:nowrap}
+.cw-breed-item,.cw-skin-item,.cw-cloth-item{padding:6px 4px;border-radius:9px;border:2px solid var(--border);background:var(--bg);cursor:pointer;text-align:center;font-size:.7rem;transition:all .15s;user-select:none}
+.cw-breed-item.sel,.cw-skin-item.sel,.cw-cloth-item.sel{border-color:var(--dgreen);background:rgba(100,160,100,.13)}
 .shop-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .shop-item{background:var(--panel);border-radius:12px;border:1.5px solid var(--border);
   padding:10px;text-align:center;cursor:pointer;transition:all .18s}
@@ -898,6 +905,11 @@ body[data-theme="custom"]{
     <div id="score-custom-reason-wrap" style="display:none;margin-bottom:8px">
       <input class="ci" id="score-custom-reason" placeholder="请输入自定义原因" maxlength="30" style="width:100%;user-select:text">
     </div>
+    <!-- 搜索框 -->
+    <div style="position:relative;margin-bottom:6px">
+      <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:.8rem;pointer-events:none">🔍</span>
+      <input class="ci" id="score-search-input" placeholder="搜索学生姓名…" oninput="onScoreSearch(this.value)" style="width:100%;padding:7px 10px 7px 28px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.76rem;font-family:'Noto Sans SC',sans-serif;box-sizing:border-box;user-select:text">
+    </div>
     <!-- 全选控制栏 -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;padding:0 2px">
       <div style="font-size:.68rem;color:var(--muted)" id="score-select-hint">点击选中，再次点击取消</div>
@@ -1104,6 +1116,8 @@ body[data-theme="custom"]{
           <div class="stab" onclick="shopTab('clothes')">👗 衣服</div>
           <div class="stab" onclick="shopTab('pets')">🐾 宠物</div>
           <div class="stab" onclick="shopTab('tools')">🔧 道具</div>
+          <div class="stab" onclick="shopTab('skins')">🎨 皮肤</div>
+          <div class="stab" onclick="shopTab('custom')">🎪 定制</div>
         </div>
         <div class="shop-grid" id="shop-grid"></div>
       </div>
@@ -1323,7 +1337,7 @@ body[data-theme="custom"]{
       <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">大小 <span id="cloth-adj-scale-val" style="color:var(--dgreen)">100%</span></label>
       <input type="range" id="cloth-adj-scale" min="40" max="200" value="100" style="width:100%" oninput="document.getElementById('cloth-adj-scale-val').textContent=this.value+'%';reClothAdjPreview()">
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:10px">
+    <div style="display:flex;gap:8px;margin-bottom:7px">
       <div style="flex:1">
         <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">左右偏移</label>
         <input type="range" id="cloth-adj-ox" min="-40" max="40" value="0" style="width:100%" oninput="reClothAdjPreview()">
@@ -1332,6 +1346,10 @@ body[data-theme="custom"]{
         <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">上下偏移</label>
         <input type="range" id="cloth-adj-oy" min="-40" max="40" value="0" style="width:100%" oninput="reClothAdjPreview()">
       </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">旋转 <span id="cloth-adj-rot-val" style="color:var(--dgreen)">0°</span></label>
+      <input type="range" id="cloth-adj-rot" min="-180" max="180" value="0" style="width:100%" oninput="document.getElementById('cloth-adj-rot-val').textContent=this.value+'°';reClothAdjPreview()">
     </div>
     <div class="mbrow">
       <button class="mbtn mb-cancel" onclick="closeOverlay('cloth-adj-ov')">取消</button>
@@ -1652,16 +1670,107 @@ body[data-theme="custom"]{
 
 <!-- ★ 新增：各科目模块化子题库 -->
 <script src="subject_history8_mod.js"></script>
+<!-- 定制工坊弹窗 -->
+<div class="overlay" id="custom-workshop-ov">
+  <div class="modal" style="max-height:92vh;display:flex;flex-direction:column;padding:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="mttl" style="margin-bottom:0">🎪 宠物定制工坊</div>
+      <span onclick="document.getElementById('custom-workshop-ov').classList.remove('on')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);line-height:1;padding:2px 6px">✕</span>
+    </div>
+    <div style="font-size:.72rem;color:var(--muted);margin-bottom:12px;padding:8px 10px;background:rgba(100,160,100,.07);border-radius:10px;border:1px solid rgba(100,160,100,.2)">
+      🌟 定制工坊可以自由调整当前宠物的一切属性。每次修改独立扣费，所见即所得！
+    </div>
+    <!-- 宠物预览 -->
+    <div style="display:flex;justify-content:center;margin-bottom:14px">
+      <div style="position:relative;width:110px;height:110px;border-radius:18px;background:linear-gradient(145deg,var(--panel),rgba(100,160,100,.08));border:2px solid var(--border);display:flex;align-items:center;justify-content:center">
+        <canvas id="cw-preview-canvas" width="110" height="110" style="border-radius:16px"></canvas>
+      </div>
+    </div>
+    <!-- 各项定制选项 -->
+    <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px">
+
+      <!-- 名字 -->
+      <div class="cw-section">
+        <div class="cw-label">✏️ 宠物名字</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input class="ci" id="cw-name-input" placeholder="输入新名字" maxlength="8" style="flex:1;user-select:text">
+          <button onclick="cwRandomName()" style="padding:7px 10px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:inherit">随机</button>
+          <button onclick="cwApply('name')" class="cw-btn">🪙30 改名</button>
+        </div>
+      </div>
+
+      <!-- 品种 -->
+      <div class="cw-section">
+        <div class="cw-label">🐾 宠物品种</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px" id="cw-breed-grid"></div>
+        <div style="margin-top:6px;display:flex;justify-content:flex-end">
+          <button onclick="cwApply('breed')" class="cw-btn">🪙80 更换品种</button>
+        </div>
+      </div>
+
+      <!-- 等级 -->
+      <div class="cw-section">
+        <div class="cw-label">⭐ 进化等级 <span id="cw-lv-display" style="color:var(--dgreen);font-weight:600"></span></div>
+        <input type="range" id="cw-level-range" min="1" max="5" step="1" oninput="cwLvPreview(this.value)" style="width:100%;accent-color:var(--dgreen)">
+        <div style="display:flex;justify-content:space-between;font-size:.65rem;color:var(--muted);margin-top:2px">
+          <span>Lv.1</span><span>Lv.2</span><span>Lv.3</span><span>Lv.4</span><span>Lv.5 MAX</span>
+        </div>
+        <div style="margin-top:6px;display:flex;justify-content:flex-end">
+          <button onclick="cwApply('level')" class="cw-btn">🪙60/级 调整等级</button>
+        </div>
+      </div>
+
+      <!-- 属性 -->
+      <div class="cw-section">
+        <div class="cw-label">💊 宠物属性全满</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">将饱食度、心情、清洁度、体力全部恢复至100</div>
+        <div style="display:flex;justify-content:flex-end">
+          <button onclick="cwApply('stats')" class="cw-btn">🪙50 属性全满</button>
+        </div>
+      </div>
+
+      <!-- 皮肤颜色 -->
+      <div class="cw-section">
+        <div class="cw-label">🎨 皮肤颜色</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px" id="cw-skin-grid"></div>
+        <div style="margin-top:6px;display:flex;justify-content:flex-end">
+          <button onclick="cwApply('skin')" class="cw-btn">🪙40 换皮肤</button>
+        </div>
+      </div>
+
+      <!-- 衣服 -->
+      <div class="cw-section">
+        <div class="cw-label">👗 穿戴衣服</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px" id="cw-cloth-grid"></div>
+        <div style="margin-top:6px;display:flex;justify-content:flex-end">
+          <button onclick="cwApply('cloth')" class="cw-btn">🪙20 换衣服</button>
+        </div>
+      </div>
+
+      <!-- 自定义图片 -->
+      <div class="cw-section">
+        <div class="cw-label">🖼️ 自定义形象图</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">上传最多2MB的图片作为宠物形象（免费）</div>
+        <div style="display:flex;gap:6px">
+          <button onclick="openPetImageUpload()" style="flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--green);background:rgba(100,160,100,.07);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:inherit">📤 上传宠物图</button>
+          <button onclick="cwClearPetImg()" style="padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.74rem;cursor:pointer;font-family:inherit;color:var(--muted)">🗑️ 清除</button>
+        </div>
+      </div>
+
+    </div>
+    <!-- 底部提示 -->
+    <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:.68rem;color:var(--muted);text-align:center">
+      💰 当前金币：<b id="cw-coin-display" style="color:var(--dgreen)">0</b> 🪙　|　所有修改即时生效
+    </div>
+  </div>
+</div>
+
 <script src="subject_history7_mod.js"></script>
 <script src="subject_geo7_mod.js"></script>
 <script src="subject_geo8_mod.js"></script>
 <script src="subject_geoh_teacher_mod.js"></script>
 
 <script src="game.js"></script>
-
-
-
-
 
 
 </body>

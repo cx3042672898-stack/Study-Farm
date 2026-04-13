@@ -415,7 +415,11 @@ function goToLogin(){if(CURRENT_ACC_ID)persistAccount();CURRENT_ACC_ID=null;if(p
 let pinInput='',pinCb=null;
 function openPinPad(name,cb){pinInput='';pinCb=cb;// 关闭其他弹窗避免叠加
 document.querySelectorAll('.overlay.on').forEach(ov=>{if(ov.id!=='pin-ov')ov.classList.remove('on');});const ne=document.getElementById('pin-acc-name');if(ne)ne.textContent=name;buildPinDots('pin-dots');buildNumpad('numpad',false);document.getElementById('pin-ov').classList.add('on');}
-function buildPinDots(id){const d=document.getElementById(id);if(!d)return;d.innerHTML='';for(let i=0;i<4;i++){const dot=document.createElement('div');dot.className='pin-dot'+(i<pinInput.length?' filled':'');d.appendChild(dot);}}
+function buildPinDots(id){
+  const d=document.getElementById(id);if(!d)return;d.innerHTML='';
+  const val=id==='setpin-dots'?setpinInput:pinInput;
+  for(let i=0;i<4;i++){const dot=document.createElement('div');dot.className='pin-dot'+(i<val.length?' filled':'');d.appendChild(dot);}
+}
 function buildNumpad(containerId,isSetPin){
   const np=document.getElementById(containerId);if(!np)return;np.innerHTML='';
   [1,2,3,4,5,6,7,8,9,'',0,'⌫'].forEach(k=>{
@@ -1191,9 +1195,12 @@ function calcReadyTime(i){
   if(totalSec<3600)return Math.round(totalSec/60)+'分钟';
   const h=Math.floor(totalSec/3600),m=Math.round((totalSec%3600)/60);return m>0?`${h}h${m}m`:`${h}h`;
 }
+let _plotCloseHandler=null;
 function onPlotClick(idx,event){
   const p=S.plots[idx];if(p.s==='locked'){onLockedClick(idx);return;}
   const popup=document.getElementById('plot-popup');
+  // 先移除上次可能残留的监听器
+  if(_plotCloseHandler){document.removeEventListener('click',_plotCloseHandler);_plotCloseHandler=null;}
   const pages=document.getElementById('pages')||document.body;
   const pr=pages.getBoundingClientRect(),er=event.currentTarget.getBoundingClientRect();
   let top=er.bottom-pr.top+4,left=er.left-pr.left;if(left+200>pr.width)left=Math.max(0,pr.width-205);
@@ -1208,7 +1215,6 @@ function onPlotClick(idx,event){
   if(growing){const rt=calcReadyTime(idx);acts.push({l:`💧 浇水（答1题）${rt?' ⏱'+rt:''}`,fn:()=>doWaterPlot(idx)});acts.push({l:'✨ 施肥（答2题）',fn:()=>doFertPlot(idx)});}
   if(p.s==='s3')acts.push({l:'🌾 收获（答1题）',fn:()=>doHarvestPlot(idx)});
   if(p.hasBug){if(S.pestStock>0)acts.push({l:`🧴 使用除虫药（库存${S.pestStock}）`,fn:()=>usePest(idx)});else acts.push({l:'🧴 除虫（答1题）',fn:()=>doPestPlot(idx)});}
-  // 土壤升级按钮
   if(p.s!=='locked'){
     const _cs=p.soil||'yellow';
     const _nextMap={yellow:'red',red:'black'};
@@ -1219,7 +1225,6 @@ function onPlotClick(idx,event){
   const ad=document.getElementById('pp-actions');ad.innerHTML='';
   if(!acts.length)ad.innerHTML='<div style="font-size:.7rem;color:var(--muted);text-align:center">暂无操作</div>';
   acts.forEach(a=>{const b=document.createElement('div');b.className='pp-act';b.textContent=a.l;b.onclick=()=>{closePlotPopup();a.fn();};ad.appendChild(b);});
-  // 作物对话气泡（缺水/虫害时显示）
   if(['s0','s1','s2'].includes(p.s)){
     let _ptalk='';
     if(p.hasCrack)_ptalk=_plantTalk(p.seed||'wheat','drought');
@@ -1232,9 +1237,16 @@ function onPlotClick(idx,event){
     }
   }
   popup.classList.add('on');
-  setTimeout(()=>{const close=e=>{if(!popup.contains(e.target)){closePlotPopup();document.removeEventListener('click',close);}};document.addEventListener('click',close);},50);
+  // 注册关闭监听，确保可移除
+  setTimeout(()=>{
+    _plotCloseHandler=function(e){if(!popup.contains(e.target)){closePlotPopup();}};
+    document.addEventListener('click',_plotCloseHandler);
+  },50);
 }
-function closePlotPopup(){document.getElementById('plot-popup').classList.remove('on');}
+function closePlotPopup(){
+  document.getElementById('plot-popup').classList.remove('on');
+  if(_plotCloseHandler){document.removeEventListener('click',_plotCloseHandler);_plotCloseHandler=null;}
+}
 function usePest(idx){S.pestStock--;S.plots[idx].hasBug=false;persistAccount();renderFarm();showToast('🧴 除虫药使用成功！');}
 function doPlantPlot(idx){if(!totalSeeds()){openConfirm('🌰','种子袋空空！\n需要先去商店购买种子。\n是否前往商店？',()=>switchTab('shop'));return;}openSeedPicker('plant',null,sid=>{openQuiz({title:'🌱 播种',needed:1,onSuccess:()=>{const p=S.plots[idx];p.s='s0';p.g=0;p.seed=sid;p.lastWater=Date.now();p.hasBug=false;p.hasCrack=false;S.seedBag[sid]--;S.totalPlanted++;gainExp(10);persistAccount();renderFarm();checkAchs();const sd=SEEDS[sid];showResult('🌱','播种成功！',`第${idx+1}块地种了${sd.ico}${sd.name}\n约${sd.autoGrowH*4}小时后成熟`);}});});}
 function _plantTalk(sid,type){const pt=(window.PLANT_TALK&&PLANT_TALK[sid])||null;if(!pt)return '';const lines=pt[type]||[];return lines.length?lines[Math.floor(Math.random()*lines.length)]:'';}
@@ -1401,7 +1413,20 @@ function renderFarm(){
       const _snm=_sl==='diamond'?'钻石空':_sl==='yellow'?'空地':_sl==='red'?'红土空':'黑土空';
       d.innerHTML=`<span class="plot-ico">${_sico}</span><div class="plot-lbl">${_snm}</div>`;
     }
-    else{const sd=SEEDS[p.seed||'wheat'];const si=p.s==='s3'?sd.stages.length-1:p.s==='s2'?2:p.s==='s1'?1:0;const ico=sd.stages[Math.min(si,sd.stages.length-1)];const rt=calcReadyTime(i);const pctStr=Math.round(p.g);const _sl2=p.soil||'yellow';const _sdot=_sl2!=='yellow'?`<div style="position:absolute;bottom:2px;left:2px;width:5px;height:5px;border-radius:50%;background:${_sl2==='black'?'#5a3a20':'#b04828'};border:1px solid rgba(255,255,255,.5)"></div>`:''+(p.s!=='s3'&&_sl2!=='yellow'?`<div style="position:absolute;bottom:2px;right:2px;font-size:.4rem">${_sl2==='black'?'⬛':'🟥'}</div>`:'');d.innerHTML=`${rt?`<div class="plot-timer">⏱${rt}</div>`:''}<div style="position:absolute;top:2px;right:2px;font-size:.48rem;line-height:1.4">${S.hasAutoWater?'🚿':''}${S.hasAutoPest?'🤖':''}</div>${_sdot}<span class="plot-ico">${ico}</span><div class="plot-lbl">${sd.name} ${p.s==='s3'?'🎉成熟':pctStr+'%'}</div><div class="plot-pg"><div class="plot-pg-f" style="width:${p.g}%"></div></div>`;}
+    else{
+      const sd=SEEDS[p.seed||'wheat'];
+      const si=p.s==='s3'?sd.stages.length-1:p.s==='s2'?2:p.s==='s1'?1:0;
+      const ico=sd.stages[Math.min(si,sd.stages.length-1)];
+      const rt=calcReadyTime(i);const pctStr=Math.round(p.g);
+      const _sl2=p.soil||'yellow';
+      const _sdot=_sl2!=='yellow'?`<div style="position:absolute;bottom:2px;left:2px;width:5px;height:5px;border-radius:50%;background:${_sl2==='black'?'#5a3a20':'#b04828'};border:1px solid rgba(255,255,255,.5)"></div>`:'';
+      // 缺水状态：可爱的干渴标识
+      const _crackBadge=p.hasCrack?`<div style="position:absolute;top:3px;left:3px;font-size:.72rem;animation:wobble 1.2s infinite;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))" title="缺水啦！快来浇水">💧</div><div style="position:absolute;inset:0;border-radius:9px;background:rgba(200,120,40,.12);border:2px dashed rgba(200,120,40,.4)"></div>`:'';
+      // 虫害标识
+      const _bugBadge=p.hasBug?`<div style="position:absolute;top:3px;left:3px;font-size:.72rem;animation:bounce 0.8s infinite alternate" title="有虫！">🐛</div>`:'';
+      const _topRight=`<div style="position:absolute;top:2px;right:2px;font-size:.48rem;line-height:1.4">${S.hasAutoWater?'🚿':''}${S.hasAutoPest?'🤖':''}</div>`;
+      d.innerHTML=`${rt&&!p.hasCrack?`<div class="plot-timer">⏱${rt}</div>`:''} ${_topRight}${_crackBadge}${_bugBadge}${_sdot}<span class="plot-ico" style="${p.hasCrack?'filter:saturate(.5) brightness(.9)':''}${p.hasBug?'filter:saturate(.7)':''}">${ico}</span><div class="plot-lbl">${sd.name} ${p.s==='s3'?'🎉成熟':p.hasCrack?'😰渴了':pctStr+'%'}</div><div class="plot-pg"><div class="plot-pg-f" style="width:${p.g}%;${p.hasCrack?'background:linear-gradient(90deg,#d4a060,#b08040)':''}"></div></div>`;
+    }
     d.onclick=e=>onPlotClick(i,e);g.appendChild(d);
   });
   const ready=S.plots.filter(p=>p.s==='s3').length,grow=S.plots.filter(p=>['s0','s1','s2'].includes(p.s)).length,bug=S.plots.filter(p=>p.hasBug).length;
@@ -1606,7 +1631,7 @@ function drawPet(){
       if(clothData){
         loadCustomPetImg(clothKey,function(cimg){if(cimg)_drawImgWithParam(cimg,clothKey,petX,petY+bob);});
       } else {
-        try{drawCloth(ctx,petX,petY+bob);}catch(e){}
+        try{_drawClothWithSysParam(ctx,petX,petY+bob);}catch(e){}
       }
     });
   } else {
@@ -1620,9 +1645,27 @@ function drawPet(){
     if(clothImgData){
       loadCustomPetImg(clothKey,function(cimg){if(cimg)_drawImgWithParam(cimg,clothKey,petX,petY+bob);});
     } else {
-      try{drawCloth(ctx,petX,petY+bob);}catch(e){console.warn('drawCloth err',e);}
+      try{_drawClothWithSysParam(ctx,petX,petY+bob);}catch(e){console.warn('drawCloth err',e);}
     }
   }
+}
+
+// 应用 jbfarm_clothsys_* 参数绘制系统衣服（保证预览和实际一致）
+function _drawClothWithSysParam(ctx,cx,cy){
+  const cid=S.equippedCloth;if(!cid)return;
+  const key='jbfarm_clothsys_'+cid;
+  const raw=localStorage.getItem(key);
+  const p=raw?JSON.parse(raw):{scale:100,offsetX:0,offsetY:0,rotation:0};
+  const sc=(p.scale||100)/100;
+  const ox=p.offsetX||0,oy=p.offsetY||0;
+  const rot=(p.rotation||0)*Math.PI/180;
+  ctx.save();
+  ctx.translate(cx+ox,cy+oy);
+  if(rot!==0)ctx.rotate(rot);
+  ctx.scale(sc,sc);
+  ctx.translate(-(cx),-(cy));
+  drawCloth(ctx,cx,cy,cid);
+  ctx.restore();
 }
 
 let _petImgUploadMode='pet'; // 'pet' | 'cloth'
@@ -1636,7 +1679,7 @@ function openPetImageUpload(){
   inp.type='file';inp.accept='image/*';
   inp.onchange=function(e){
     const file=e.target.files[0];if(!file)return;
-    if(file.size>512*1024){showToast('图片不能超过500KB，请压缩后再上传');return;}
+    if(file.size>2*1024*1024){showToast('图片不能超过2MB，请压缩后再上传');return;}
     _petImgFileSize=file.size;
     const reader=new FileReader();
     reader.onload=function(ev){
@@ -1649,13 +1692,16 @@ function openPetImageUpload(){
 }
 
 function openClothImageUpload(){
-  if(!S.equippedCloth){showToast('请先装备一件衣服再上传图片');return;}
+  if(!S.equippedCloth){
+    openConfirm('👕','请先为宠物穿戴一件衣服，再上传衣服图片哦！\n\n去「宠物」→「衣柜」选一件衣服装备上就可以啦。',()=>{});
+    return;
+  }
   _petImgUploadMode='cloth';
   const inp=document.createElement('input');
   inp.type='file';inp.accept='image/*';
   inp.onchange=function(e){
     const file=e.target.files[0];if(!file)return;
-    if(file.size>512*1024){showToast('图片不能超过500KB');return;}
+    if(file.size>2*1024*1024){showToast('图片不能超过2MB');return;}
     _petImgFileSize=file.size;
     const reader=new FileReader();
     reader.onload=function(ev){
@@ -1684,8 +1730,8 @@ function openPetImgPreviewModal(title){
   const sizeEl=document.getElementById('pet-img-filesize');
   if(sizeEl){
     const kb=(_petImgFileSize/1024).toFixed(1);
-    const color=_petImgFileSize>400*1024?'var(--red)':_petImgFileSize>300*1024?'var(--gold)':'var(--dgreen)';
-    sizeEl.innerHTML=`📦 文件大小：<b style="color:${color}">${kb} KB</b> / 500 KB上限`;
+    const color=_petImgFileSize>1.5*1024*1024?'var(--red)':_petImgFileSize>1*1024*1024?'var(--gold)':'var(--dgreen)';
+    sizeEl.innerHTML=`📦 文件大小：<b style="color:${color}">${kb} KB</b> / 2 MB上限`;
   }
   // 衣服模式：显示范围选项
   const scopeWrap=document.getElementById('cloth-scope-wrap');
@@ -1709,17 +1755,30 @@ function openPetImgPreviewModal(title){
 }
 
 function _initPetPreviewDrag(){
-  const cvs=document.getElementById('pet-preview-cvs');if(!cvs||cvs._dragInited)return;
+  const cvs=document.getElementById('pet-preview-cvs');if(!cvs)return;
+  // 每次打开弹窗都重新绑定，先清除旧的（通过克隆节点移除所有监听）
+  if(cvs._dragInited){
+    // 移除旧的 document 级别监听，使用标记函数
+    if(cvs._cleanupDrag)cvs._cleanupDrag();
+  }
   cvs._dragInited=true;
+
   let dragging=false,startX=0,startY=0,baseOx=0,baseOy=0;
+  let pinchDist0=0,pinchScale0=80;
+
   const getOxOy=()=>({ox:parseInt(document.getElementById('pet-img-ox').value||0),oy:parseInt(document.getElementById('pet-img-oy').value||0)});
-  const setOxOy=(ox,oy)=>{
+ const setOxOy=(ox,oy)=>{
     const oxEl=document.getElementById('pet-img-ox'),oyEl=document.getElementById('pet-img-oy');
-    if(oxEl){oxEl.value=Math.max(-60,Math.min(60,ox));}
-    if(oyEl){oyEl.value=Math.max(-60,Math.min(60,oy));}
+    if(oxEl){oxEl.value=Math.max(-80,Math.min(80,Math.round(ox)));}
+    if(oyEl){oyEl.value=Math.max(-80,Math.min(80,Math.round(oy)));}
     rePetPreview();
   };
+  
+  const getScale=()=>parseInt((document.getElementById('pet-img-scale')||{}).value||80);
+  const setScale=(v)=>{const el=document.getElementById('pet-img-scale');if(el){el.value=Math.max(10,Math.min(200,Math.round(v)));rePetPreview();}};
+
   const onDown=e=>{
+    if(e.touches&&e.touches.length===2){dragging=false;return;}
     dragging=true;
     const t=e.touches?e.touches[0]:e;
     startX=t.clientX;startY=t.clientY;
@@ -1727,22 +1786,38 @@ function _initPetPreviewDrag(){
     e.preventDefault();
   };
   const onMove=e=>{
+    // 双指捏合：缩放
+    if(e.touches&&e.touches.length===2){
+      e.preventDefault();
+      const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+      if(!pinchDist0){pinchDist0=d;pinchScale0=getScale();}
+      else{setScale(pinchScale0*(d/pinchDist0));}
+      return;
+    }
     if(!dragging)return;
     const t=e.touches?e.touches[0]:e;
     const dx=t.clientX-startX,dy=t.clientY-startY;
-    // Scale movement to canvas coords
     const r=cvs.getBoundingClientRect();
     const scaleX=cvs.width/r.width,scaleY=cvs.height/r.height;
     setOxOy(baseOx+dx*scaleX,baseOy+dy*scaleY);
     e.preventDefault();
   };
-  const onUp=()=>{dragging=false;};
+  const onUp=()=>{dragging=false;pinchDist0=0;};
+
   cvs.addEventListener('mousedown',onDown);
   cvs.addEventListener('touchstart',onDown,{passive:false});
   document.addEventListener('mousemove',onMove);
   document.addEventListener('touchmove',onMove,{passive:false});
   document.addEventListener('mouseup',onUp);
   document.addEventListener('touchend',onUp);
+
+  // 保存清理函数，供下次打开时移除
+  cvs._cleanupDrag=()=>{
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('touchmove',onMove);
+    document.removeEventListener('mouseup',onUp);
+    document.removeEventListener('touchend',onUp);
+  };
 }
 
 function rePetPreview(){
@@ -1776,15 +1851,37 @@ function rePetPreview(){
     const mctx=modelCvs.getContext('2d');
     const mcx=modelCvs.width/2, mcy=modelCvs.height/2;
     mctx.clearRect(0,0,modelCvs.width,modelCvs.height);
-    // 画宠物本体
-    const stage=getEvoStage?applySkinStage(getEvoStage()):null;
-    if(stage){try{drawPetBreed(mctx,S.petBreed||'hamster',mcx,mcy,stage);}catch(e){}}
-    // 叠加预览图片
     const msize=Math.round(modelCvs.width*scale);
     const mdx=mcx+offX,mdy=mcy+offY;
-    mctx.save();mctx.translate(mdx,mdy);mctx.rotate(rot);
-    mctx.drawImage(_petImgPreviewObj,-msize/2,-msize/2,msize,msize);
-    mctx.restore();
+    // 优先使用用户上传的自定义宠物图片作为模特底图
+    const petKey=getCustomPetImgKey();
+    const petData=localStorage.getItem(petKey);
+    function _drawClothOverlay(){
+      mctx.save();mctx.translate(mdx,mdy);mctx.rotate(rot);
+      mctx.drawImage(_petImgPreviewObj,-msize/2,-msize/2,msize,msize);
+      mctx.restore();
+    }
+    if(petData){
+      const pi=new Image();
+      pi.onload=function(){
+        mctx.clearRect(0,0,modelCvs.width,modelCvs.height);
+        const ps=Math.round(modelCvs.width*0.85);
+        mctx.drawImage(pi,mcx-ps/2,mcy-ps/2,ps,ps);
+        _drawClothOverlay();
+      };
+      pi.onerror=function(){
+        // 图片加载失败则回退到程序生成
+        const stage=getEvoStage?applySkinStage(getEvoStage()):null;
+        if(stage){try{drawPetBreed(mctx,S.petBreed||'hamster',mcx,mcy,stage);}catch(e){}}
+        _drawClothOverlay();
+      };
+      pi.src=petData;
+    }else{
+      // 没有自定义图，使用程序生成的宠物形象
+      const stage=getEvoStage?applySkinStage(getEvoStage()):null;
+      if(stage){try{drawPetBreed(mctx,S.petBreed||'hamster',mcx,mcy,stage);}catch(e){}}
+      _drawClothOverlay();
+    }
   }
 }
 
@@ -3279,20 +3376,12 @@ function execDegrade(targetLv){
 let curShopTab='seeds';
 function shopTab(tab){
   curShopTab=tab;
-  // 确保皮肤tab存在
-  ensureSkinTab();
-  document.querySelectorAll('.stab').forEach((t,i)=>t.classList.toggle('on',['seeds','clothes','pets','tools','skins'][i]===tab));
+  const tabIds=['seeds','clothes','pets','tools','skins','custom'];
+  document.querySelectorAll('.stab').forEach((t,i)=>t.classList.toggle('on',tabIds[i]===tab));
   renderShop();
 }
 function ensureSkinTab(){
-  const tabs=document.querySelectorAll('.stab');
-  if(tabs.length>=5)return; // 已有5个
-  const lastTab=tabs[tabs.length-1];
-  if(!lastTab)return;
-  const skinTab=document.createElement('button');
-  skinTab.className='stab';skinTab.textContent='🎨皮肤';
-  skinTab.onclick=()=>shopTab('skins');
-  lastTab.parentNode.insertBefore(skinTab,lastTab.nextSibling);
+  // Tabs now hardcoded in HTML, nothing to inject
 }
 function renderShop(){
   const g=document.getElementById('shop-grid');g.innerHTML='';
@@ -3369,6 +3458,16 @@ function renderShop(){
 });}
   else if(curShopTab==='tools'){renderToolsShop(g);}
   else if(curShopTab==='skins'){renderSkinsShop(g);}
+  else if(curShopTab==='custom'){
+    // 定制工坊：渲染入口卡片
+    const card=document.createElement('div');
+    card.style.cssText='grid-column:1/-1;background:linear-gradient(135deg,rgba(100,160,100,.12),rgba(80,130,200,.08));border-radius:14px;border:2px solid var(--dgreen);padding:18px;text-align:center;cursor:pointer';
+    card.innerHTML='<div style="font-size:2rem;margin-bottom:8px">🎪</div>'
+      +'<div style="font-size:.88rem;font-weight:700;color:var(--dgreen);margin-bottom:6px">宠物定制工坊</div>'
+      +'<div style="font-size:.74rem;color:var(--muted);line-height:1.6">自由定制你的宠物！<br>名字 · 品种 · 等级 · 属性 · 皮肤 · 衣服 · 形象图<br><br><b style="color:var(--dgreen)">点击进入工坊 →</b></div>';
+    card.onclick=()=>openCustomWorkshop();
+    g.appendChild(card);
+  }
 }
 
 function openBulkBuy(item){
@@ -3595,6 +3694,200 @@ function openClothPreview(item){
     };
   }
   document.getElementById('cloth-ov').classList.add('on');
+}
+
+
+// ─── 定制工坊 ────────────────────────────────────
+let _cwBreedSel=null, _cwSkinSel=null, _cwClothSel=null, _cwLevelSel=1;
+
+function openCustomWorkshop(){
+  // 同步当前状态
+  _cwBreedSel=S.petBreed||'hamster';
+  _cwSkinSel=(S.petSkinColors&&S.petSkinColors[S.activePet])||'sc_default';
+  _cwClothSel=S.equippedCloth||null;
+  _cwLevelSel=S.petLevel||1;
+
+  // 名字
+  const ni=document.getElementById('cw-name-input');
+  if(ni)ni.value=S.petName||'';
+
+  // 等级滑块
+  const lr=document.getElementById('cw-level-range');
+  if(lr){lr.value=_cwLevelSel;}
+  cwLvPreview(_cwLevelSel);
+
+  // 品种格子
+  _cwRenderBreedGrid();
+  // 皮肤格子
+  _cwRenderSkinGrid();
+  // 衣服格子
+  _cwRenderClothGrid();
+  // 金币
+  _cwUpdateCoin();
+  // 画预览
+  _cwDraw();
+
+  document.getElementById('custom-workshop-ov').classList.add('on');
+}
+
+function _cwUpdateCoin(){
+  const el=document.getElementById('cw-coin-display');
+  if(el)el.textContent=Math.floor(S.coins||0);
+}
+
+function cwLvPreview(v){
+  _cwLevelSel=parseInt(v);
+  const el=document.getElementById('cw-lv-display');
+  if(el){
+    const stages=(EVO_STAGES[_cwBreedSel]||EVO_STAGES.hamster);
+    const st=stages[Math.min(_cwLevelSel-1,stages.length-1)];
+    el.textContent='Lv.'+_cwLevelSel+' '+st.name;
+  }
+  _cwDraw();
+}
+
+function cwRandomName(){
+  const ni=document.getElementById('cw-name-input');
+  if(ni)ni.value=PET_NAMES[Math.floor(Math.random()*PET_NAMES.length)];
+}
+
+function _cwRenderBreedGrid(){
+  const g=document.getElementById('cw-breed-grid');if(!g)return;g.innerHTML='';
+  const breeds=['hamster','cat','rabbit','bird','dog','panda','fox','bear','deer','penguin','owl','dragon','tiger','unicorn'];
+  const icons={hamster:'🐹',cat:'🐱',rabbit:'🐰',bird:'🐦',dog:'🐶',panda:'🐼',fox:'🦊',bear:'🐻',deer:'🦌',penguin:'🐧',owl:'🦉',dragon:'🐲',tiger:'🐯',unicorn:'🦄'};
+  const names={hamster:'仓鼠',cat:'猫咪',rabbit:'兔子',bird:'小鸟',dog:'小狗',panda:'熊猫',fox:'狐狸',bear:'小熊',deer:'小鹿',penguin:'企鹅',owl:'猫头鹰',dragon:'火龙',tiger:'小虎',unicorn:'独角兽'};
+  // 只显示已拥有品种（玩家买过的宠物）
+  const ownedBreeds=new Set((S.ownedPets||[]).map(pid=>{const p=SHOP_PETS.find(x=>x.id===pid);return p?p.breed:null;}).filter(Boolean));
+  breeds.forEach(br=>{
+    if(!ownedBreeds.has(br))return;
+    const d=document.createElement('div');
+    d.className='cw-breed-item'+(br===_cwBreedSel?' sel':'');
+    d.innerHTML='<div style="font-size:1.2rem">'+icons[br]+'</div><div style="font-size:.6rem;margin-top:2px">'+names[br]+'</div>';
+    d.onclick=()=>{_cwBreedSel=br;cwLvPreview(_cwLevelSel);_cwRenderBreedGrid();_cwDraw();};
+    g.appendChild(d);
+  });
+}
+
+function _cwRenderSkinGrid(){
+  const g=document.getElementById('cw-skin-grid');if(!g)return;g.innerHTML='';
+  (window.PET_SKIN_COLORS||[]).forEach(item=>{
+    const owned=item.price===0||item.id==='sc_default'||(S.ownedSkins&&S.ownedSkins.includes(item.id));
+    const d=document.createElement('div');
+    d.className='cw-skin-item'+(item.id===_cwSkinSel?' sel':'');
+    const sw=item.color&&item.color!=='rainbow'
+      ?'<div style="width:24px;height:24px;border-radius:50%;background:'+item.color+';margin:0 auto 2px;border:1.5px solid #ccc"></div>'
+      :'<div style="width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#ff8080,#ffcc44,#88dd88,#44aaff,#cc88ff);margin:0 auto 2px;border:1.5px solid #ccc"></div>';
+    d.innerHTML=sw+'<div style="font-size:.58rem">'+item.name+(owned?'':' 🔒')+'</div>';
+    d.onclick=()=>{
+      if(!owned){showToast('需先在皮肤商店购买「'+item.name+'」');return;}
+      _cwSkinSel=item.id;_cwRenderSkinGrid();_cwDraw();
+    };
+    g.appendChild(d);
+  });
+}
+
+function _cwRenderClothGrid(){
+  const g=document.getElementById('cw-cloth-grid');if(!g)return;g.innerHTML='';
+  // 无衣服选项
+  const none=document.createElement('div');
+  none.className='cw-cloth-item'+((!_cwClothSel)?' sel':'');
+  none.innerHTML='<div style="font-size:1.1rem">🚫</div><div style="font-size:.58rem">不穿</div>';
+  none.onclick=()=>{_cwClothSel=null;_cwRenderClothGrid();_cwDraw();};
+  g.appendChild(none);
+  // 已拥有的衣服
+  (SHOP_CLOTHES||[]).filter(c=>S.ownedClothes&&S.ownedClothes.includes(c.id)).forEach(c=>{
+    const d=document.createElement('div');
+    d.className='cw-cloth-item'+(c.id===_cwClothSel?' sel':'');
+    d.innerHTML='<div style="font-size:1.1rem">'+c.ico+'</div><div style="font-size:.58rem">'+c.name+'</div>';
+    d.onclick=()=>{_cwClothSel=c.id;_cwRenderClothGrid();_cwDraw();};
+    g.appendChild(d);
+  });
+}
+
+function _cwDraw(){
+  const cvs=document.getElementById('cw-preview-canvas');if(!cvs)return;
+  const ctx=cvs.getContext('2d');
+  ctx.clearRect(0,0,cvs.width,cvs.height);
+  const stages=(EVO_STAGES[_cwBreedSel]||EVO_STAGES.hamster);
+  const baseStage=stages[Math.min(_cwLevelSel-1,stages.length-1)];
+  // 应用皮肤颜色
+  let previewStage=Object.assign({},baseStage);
+  const skinInfo=(window.PET_SKIN_COLORS||[]).find(s=>s.id===_cwSkinSel);
+  if(skinInfo&&skinInfo.color&&skinInfo.color!=='rainbow')previewStage.color=skinInfo.color;
+  else if(skinInfo&&skinInfo.color==='rainbow'){const rc=['#ff9090','#ffcc60','#a0e880','#60c8ff','#d080ff'];previewStage.color=rc[Math.floor(Date.now()/1200)%rc.length];}
+  // 临时覆盖全局状态绘制
+  const _br=S.petBreed,_lv=S.petLevel,_hp=S.petHappy,_en=S.petEnergy,_ec=S.equippedCloth;
+  S.petBreed=_cwBreedSel;S.petLevel=_cwLevelSel;S.petHappy=80;S.petEnergy=80;S.equippedCloth=_cwClothSel;
+  try{drawPetBreed(ctx,_cwBreedSel,55,58,previewStage);}catch(e){}
+  if(_cwClothSel){try{drawCloth(ctx,55,58,_cwClothSel);}catch(e){}}
+  S.petBreed=_br;S.petLevel=_lv;S.petHappy=_hp;S.petEnergy=_en;S.equippedCloth=_ec;
+}
+
+function cwApply(type){
+  let cost=0,msg='',apply=null;
+  if(type==='name'){
+    const v=((document.getElementById('cw-name-input')||{}).value||'').trim();
+    if(!v){showToast('名字不能为空！');return;}
+    if(v===S.petName){showToast('名字没有变化');return;}
+    cost=30;msg=`花费🪙30 将宠物名字改为「${v}」？`;
+    apply=()=>{S.petName=v;saveCurPet();persistAccount();updatePetUI();showPetTalk('rename_ok');showToast('✅ 名字已改为「'+v+'」！');};
+  }
+  else if(type==='breed'){
+    if(_cwBreedSel===(S.petBreed||'hamster')){showToast('品种没有变化');return;}
+    cost=80;msg=`花费🪙80 更换宠物品种？\n品种更换后等级和经验保留。`;
+    apply=()=>{S.petBreed=_cwBreedSel;saveCurPet();persistAccount();updatePetUI();drawPet();showToast('✅ 品种已更换！');};
+  }
+  else if(type==='level'){
+    if(_cwLevelSel===S.petLevel){showToast('等级没有变化');return;}
+    const diff=Math.abs(_cwLevelSel-S.petLevel);
+    cost=60*diff;msg=`花费🪙${cost} 将宠物等级调整为Lv.${_cwLevelSel}（差${diff}级）？`;
+    apply=()=>{
+      S.petLevel=_cwLevelSel;
+      // 同步经验到新等级起点
+      const req=EVO_EXP_REQUIRED[Math.min(S.petLevel-1,EVO_EXP_REQUIRED.length-1)]||0;
+      S.petLearnExp=Math.min(S.petLearnExp||0,req);
+      saveCurPet();persistAccount();updatePetUI();drawPet();checkAchs();
+      showToast('✅ 等级已调整为Lv.'+S.petLevel+'！');
+    };
+  }
+  else if(type==='stats'){
+    cost=50;msg='花费🪙50 将宠物所有属性恢复至100？';
+    apply=()=>{S.petFood=100;S.petHappy=100;S.petClean=100;S.petEnergy=100;saveCurPet();persistAccount();updatePetUI();drawPet();showPetTalk('feed');showToast('✅ 属性已全满！');};
+  }
+  else if(type==='skin'){
+    if(_cwSkinSel===((S.petSkinColors&&S.petSkinColors[S.activePet])||'sc_default')){showToast('皮肤没有变化');return;}
+    cost=40;msg='花费🪙40 换上选中的皮肤？';
+    apply=()=>{
+      if(!S.petSkinColors)S.petSkinColors={};
+      S.petSkinColors[S.activePet]=_cwSkinSel;
+      saveCurPet();persistAccount();renderShop();updatePetUI();drawPet();checkAchs();
+      showToast('✅ 皮肤已更换！');
+    };
+  }
+  else if(type==='cloth'){
+    if(_cwClothSel===S.equippedCloth){showToast('衣服没有变化');return;}
+    cost=20;msg='花费🪙20 更换穿戴衣服？';
+    apply=()=>{S.equippedCloth=_cwClothSel;saveCurPet();persistAccount();updatePetUI();drawPet();showPetTalk('cloth_on');showToast('✅ 衣服已更换！');};
+  }
+  if(!apply)return;
+  if(S.coins<cost){showToast('金币不足！需要🪙'+cost+'，当前🪙'+Math.floor(S.coins));return;}
+  openConfirm('🎪',msg,()=>{
+    S.coins-=cost;updateTop();persistAccount();
+    apply();
+    _cwUpdateCoin();
+    _cwDraw();
+  });
+}
+
+function cwClearPetImg(){
+  openConfirm('🗑️','清除当前宠物的自定义形象图？',()=>{
+    const key=getCustomPetImgKey();
+    localStorage.removeItem(key);
+    localStorage.removeItem(key+'_param');
+    delete _petImgCache[key];
+    drawPet();
+    showToast('✅ 自定义图已清除');
+  });
 }
 
 // ─── CLASS SYSTEM ─────────────────────────────────
@@ -3937,6 +4230,9 @@ function setAsstAdmin(encodedName){
 let _scoreMode='add'; // 'add' | 'sub'
 let _scoreClassId=null; // 当前操作的班级（支持教师跨班操作）
 let _scoreSelected=new Set(); // 已选中学生名字集合
+let _scoreSearchQuery=''; // 搜索关键字
+
+function onScoreSearch(v){_scoreSearchQuery=v||'';_renderScoreList();}
 
 function setScoreMode(mode){
   _scoreMode=mode;
@@ -3961,6 +4257,8 @@ function openAddScorePanel(classId){
   _scoreClassId=classId||S.classId;
   if(!_scoreClassId){showToast('未指定班级');return;}
   _scoreSelected=new Set();
+  _scoreSearchQuery='';
+  const si=document.getElementById('score-search-input');if(si)si.value='';
   setScoreMode('add');
   const vi=document.getElementById('add-score-val');if(vi)vi.value='';
   const rs=document.getElementById('add-score-reason');if(rs)rs.value='背书';
@@ -3983,9 +4281,14 @@ function _renderScoreList(){
   if(!list)return;
   const cd=getClassData();
   const members=sortMembers((cd[_scoreClassId]||[]).filter(function(m){return !m.isTeacher;}));
+  const q=(_scoreSearchQuery||'').trim();
+  const visibleMembers=q?members.filter(function(m){return m.name.includes(q);}):members;
   list.innerHTML='';
-  if(!members.length){list.innerHTML='<div style="text-align:center;color:var(--muted);font-size:.74rem;padding:10px">班级暂无学生</div>';return;}
-  members.forEach(function(s){
+  if(!visibleMembers.length){
+    list.innerHTML='<div style="text-align:center;color:var(--muted);font-size:.74rem;padding:10px">'+(q?'未找到「'+q+'」，请换个关键字':'班级暂无学生')+'</div>';
+    _updateSelectAllBtn(members);return;
+  }
+  visibleMembers.forEach(function(s){
     const sel=_scoreSelected.has(s.name);
     const d=document.createElement('div');
     d.dataset.name=s.name;
@@ -4005,13 +4308,14 @@ function _renderScoreList(){
   _updateSelectAllBtn();
 }
 
-function _updateSelectAllBtn(){
+function _updateSelectAllBtn(membersOverride){
   const cd=getClassData();
-  const total=(cd[_scoreClassId]||[]).filter(function(m){return !m.isTeacher;}).length;
+  const members=membersOverride||(cd[_scoreClassId]||[]).filter(function(m){return !m.isTeacher;});
+  const total=members.length;
   const btn=document.getElementById('score-select-all-btn');
   const hint=document.getElementById('score-select-hint');
   if(btn){btn.textContent=_scoreSelected.size===total&&total>0?'取消全选':'全选';}
-  if(hint){hint.textContent='已选 '+_scoreSelected.size+' / '+total+' 人';}
+  if(hint){hint.textContent='已选 '+_scoreSelected.size+' / '+total+' 人'+((_scoreSearchQuery||'').trim()?' (搜索中)':'');}
 }
 
 function toggleSelectAllScore(){
@@ -4036,8 +4340,8 @@ function applyScoreBatch(){
   // 2. 严格的分值验证
   const ptsInput = document.getElementById('add-score-val').value || '';
   const pts = parseInt(ptsInput, 10);
-  if(isNaN(pts) || pts < 1 || pts > 999){
-    showToast('请填写1~999之间的有效分值！');
+  if(isNaN(pts) || pts < 1 || pts > 9999){
+    showToast('请填写1~9999之间的有效分值！');
     return;
   }
 
@@ -4078,18 +4382,18 @@ function applyScoreBatch(){
       // 更新班级排名数据
       const mem = cd[_scoreClassId].find(function(m){ return m.name === name; });
       if(mem){
-        mem.score = Math.max(0, (mem.score || 0) + delta);
+        mem.score = (mem.score || 0) + delta;
         successCount++;
       }
 
       // 更新学生账号和存档数据（完整同步）
       const acc = accounts.find(function(a){ return a.name === name && a.classId === _scoreClassId; });
       if(acc){
-        acc.score = Math.max(0, (acc.score || 0) + delta);
+        acc.score = (acc.score || 0) + delta;
         // 同步更新学生本地存档
         try{
           const save = loadAccSave(acc.id);
-          save.score = Math.max(0, (save.score || 0) + delta);
+          save.score = (save.score || 0) + delta;
           localStorage.setItem(getAccKey(acc.id), JSON.stringify(save));
         }catch(e){
           console.warn(`更新学生 ${name} 存档失败:`, e);
@@ -4577,14 +4881,10 @@ const THEME_DEFS={
     preview:['#fdf6ee','#6aaa6a','#e8a020','#9b6a3c'],body:''},
   night:{name:'星夜深蓝',ico:'🌙',desc:'深邃星空，宁静夜晚色调',
     preview:['#141820','#5a9cf0','#d4a030','#7080a0'],body:'night'},
-  spring:{name:'春日嫩绿',ico:'🌿',desc:'春天萌芽，生机盎然的嫩绿',
-    preview:['#f0fdf0','#3aaa3a','#c8a000','#6a9060'],body:'spring'},
-  summer:{name:'夏日海蓝',ico:'🌊',desc:'清凉夏日，碧海蓝天色调',
+	summer:{name:'夏海飘雪',ico:'❄️',desc:'清凉梦幻，碧海飘雪奇境',
     preview:['#f0f8ff','#0090c0','#e08000','#408090'],body:'summer'},
   autumn:{name:'秋收金橙',ico:'🍂',desc:'枫叶稻谷，丰收的暖橙秋色',
     preview:['#fdf5e8','#c06820','#d08000','#8b5020'],body:'autumn'},
-  winter:{name:'冬日暖白',ico:'❄️',desc:'素净冬雪，淡雅宁静',
-    preview:['#f5f8ff','#5080b0','#9080c0','#6878a0'],body:'winter'},
   sakura:{name:'樱花粉',ico:'🌸',desc:'柔美粉嫩，浪漫樱花绽放',
     preview:['#fff5f8','#c85080','#e09020','#c08090'],body:'sakura'},
   custom:{name:'自定义',ico:'🎨',desc:'自由配色，打造专属风格',
@@ -4609,7 +4909,6 @@ function _clearSeasonEffect(){
 }
 function _startSeasonEffect(themeId){
   _clearSeasonEffect();
-  // 检查是否关闭特效
   if(localStorage.getItem('jbfarm_no_fx')==='1'){
     const cvs=document.getElementById('season-canvas');if(cvs)cvs.style.opacity='0';return;
   }
@@ -4617,230 +4916,259 @@ function _startSeasonEffect(themeId){
   const ctx=cvs.getContext('2d');if(!ctx)return;
   const W=()=>cvs.width,H=()=>cvs.height;
 
-  if(themeId==='winter'){
-    // 纯净雪景：细小雪花+淡淡积雪轮廓，无雪人
+if(themeId==='summer'){
     cvs.style.opacity='1';
-    for(let i=0;i<70;i++){_seasonParticles.push({
-      x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,
-      r:0.8+Math.random()*2.8,sp:0.3+Math.random()*0.9,
-      wx:Math.sin(Math.random()*6.28)*0.5,
-      a:0.3+Math.random()*0.55,rot:Math.random()*6.28,rotS:(Math.random()-.5)*0.03
-    });}
-    const animate=()=>{
-      ctx.clearRect(0,0,W(),H());
-      // 底部淡淡积雪曲线
-      ctx.globalAlpha=0.12;ctx.fillStyle='#e8f0ff';
-      ctx.beginPath();ctx.moveTo(0,H());
-      for(let x=0;x<=W();x+=12){ctx.lineTo(x,H()-10-Math.sin(x*.008)*8-Math.cos(x*.02)*5);}
-      ctx.lineTo(W(),H());ctx.closePath();ctx.fill();
-      ctx.globalAlpha=1;
-      // 雪花
-      _seasonParticles.forEach(p=>{
-        p.y+=p.sp;p.x+=p.wx+Math.sin(p.y*.018)*0.35;p.rot+=p.rotS;
-        if(p.y>H()+8)p.y=-8;if(p.x>W()+8)p.x=-8;if(p.x<-8)p.x=W()+8;
-        ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);
-        ctx.globalAlpha=p.a;ctx.fillStyle='#ddeeff';
-        for(let i=0;i<6;i++){ctx.save();ctx.rotate(i*Math.PI/3);ctx.fillRect(-0.4,0,0.8,p.r*2);ctx.restore();}
-        ctx.globalAlpha=1;ctx.restore();
-      });
-      _seasonAF=requestAnimationFrame(animate);
-    };animate();
-
-  } else if(themeId==='spring'){
-    // 柳树虚影 + 少量粉色桃花瓣
-    cvs.style.opacity='1';
-    // 少量花瓣
-    for(let i=0;i<22;i++){_seasonParticles.push({
-      x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,
-      sp:0.25+Math.random()*0.45,wx:(Math.random()-.5)*0.6,
-      sz:7+Math.random()*8,a:0.35+Math.random()*0.35,
-      rot:Math.random()*6.28,rotS:(Math.random()-.5)*0.02
-    });}
-    const animate=()=>{
-      ctx.clearRect(0,0,W(),H());
-      // 左侧柳树虚影
-      const drawWillow=(bx,by,sc)=>{
-        ctx.save();ctx.globalAlpha=0.06;ctx.strokeStyle='#6a9060';ctx.lineWidth=sc*2;
-        ctx.beginPath();ctx.moveTo(bx,by);ctx.lineTo(bx,by-sc*80);ctx.stroke();
-        for(let i=0;i<14;i++){
-          const ang=-0.3+Math.random()*0.6;const len=sc*(30+Math.random()*50);
-          const bry=by-sc*(20+Math.random()*60);
-          ctx.beginPath();ctx.moveTo(bx,bry);
-          ctx.quadraticCurveTo(bx+len*0.4,bry-len*0.2,bx+len*Math.cos(ang),bry+len*0.6);
-          ctx.stroke();
-        }
-        ctx.restore();
-      };
-      drawWillow(40,H(),1.2);if(W()>700)drawWillow(W()-30,H(),0.9);
-      // 桃花瓣（浅粉，接近圆形花瓣）
-      _seasonParticles.forEach(p=>{
-        p.y+=p.sp;p.x+=p.wx+Math.sin(p.y*.025)*0.4;p.rot+=p.rotS;
-        if(p.y>H()+15)p.y=-10;if(p.x>W()+10)p.x=-10;if(p.x<-10)p.x=W()+10;
-        ctx.save();ctx.globalAlpha=p.a;ctx.translate(p.x,p.y);ctx.rotate(p.rot);
-        // 简单椭圆花瓣
-        ctx.beginPath();ctx.ellipse(0,0,p.sz*0.45,p.sz*0.3,0,0,Math.PI*2);
-        ctx.fillStyle='rgba(255,180,200,0.8)';ctx.fill();
-        ctx.globalAlpha=1;ctx.restore();
-      });
-      _seasonAF=requestAnimationFrame(animate);
-    };animate();
-
-  } else if(themeId==='summer'){
-    // 底部轻柔海浪，无气泡
-    cvs.style.opacity='1';
+    // 生成65片雪花（替换原来的气泡）
+    for(let i=0;i<65;i++){
+        _seasonParticles.push({
+            x:Math.random()*window.innerWidth,
+            y:Math.random()*window.innerHeight,
+            r:0.7+Math.random()*2.5,
+            sp:0.25+Math.random()*0.8,
+            wx:Math.sin(Math.random()*6.28)*0.45,
+            a:0.25+Math.random()*0.5,
+            rot:Math.random()*6.28,
+            rotS:(Math.random()-.5)*0.025
+        });
+    }
     let waveT=0;
     const animate=()=>{
-      ctx.clearRect(0,0,W(),H());waveT+=0.015;
-      // 两层半透明波浪
-      ctx.globalAlpha=0.1;ctx.fillStyle='#60c0e0';
-      ctx.beginPath();ctx.moveTo(0,H());
-      for(let x=0;x<=W();x+=10){ctx.lineTo(x,H()-22+Math.sin(x*.013+waveT)*12+Math.cos(x*.027+waveT*.8)*5);}
-      ctx.lineTo(W(),H());ctx.closePath();ctx.fill();
-      ctx.globalAlpha=0.07;ctx.fillStyle='#a0e0f8';
-      ctx.beginPath();ctx.moveTo(0,H());
-      for(let x=0;x<=W();x+=10){ctx.lineTo(x,H()-12+Math.sin(x*.018+waveT*1.3)*8);}
-      ctx.lineTo(W(),H());ctx.closePath();ctx.fill();
-      ctx.globalAlpha=1;
-      _seasonAF=requestAnimationFrame(animate);
-    };animate();
+        ctx.clearRect(0,0,W(),H());
+        waveT+=0.018;
+        
+        // 保留夏天的双层海面波浪（完全不变）
+        ctx.globalAlpha=0.16;
+        ctx.fillStyle='#60c0e0';
+        ctx.beginPath();
+        ctx.moveTo(0,H());
+        for(let x=0;x<=W();x+=8){
+            ctx.lineTo(x,H()-26+Math.sin(x*.013+waveT)*13+Math.cos(x*.026+waveT*.8)*5);
+        }
+        ctx.lineTo(W(),H());
+        ctx.closePath();
+        ctx.fill();
+        
+        ctx.globalAlpha=0.09;
+        ctx.fillStyle='#a0e0f8';
+        ctx.beginPath();
+        ctx.moveTo(0,H());
+        for(let x=0;x<=W();x+=8){
+            ctx.lineTo(x,H()-14+Math.sin(x*.02+waveT*1.3)*8);
+        }
+        ctx.lineTo(W(),H());
+        ctx.closePath();
+        ctx.fill();
+        
+        ctx.globalAlpha=1;
+        
+        // 绘制雪花（替换原来的气泡绘制）
+        _seasonParticles.forEach(p=>{
+            p.y+=p.sp;
+            p.x+=p.wx+Math.sin(p.y*.016)*0.3;
+            p.rot+=p.rotS;
+            
+            // 雪花边界循环
+            if(p.y>H()+8)p.y=-8;
+            if(p.x>W()+8)p.x=-8;
+            if(p.x<-8)p.x=W()+8;
+            
+            ctx.save();
+            ctx.translate(p.x,p.y);
+            ctx.rotate(p.rot);
+            ctx.globalAlpha=p.a;
+            
+            // 微调雪花颜色，适配蓝色海面背景
+            ctx.strokeStyle='#e6f7ff';
+            ctx.lineWidth=0.8;
+            
+            // 绘制六角雪花
+            for(let i=0;i<6;i++){
+                ctx.save();
+                ctx.rotate(i*Math.PI/3);
+                ctx.beginPath();
+                ctx.moveTo(0,0);
+                ctx.lineTo(0,p.r*2.2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0,p.r*0.9);
+                ctx.lineTo(p.r*0.6,p.r*1.4);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0,p.r*0.9);
+                ctx.lineTo(-p.r*0.6,p.r*1.4);
+                ctx.stroke();
+                ctx.restore();
+            }
+            
+            ctx.fillStyle='#ffffff';
+            ctx.beginPath();
+            ctx.arc(0,0,p.r*0.4,0,Math.PI*2);
+            ctx.fill();
+            
+            ctx.globalAlpha=1;
+            ctx.restore();
+        });
+        
+        _seasonAF=requestAnimationFrame(animate);
+    };
+    animate();
+
+    
 
   } else if(themeId==='autumn'){
-    // 淡色枫叶虚影缓慢飘落 + 底部淡麦浪
     cvs.style.opacity='1';
-    for(let i=0;i<28;i++){_seasonParticles.push({
-      x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,
-      sp:0.3+Math.random()*0.5,wx:(Math.random()-.5)*0.7,
-      sz:14+Math.random()*18,a:0.12+Math.random()*0.18,
-      rot:Math.random()*6.28,rotS:(Math.random()-.5)*0.018
-    });}
-    let waveT2=0;
+    for(let i=0;i<22;i++){_seasonParticles.push({x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,sp:0.22+Math.random()*0.38,wx:(Math.random()-.5)*0.5,sz:12+Math.random()*16,a:0.35+Math.random()*0.45,rot:Math.random()*Math.PI*2,rotS:(Math.random()-.5)*0.01,hue:Math.floor(Math.random()*3)});}
+    function drawMapleLeaf(ctx,sz,hue){
+      const cols=['rgba(200,55,18,','rgba(220,85,15,','rgba(180,35,8,'];const col=cols[hue%3];
+      const s=sz*0.42;
+      ctx.beginPath();
+      ctx.moveTo(0,-s*1.1);ctx.bezierCurveTo(s*0.3,-s*0.8,s*0.8,-s*0.3,s*0.6,s*0.1);
+      ctx.bezierCurveTo(s*0.9,s*0.1,s*1.0,-s*0.05,s*0.85,s*0.3);ctx.bezierCurveTo(s*0.55,s*0.55,s*0.25,s*0.8,0,s*0.95);
+      ctx.bezierCurveTo(-s*0.25,s*0.8,-s*0.55,s*0.55,-s*0.85,s*0.3);ctx.bezierCurveTo(-s*1.0,-s*0.05,-s*0.9,s*0.1,-s*0.6,s*0.1);
+      ctx.bezierCurveTo(-s*0.8,-s*0.3,-s*0.3,-s*0.8,0,-s*1.1);ctx.closePath();
+      ctx.fillStyle=col+'0.8)';ctx.fill();
+      ctx.strokeStyle=col+'0.3)';ctx.lineWidth=0.6;
+      ctx.beginPath();ctx.moveTo(0,-s*1.1);ctx.lineTo(0,s*0.95);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(0,-s*0.3);ctx.lineTo(s*0.6,s*0.1);ctx.moveTo(0,-s*0.3);ctx.lineTo(-s*0.6,s*0.1);ctx.stroke();
+    }
     const animate=()=>{
-      ctx.clearRect(0,0,W(),H());waveT2+=0.012;
-      // 底部麦浪
-      ctx.globalAlpha=0.1;ctx.strokeStyle='#c8a040';ctx.lineWidth=2;
-      for(let x=0;x<W();x+=18){
-        ctx.beginPath();ctx.moveTo(x,H());
-        ctx.quadraticCurveTo(x+6,H()-16+Math.sin(x*.04+waveT2)*8,x+9,H()-24+Math.sin(x*.04+waveT2)*10);
-        ctx.stroke();
-      }
-      ctx.globalAlpha=1;
-      // 枫叶虚影（不用emoji，用简单canvas绘制枫叶轮廓）
+      ctx.clearRect(0,0,W(),H());
       _seasonParticles.forEach(p=>{
-        p.y+=p.sp;p.x+=p.wx+Math.sin(p.y*.022)*0.6;p.rot+=p.rotS;
+        p.y+=p.sp;p.x+=p.wx+Math.sin(p.y*.018)*0.45;p.rot+=p.rotS;
         if(p.y>H()+20)p.y=-20;if(p.x>W()+15)p.x=-15;if(p.x<-15)p.x=W()+15;
-        ctx.save();ctx.globalAlpha=p.a;ctx.translate(p.x,p.y);ctx.rotate(p.rot);
-        ctx.fillStyle='#c05818';
-        // 简单五瓣枫叶近似
-        ctx.beginPath();
-        for(let j=0;j<5;j++){
-          const a=j*Math.PI*2/5-Math.PI/2;
-          ctx.ellipse(Math.cos(a)*p.sz*0.4,Math.sin(a)*p.sz*0.4,p.sz*0.25,p.sz*0.14,a,0,Math.PI*2);
-        }
-        ctx.fill();
+        ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);ctx.globalAlpha=p.a;
+        drawMapleLeaf(ctx,p.sz,p.hue);
         ctx.globalAlpha=1;ctx.restore();
       });
       _seasonAF=requestAnimationFrame(animate);
     };animate();
+} else if(themeId==='autumn'){
+    cvs.style.opacity='1';
+    // 增加落叶数量+优化大小/速度范围，更自然
+    for(let i=0;i<20;i++){
+        _seasonParticles.push({
+            x:Math.random()*window.innerWidth,
+            y:Math.random()*window.innerHeight,
+            sp:0.18+Math.random()*0.42,
+            wx:(Math.random()-.5)*0.6,
+            sz:8+Math.random()*18,
+            a:0.3+Math.random()*0.5,
+            rot:Math.random()*Math.PI*2,
+            rotS:(Math.random()-.5)*0.015,
+            hue:Math.floor(Math.random()*5) // 增加到5种渐变颜色
+        });
+    }
+
+    // 重绘：自然掌状五裂枫叶
+    function drawMapleLeaf(ctx,sz,hue){
+        const s=sz*0.4;
+        // 全新秋天调色板：从浅黄到深橙红，更温暖有层次
+        const leafColors=[
+            ['#fff3cd','#ffc107'], // 浅金黄
+            ['#ffe0b2','#ff9800'], // 橙黄
+            ['#ffcc80','#f57c00'], // 深橙
+            ['#ffab91','#e64a19'], // 橙红
+            ['#ef9a9a','#c62828']  // 深红
+        ];
+        const [light,dark]=leafColors[hue];
+
+        ctx.save();
+        // 轻微阴影增加立体感
+        ctx.shadowColor='rgba(0,0,0,0.1)';
+        ctx.shadowBlur=2;
+        ctx.shadowOffsetY=1;
+
+        // 渐变填充，告别单一色块
+        const gradient=ctx.createRadialGradient(0,0,0,0,0,s*1.2);
+        gradient.addColorStop(0,light);
+        gradient.addColorStop(1,dark);
+        ctx.fillStyle=gradient;
+
+        // 流畅的五裂枫叶轮廓
+        ctx.beginPath();
+        ctx.moveTo(0,-s*1.2);
+        ctx.bezierCurveTo(s*0.2,-s*1.0,s*0.5,-s*0.7,s*0.7,-s*0.4);
+        ctx.bezierCurveTo(s*0.9,-s*0.6,s*1.1,-s*0.3,s*0.9,-s*0.1);
+        ctx.bezierCurveTo(s*1.05,s*0.1,s*0.85,s*0.35,s*0.6,s*0.4);
+        ctx.bezierCurveTo(s*0.75,s*0.65,s*0.5,s*0.85,s*0.25,s*0.9);
+        ctx.bezierCurveTo(0,s*1.0,-s*0.25,s*0.9,-s*0.5,s*0.85);
+        ctx.bezierCurveTo(-s*0.75,s*0.65,-s*0.6,s*0.4,-s*0.85,s*0.35);
+        ctx.bezierCurveTo(-s*1.05,s*0.1,-s*0.9,-s*0.1,-s*0.9,-s*0.1);
+        ctx.bezierCurveTo(-s*1.1,-s*0.3,-s*0.9,-s*0.6,-s*0.7,-s*0.4);
+        ctx.bezierCurveTo(-s*0.5,-s*0.7,-s*0.2,-s*1.0,0,-s*1.2);
+        ctx.closePath();
+        ctx.fill();
+
+        // 细淡叶脉，不抢主体
+        ctx.strokeStyle='rgba(139,69,19,0.25)';
+        ctx.lineWidth=0.5;
+        ctx.beginPath();
+        ctx.moveTo(0,-s*1.1);
+        ctx.lineTo(0,s*0.85);
+        ctx.moveTo(0,-s*0.6);
+        ctx.lineTo(s*0.65,-s*0.3);
+        ctx.lineTo(s*0.75,s*0.2);
+        ctx.moveTo(0,-s*0.6);
+        ctx.lineTo(-s*0.65,-s*0.3);
+        ctx.lineTo(-s*0.75,s*0.2);
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    const animate=()=>{
+        ctx.clearRect(0,0,W(),H());
+        _seasonParticles.forEach(p=>{
+            p.y+=p.sp;
+            p.x+=p.wx+Math.sin(p.y*.018+p.rot)*0.5; // 优化摆动，和旋转联动更自然
+            p.rot+=p.rotS;
+
+            if(p.y>H()+25)p.y=-25;
+            if(p.x>W()+20)p.x=-20;
+            if(p.x<-20)p.x=W()+20;
+
+            ctx.save();
+            ctx.translate(p.x,p.y);
+            ctx.rotate(p.rot);
+            ctx.globalAlpha=p.a;
+            drawMapleLeaf(ctx,p.sz,p.hue);
+            ctx.globalAlpha=1;
+            ctx.restore();
+        });
+        _seasonAF=requestAnimationFrame(animate);
+    };
+    animate();
 
   } else if(themeId==='night'){
-    // 星星 + 流星 + 淡淡月晕
     cvs.style.opacity='1';
-    for(let i=0;i<90;i++){_seasonParticles.push({
-      x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight*0.75,
-      r:0.4+Math.random()*1.8,twinkle:Math.random()*6.28,
-      ts:0.015+Math.random()*0.04,base:0.2+Math.random()*0.7
-    });}
+    for(let i=0;i<90;i++){_seasonParticles.push({x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight*0.75,r:0.4+Math.random()*1.8,twinkle:Math.random()*6.28,ts:0.015+Math.random()*0.04,base:0.2+Math.random()*0.7});}
     let shootT=0,sX=-100,sY=-100,sDx=0,sDy=0,sA=0;
     const moonX=()=>W()*0.78,moonY=50;
     const animate=()=>{
       ctx.clearRect(0,0,W(),H());
-      // 月亮光晕
-      const mg=ctx.createRadialGradient(moonX(),moonY,8,moonX(),moonY,70);
-      mg.addColorStop(0,'rgba(220,230,255,0.12)');mg.addColorStop(1,'rgba(220,230,255,0)');
-      ctx.fillStyle=mg;ctx.beginPath();ctx.arc(moonX(),moonY,70,0,Math.PI*2);ctx.fill();
-      // 月亮
-      ctx.globalAlpha=0.55;ctx.fillStyle='#d8e8ff';ctx.beginPath();ctx.arc(moonX(),moonY,14,0,Math.PI*2);ctx.fill();
-      ctx.globalAlpha=1;
-      // 流星
-      shootT++;
-      if(shootT>180&&Math.random()<0.012){shootT=0;sX=Math.random()*W()*0.5;sY=Math.random()*H()*0.35;sA=1;const ang=Math.PI/4+Math.random()*.4;sDx=Math.cos(ang)*7;sDy=Math.sin(ang)*4;}
+      const mg=ctx.createRadialGradient(moonX(),moonY,8,moonX(),moonY,70);mg.addColorStop(0,'rgba(220,230,255,0.12)');mg.addColorStop(1,'rgba(220,230,255,0)');ctx.fillStyle=mg;ctx.beginPath();ctx.arc(moonX(),moonY,70,0,Math.PI*2);ctx.fill();
+      ctx.globalAlpha=0.55;ctx.fillStyle='#d8e8ff';ctx.beginPath();ctx.arc(moonX(),moonY,14,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+      shootT++;if(shootT>180&&Math.random()<0.012){shootT=0;sX=Math.random()*W()*0.5;sY=Math.random()*H()*0.35;sA=1;const ang=Math.PI/4+Math.random()*.4;sDx=Math.cos(ang)*7;sDy=Math.sin(ang)*4;}
       if(sA>0){ctx.save();ctx.globalAlpha=sA*0.85;ctx.strokeStyle='#c0d0ff';ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(sX,sY);ctx.lineTo(sX-sDx*14,sY-sDy*14);ctx.stroke();ctx.restore();sX+=sDx;sY+=sDy;sA-=0.035;}
-      // 星星
-      _seasonParticles.forEach(p=>{
-        p.twinkle+=p.ts;const a=p.base*(0.4+0.6*Math.sin(p.twinkle));
-        ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-        ctx.fillStyle=`rgba(210,225,255,${a})`;ctx.fill();
-      });
+      _seasonParticles.forEach(p=>{p.twinkle+=p.ts;const a=p.base*(0.4+0.6*Math.sin(p.twinkle));ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle=`rgba(210,225,255,${a})`;ctx.fill();});
       _seasonAF=requestAnimationFrame(animate);
     };animate();
 
   } else if(themeId==='sakura'){
-    // 樱花树虚影 + 少量花瓣轻飘
     cvs.style.opacity='1';
-    for(let i=0;i<25;i++){_seasonParticles.push({
-      x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,
-      sp:0.2+Math.random()*0.4,wx:(Math.random()-.5)*0.5,
-      sz:6+Math.random()*9,a:0.3+Math.random()*0.4,
-      rot:Math.random()*6.28,rotS:(Math.random()-.5)*0.018
-    });}
-    const drawSakuraTree=(bx,bh,sc)=>{
-      ctx.save();ctx.globalAlpha=0.06;
-      ctx.strokeStyle='#7a4a60';ctx.lineWidth=sc*3;
-      ctx.beginPath();ctx.moveTo(bx,bh);ctx.lineTo(bx,bh-sc*50);ctx.stroke();
-      ctx.lineWidth=sc*1.5;
-      const branches=[[bx,bh-sc*30,-0.6,sc*35],[bx,bh-sc*45,0.5,sc*28],[bx,bh-sc*50,-0.2,sc*22]];
-      branches.forEach(([x,y,ang,len])=>{
-        ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+Math.cos(ang-Math.PI/2)*len,y+Math.sin(ang-Math.PI/2)*len);ctx.stroke();
-      });
-      // 花团
-      ctx.fillStyle='rgba(255,160,190,0.12)';
-      [[bx-sc*20,bh-sc*62,sc*28],[bx+sc*18,bh-sc*70,sc*22],[bx,bh-sc*75,sc*20]].forEach(([cx,cy,r])=>{
-        ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();
-      });
-      ctx.restore();
-    };
-    drawSakuraTree(50,H(),1.1);if(W()>700)drawSakuraTree(W()-45,H(),0.88);
+    for(let i=0;i<22;i++){_seasonParticles.push({x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,sp:0.18+Math.random()*0.35,wx:(Math.random()-.5)*0.45,sz:6+Math.random()*9,a:0.28+Math.random()*0.38,rot:Math.random()*6.28,rotS:(Math.random()-.5)*0.015});}
+    const drawSakuraTree=(bx,bh,sc)=>{ctx.save();ctx.globalAlpha=0.06;ctx.strokeStyle='#7a4a60';ctx.lineWidth=sc*3;ctx.beginPath();ctx.moveTo(bx,bh);ctx.lineTo(bx,bh-sc*50);ctx.stroke();ctx.lineWidth=sc*1.5;[[bx,bh-sc*30,-0.6,sc*35],[bx,bh-sc*45,0.5,sc*28],[bx,bh-sc*50,-0.2,sc*22]].forEach(([x,y,ang,len])=>{ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+Math.cos(ang-Math.PI/2)*len,y+Math.sin(ang-Math.PI/2)*len);ctx.stroke();});ctx.fillStyle='rgba(255,160,190,0.1)';[[bx-sc*20,bh-sc*62,sc*28],[bx+sc*18,bh-sc*70,sc*22],[bx,bh-sc*75,sc*20]].forEach(([cx,cy,r])=>{ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();});ctx.restore();};
     const animate=()=>{
-      ctx.clearRect(0,0,W(),H());
-      // 重绘树（静态）
-      drawSakuraTree(50,H(),1.1);if(W()>700)drawSakuraTree(W()-45,H(),0.88);
-      // 花瓣
-      _seasonParticles.forEach(p=>{
-        p.y+=p.sp;p.x+=p.wx+Math.sin(p.y*.028)*0.4;p.rot+=p.rotS;
-        if(p.y>H()+12)p.y=-10;if(p.x>W()+10)p.x=-10;if(p.x<-10)p.x=W()+10;
-        ctx.save();ctx.globalAlpha=p.a;ctx.translate(p.x,p.y);ctx.rotate(p.rot);
-        ctx.beginPath();ctx.ellipse(0,0,p.sz*0.4,p.sz*0.28,0,0,Math.PI*2);
-        ctx.fillStyle='rgba(255,170,200,0.85)';ctx.fill();
-        ctx.globalAlpha=1;ctx.restore();
-      });
+      ctx.clearRect(0,0,W(),H());drawSakuraTree(50,H(),1.1);if(W()>700)drawSakuraTree(W()-45,H(),0.88);
+      _seasonParticles.forEach(p=>{p.y+=p.sp;p.x+=p.wx+Math.sin(p.y*.028)*0.35;p.rot+=p.rotS;if(p.y>H()+12)p.y=-10;if(p.x>W()+10)p.x=-10;if(p.x<-10)p.x=W()+10;ctx.save();ctx.globalAlpha=p.a;ctx.translate(p.x,p.y);ctx.rotate(p.rot);ctx.beginPath();ctx.ellipse(0,0,p.sz*0.4,p.sz*0.28,0,0,Math.PI*2);ctx.fillStyle='rgba(255,170,200,0.85)';ctx.fill();ctx.globalAlpha=1;ctx.restore();});
       _seasonAF=requestAnimationFrame(animate);
     };animate();
 
-  } else if(themeId==='default'){
-    // 默认：少量轻盈麦穗/嫩芽
-    cvs.style.opacity='1';
-    for(let i=0;i<12;i++){_seasonParticles.push({
-      x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,
-      ico:['🌾','🌱','🌿'][Math.floor(Math.random()*3)],
-      sp:-0.18-Math.random()*0.22,wx:(Math.random()-.5)*0.3,
-      sz:9+Math.random()*7,a:0.18+Math.random()*0.15,
-      rot:Math.random()*6.28,rotS:(Math.random()-.5)*0.008
-    });}
-    const animate=()=>{
-      ctx.clearRect(0,0,W(),H());
-      _seasonParticles.forEach(p=>{
-        p.y+=p.sp;p.x+=p.wx;p.rot+=p.rotS;
-        if(p.y<-15)p.y=H()+10;if(p.x>W()+10)p.x=-10;if(p.x<-10)p.x=W()+10;
-        ctx.save();ctx.globalAlpha=p.a;ctx.translate(p.x,p.y);ctx.rotate(p.rot);
-        ctx.font=p.sz+'px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(p.ico,0,0);
-        ctx.restore();ctx.globalAlpha=1;
-      });
-      _seasonAF=requestAnimationFrame(animate);
-    };animate();
   } else {
     const cvs=document.getElementById('season-canvas');if(cvs)cvs.style.opacity='0';
   }
 }
+
 
 function applyTheme(themeId,save){
   const t=THEME_DEFS[themeId];if(!t)return;
@@ -5057,13 +5385,15 @@ function openSystemClothAdjust(){
   if(!cid){showToast('请先购买衣服');return;}
   const key='jbfarm_clothsys_'+cid;
   const raw=localStorage.getItem(key);
-  const p=raw?JSON.parse(raw):{offsetX:0,offsetY:0,scale:100};
+  const p=raw?JSON.parse(raw):{offsetX:0,offsetY:0,scale:100,rotation:0};
   const sc=document.getElementById('cloth-adj-scale');
   const ox=document.getElementById('cloth-adj-ox');
   const oy=document.getElementById('cloth-adj-oy');
-  if(sc)sc.value=p.scale||100;
+  const rot=document.getElementById('cloth-adj-rot');
+  if(sc){sc.value=p.scale||100;const sv=document.getElementById('cloth-adj-scale-val');if(sv)sv.textContent=(p.scale||100)+'%';}
   if(ox)ox.value=p.offsetX||0;
   if(oy)oy.value=p.offsetY||0;
+  if(rot){rot.value=p.rotation||0;const rv=document.getElementById('cloth-adj-rot-val');if(rv)rv.textContent=(p.rotation||0)+'°';}
   // 显示当前调整的衣服名称
   const cl=window.SHOP_CLOTHES&&SHOP_CLOTHES.find(c=>c.id===cid);
   const adjTtl=document.getElementById('cloth-adj-ov')&&document.querySelector('#cloth-adj-ov .mttl');
@@ -5154,10 +5484,13 @@ function reClothAdjPreview(){
       // 系统衣服：用当前滑块参数临时覆盖存档绘制
       const tmpKey='jbfarm_clothsys_'+cid;
       const savedParam=localStorage.getItem(tmpKey);
+      const rot2=parseFloat((document.getElementById('cloth-adj-rot')||{}).value||0)*Math.PI/180;
       localStorage.removeItem(tmpKey);
       try{
         ctx.save();
-        ctx.translate(cx,cy);ctx.scale(sc,sc);ctx.translate(-cx,-cy);ctx.translate(ox,oy);
+        ctx.translate(cx+ox,cy+oy);
+        if(rot2!==0)ctx.rotate(rot2);
+        ctx.scale(sc,sc);ctx.translate(-cx,-cy);
         drawCloth(ctx,cx,cy,cid);
         ctx.restore();
       }catch(e){}
@@ -5197,7 +5530,8 @@ function confirmClothAdj(){
   const sc=parseInt((document.getElementById('cloth-adj-scale')||{}).value||100);
   const ox=parseInt((document.getElementById('cloth-adj-ox')||{}).value||0);
   const oy=parseInt((document.getElementById('cloth-adj-oy')||{}).value||0);
-  localStorage.setItem(key,JSON.stringify({scale:sc,offsetX:ox,offsetY:oy}));
+  const rot=parseFloat((document.getElementById('cloth-adj-rot')||{}).value||0);
+  localStorage.setItem(key,JSON.stringify({scale:sc,offsetX:ox,offsetY:oy,rotation:rot}));
   closeOverlay('cloth-adj-ov');
   drawPet();
   showToast('✅ 衣服位置已保存！');

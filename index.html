@@ -294,6 +294,8 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 .cw-section{background:var(--panel);border-radius:12px;border:1.5px solid var(--border);padding:11px 13px}
 .cw-label{font-size:.74rem;font-weight:600;color:var(--text);margin-bottom:8px}
 .cw-btn{padding:7px 12px;border-radius:10px;border:none;background:var(--dgreen);color:#fff;font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;white-space:nowrap}
+.cwtab-btn{padding:5px 10px;border-radius:8px;border:1.5px solid var(--border);background:var(--panel);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--muted);transition:all .15s}
+.cwtab-btn.on{background:var(--dgreen);color:#fff;border-color:var(--dgreen)}
 .cw-breed-item,.cw-skin-item,.cw-cloth-item{padding:6px 4px;border-radius:9px;border:2px solid var(--border);background:var(--bg);cursor:pointer;text-align:center;font-size:.7rem;transition:all .15s;user-select:none}
 .cw-breed-item.sel,.cw-skin-item.sel,.cw-cloth-item.sel{border-color:var(--dgreen);background:rgba(100,160,100,.13)}
 .shop-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -1562,19 +1564,25 @@ body[data-theme="custom"]{
 <!-- 宠物图片预览弹窗 -->
 <div class="overlay" id="pet-img-preview-ov">
   <div class="modal" style="max-width:360px">
-    <div class="mttl">🖼️ 预览图片</div>
-    <div style="text-align:center;margin-bottom:8px">
-      <canvas id="pet-preview-cvs" width="200" height="200"
-        style="border-radius:14px;border:2px solid var(--border);background:#f5f0e8;display:block;margin:0 auto 6px"></canvas>
-      <div style="font-size:.64rem;color:var(--muted)" id="pet-preview-label">拖动滑块调整大小与位置</div>
+    <div class="mttl">🖼️ 调整图片</div>
+
+    <!-- 衣服模式：模特预览作为主画面（可拖动） -->
+    <div id="pet-preview-model-wrap" style="display:none;text-align:center;margin-bottom:8px">
+      <canvas id="pet-model-preview-cvs" width="240" height="240"
+        style="border-radius:14px;border:2px solid var(--border);background:linear-gradient(135deg,#d4f0d4,#b0d8b0);display:block;margin:0 auto 4px;cursor:move"></canvas>
+      <div style="font-size:.6rem;color:var(--muted)" id="pet-preview-label">拖动预览区直接调整衣服位置</div>
       <div style="font-size:.6rem;color:var(--green);margin-top:2px" id="pet-img-filesize"></div>
     </div>
-    <!-- 模特预览区 -->
-    <div style="text-align:center;margin-bottom:4px"><button onclick="togglePetModelPreview()" style="padding:3px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;font-size:.62rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--muted)">👁 查看模特效果</button></div>
-    <div id="pet-preview-model-wrap" style="display:none;text-align:center;margin-bottom:8px;background:rgba(100,160,100,.05);border-radius:10px;padding:6px">
-      <div style="font-size:.6rem;color:var(--muted);margin-bottom:4px">📌 当前宠物模特预览效果</div>
-      <canvas id="pet-model-preview-cvs" width="150" height="150" style="border-radius:10px;background:linear-gradient(135deg,#d4f0d4,#b0d8b0);display:block;margin:0 auto"></canvas>
+
+    <!-- 宠物模式：独立预览canvas（可拖动） -->
+    <div id="pet-preview-cvs-wrap" style="text-align:center;margin-bottom:8px">
+      <canvas id="pet-preview-cvs" width="200" height="200"
+        style="border-radius:14px;border:2px solid var(--border);background:#f5f0e8;display:block;margin:0 auto 4px;cursor:move"></canvas>
+      <div style="font-size:.6rem;color:var(--muted)">🖱️ 拖动图片调整位置，双指捏合缩放</div>
+      <div style="font-size:.6rem;color:var(--green);margin-top:2px" id="pet-img-filesize-pet"></div>
     </div>
+
+    <!-- 滑块控制（两种模式共用） -->
     <div style="margin-bottom:6px">
       <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">大小</label>
       <input type="range" id="pet-img-scale" min="20" max="200" value="80" style="width:100%" oninput="rePetPreview()">
@@ -1582,14 +1590,13 @@ body[data-theme="custom"]{
     <div style="display:flex;gap:8px;margin-bottom:6px">
       <div style="flex:1">
         <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">左右位置</label>
-        <input type="range" id="pet-img-ox" min="-60" max="60" value="0" style="width:100%" oninput="rePetPreview()">
+        <input type="range" id="pet-img-ox" min="-80" max="80" value="0" style="width:100%" oninput="rePetPreview()">
       </div>
       <div style="flex:1">
         <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">上下位置</label>
-        <input type="range" id="pet-img-oy" min="-60" max="60" value="0" style="width:100%" oninput="rePetPreview()">
+        <input type="range" id="pet-img-oy" min="-80" max="80" value="0" style="width:100%" oninput="rePetPreview()">
       </div>
     </div>
-    <!-- 旋转控制 -->
     <div style="margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
         <label style="font-size:.68rem;color:var(--muted)">旋转角度</label>
@@ -1598,6 +1605,7 @@ body[data-theme="custom"]{
       </div>
       <input type="range" id="pet-img-rot" min="0" max="360" value="0" style="width:100%" oninput="document.getElementById('pet-img-rot-val').textContent=this.value+'°';rePetPreview()">
     </div>
+
     <!-- 衣服应用范围（仅衣服模式显示） -->
     <div id="cloth-scope-wrap" style="display:none;margin-bottom:8px;background:rgba(74,144,217,.06);border-radius:9px;padding:8px 10px">
       <div style="font-size:.68rem;color:#2060a0;font-weight:600;margin-bottom:6px">👗 衣服图片应用范围</div>
@@ -1613,6 +1621,7 @@ body[data-theme="custom"]{
         </label>
       </div>
     </div>
+
     <div class="mbrow">
       <button class="mbtn mb-cancel" onclick="document.getElementById('pet-img-preview-ov').classList.remove('on')">取消</button>
       <button class="mbtn mb-ok on" onclick="confirmPetImgUpload()">✅ 确认使用</button>
@@ -1672,96 +1681,160 @@ body[data-theme="custom"]{
 <script src="subject_history8_mod.js"></script>
 <!-- 定制工坊弹窗 -->
 <div class="overlay" id="custom-workshop-ov">
-  <div class="modal" style="max-height:92vh;display:flex;flex-direction:column;padding:16px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+  <div class="modal" style="max-height:94vh;display:flex;flex-direction:column;padding:14px">
+    <!-- 标题栏 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0">
       <div class="mttl" style="margin-bottom:0">🎪 宠物定制工坊</div>
-      <span onclick="document.getElementById('custom-workshop-ov').classList.remove('on')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);line-height:1;padding:2px 6px">✕</span>
+      <span onclick="document.getElementById('custom-workshop-ov').classList.remove('on')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);padding:2px 6px">✕</span>
     </div>
-    <div style="font-size:.72rem;color:var(--muted);margin-bottom:12px;padding:8px 10px;background:rgba(100,160,100,.07);border-radius:10px;border:1px solid rgba(100,160,100,.2)">
-      🌟 定制工坊可以自由调整当前宠物的一切属性。每次修改独立扣费，所见即所得！
-    </div>
-    <!-- 宠物预览 -->
-    <div style="display:flex;justify-content:center;margin-bottom:14px">
-      <div style="position:relative;width:110px;height:110px;border-radius:18px;background:linear-gradient(145deg,var(--panel),rgba(100,160,100,.08));border:2px solid var(--border);display:flex;align-items:center;justify-content:center">
-        <canvas id="cw-preview-canvas" width="110" height="110" style="border-radius:16px"></canvas>
+
+    <!-- 预览 + 子标签 -->
+    <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;flex-shrink:0">
+      <!-- 预览画布 -->
+      <div style="flex-shrink:0;width:110px;height:110px;border-radius:16px;background:linear-gradient(145deg,var(--panel),rgba(100,160,100,.1));border:2px solid var(--border);display:flex;align-items:center;justify-content:center">
+        <canvas id="cw-preview-canvas" width="110" height="110" style="border-radius:14px"></canvas>
+      </div>
+      <!-- 右侧信息 + 子标签 -->
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:8px">
+          💰 金币：<b id="cw-coin-display" style="color:var(--dgreen)">0</b> 🪙
+        </div>
+        <!-- 子标签按钮 -->
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          <button id="cwtab-basic"  onclick="_cwSwitchTab('basic')"  class="cwtab-btn on" >🐾 基础</button>
+          <button id="cwtab-stats"  onclick="_cwSwitchTab('stats')"  class="cwtab-btn"    >📊 属性</button>
+          <button id="cwtab-cloth"  onclick="_cwSwitchTab('cloth')"  class="cwtab-btn"    >👗 穿戴</button>
+          <button id="cwtab-dialog" onclick="_cwSwitchTab('dialog')" class="cwtab-btn"    >💬 对话</button>
+        </div>
       </div>
     </div>
-    <!-- 各项定制选项 -->
+
+    <!-- 内容面板：可滚动 -->
     <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px">
 
-      <!-- 名字 -->
-      <div class="cw-section">
-        <div class="cw-label">✏️ 宠物名字</div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <input class="ci" id="cw-name-input" placeholder="输入新名字" maxlength="8" style="flex:1;user-select:text">
-          <button onclick="cwRandomName()" style="padding:7px 10px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:inherit">随机</button>
-          <button onclick="cwApply('name')" class="cw-btn">🪙30 改名</button>
-        </div>
-      </div>
+      <!-- ═══ 基础面板 ═══ -->
+      <div id="cwpanel-basic">
 
-      <!-- 品种 -->
-      <div class="cw-section">
-        <div class="cw-label">🐾 宠物品种</div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px" id="cw-breed-grid"></div>
-        <div style="margin-top:6px;display:flex;justify-content:flex-end">
-          <button onclick="cwApply('breed')" class="cw-btn">🪙80 更换品种</button>
+        <!-- 名字 -->
+        <div class="cw-section">
+          <div class="cw-label">✏️ 宠物名字</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input class="ci" id="cw-name-input" placeholder="输入新名字" maxlength="10" style="flex:1;user-select:text">
+            <button onclick="cwRandomName()" style="padding:6px 9px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.7rem;cursor:pointer;font-family:inherit">随机</button>
+            <button onclick="cwApply('name')" class="cw-btn">🪙30</button>
+          </div>
         </div>
-      </div>
 
-      <!-- 等级 -->
-      <div class="cw-section">
-        <div class="cw-label">⭐ 进化等级 <span id="cw-lv-display" style="color:var(--dgreen);font-weight:600"></span></div>
-        <input type="range" id="cw-level-range" min="1" max="5" step="1" oninput="cwLvPreview(this.value)" style="width:100%;accent-color:var(--dgreen)">
-        <div style="display:flex;justify-content:space-between;font-size:.65rem;color:var(--muted);margin-top:2px">
-          <span>Lv.1</span><span>Lv.2</span><span>Lv.3</span><span>Lv.4</span><span>Lv.5 MAX</span>
+        <!-- 品种选择 -->
+        <div class="cw-section">
+          <div class="cw-label">🐾 宠物品种 <span style="font-size:.62rem;color:var(--muted);font-weight:400">（灰色=未购买，换品种🪙80）</span></div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px" id="cw-breed-grid"></div>
+          <div style="margin-top:7px;display:flex;justify-content:flex-end">
+            <button onclick="cwApply('breed')" class="cw-btn">🪙80 换品种</button>
+          </div>
         </div>
-        <div style="margin-top:6px;display:flex;justify-content:flex-end">
-          <button onclick="cwApply('level')" class="cw-btn">🪙60/级 调整等级</button>
-        </div>
-      </div>
 
-      <!-- 属性 -->
-      <div class="cw-section">
-        <div class="cw-label">💊 宠物属性全满</div>
-        <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">将饱食度、心情、清洁度、体力全部恢复至100</div>
-        <div style="display:flex;justify-content:flex-end">
-          <button onclick="cwApply('stats')" class="cw-btn">🪙50 属性全满</button>
+        <!-- 自定义品种名 -->
+        <div class="cw-section">
+          <div class="cw-label">🏷️ 自定义品种显示名 <span style="font-size:.62rem;color:var(--muted);font-weight:400">（免费）</span></div>
+          <div style="font-size:.68rem;color:var(--muted);margin-bottom:5px">覆盖宠物页面显示的品种名称，留空=恢复默认</div>
+          <div style="display:flex;gap:6px">
+            <input class="ci" id="cw-custom-breed-name" placeholder="如：混血小怪物" maxlength="12" style="flex:1;user-select:text">
+            <button onclick="cwApply('custombreedname')" class="cw-btn">保存</button>
+          </div>
         </div>
-      </div>
 
-      <!-- 皮肤颜色 -->
-      <div class="cw-section">
-        <div class="cw-label">🎨 皮肤颜色</div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px" id="cw-skin-grid"></div>
-        <div style="margin-top:6px;display:flex;justify-content:flex-end">
-          <button onclick="cwApply('skin')" class="cw-btn">🪙40 换皮肤</button>
+        <!-- 进化等级 -->
+        <div class="cw-section">
+          <div class="cw-label">⭐ 进化等级 <span id="cw-lv-display" style="color:var(--dgreen);font-weight:600"></span></div>
+          <input type="range" id="cw-level-range" min="1" max="5" step="1" oninput="cwLvPreview(this.value)" style="width:100%;accent-color:var(--dgreen)">
+          <div style="display:flex;justify-content:space-between;font-size:.62rem;color:var(--muted);margin:2px 0 6px">
+            <span>Lv.1</span><span>Lv.2</span><span>Lv.3</span><span>Lv.4</span><span>Lv.5</span>
+          </div>
+          <button onclick="cwApply('level')" class="cw-btn" style="float:right">🪙60/级 调整</button>
+          <div style="clear:both"></div>
         </div>
-      </div>
 
-      <!-- 衣服 -->
-      <div class="cw-section">
-        <div class="cw-label">👗 穿戴衣服</div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px" id="cw-cloth-grid"></div>
-        <div style="margin-top:6px;display:flex;justify-content:flex-end">
-          <button onclick="cwApply('cloth')" class="cw-btn">🪙20 换衣服</button>
+        <!-- 锁定展示形态 -->
+        <div class="cw-section">
+          <div class="cw-label">🔒 锁定展示形态 <span style="font-size:.62rem;color:var(--muted);font-weight:400">（免费）</span></div>
+          <div style="font-size:.68rem;color:var(--muted);margin-bottom:5px">让宠物在页面永远显示指定等级的外形，实际等级经验不变</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="cw-display-level" style="flex:1;padding:6px 8px;border-radius:9px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-size:.72rem;font-family:'Noto Sans SC',sans-serif">
+              <option value="">跟随实际等级（默认）</option>
+              <option value="1">锁定 Lv.1 形态</option>
+              <option value="2">锁定 Lv.2 形态</option>
+              <option value="3">锁定 Lv.3 形态</option>
+              <option value="4">锁定 Lv.4 形态</option>
+              <option value="5">锁定 Lv.5 最终形态</option>
+            </select>
+            <button onclick="cwApply('displaylevel')" class="cw-btn">保存</button>
+          </div>
         </div>
-      </div>
 
-      <!-- 自定义图片 -->
-      <div class="cw-section">
-        <div class="cw-label">🖼️ 自定义形象图</div>
-        <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">上传最多2MB的图片作为宠物形象（免费）</div>
-        <div style="display:flex;gap:6px">
-          <button onclick="openPetImageUpload()" style="flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--green);background:rgba(100,160,100,.07);color:var(--dgreen);font-size:.74rem;cursor:pointer;font-family:inherit">📤 上传宠物图</button>
-          <button onclick="cwClearPetImg()" style="padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.74rem;cursor:pointer;font-family:inherit;color:var(--muted)">🗑️ 清除</button>
+        <!-- 自定义形象图 -->
+        <div class="cw-section">
+          <div class="cw-label">🖼️ 自定义形象图 <span style="font-size:.62rem;color:var(--muted);font-weight:400">（免费，最大2MB）</span></div>
+          <div style="display:flex;gap:6px">
+            <button onclick="openPetImageUpload()" style="flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--green);background:rgba(100,160,100,.07);color:var(--dgreen);font-size:.72rem;cursor:pointer;font-family:inherit">📤 上传宠物图</button>
+            <button onclick="cwClearPetImg()" style="padding:8px 10px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;color:var(--muted);font-family:inherit">🗑️</button>
+          </div>
         </div>
-      </div>
 
-    </div>
-    <!-- 底部提示 -->
-    <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:.68rem;color:var(--muted);text-align:center">
-      💰 当前金币：<b id="cw-coin-display" style="color:var(--dgreen)">0</b> 🪙　|　所有修改即时生效
-    </div>
+      </div><!-- end cwpanel-basic -->
+
+      <!-- ═══ 属性面板 ═══ -->
+      <div id="cwpanel-stats" style="display:none">
+        <div class="cw-section">
+          <div class="cw-label">📊 自定义宠物属性数值</div>
+          <div style="font-size:.68rem;color:var(--muted);margin-bottom:10px">拖动滑块设置各项属性的具体数值（0-100），花费🪙20确认</div>
+          <div id="cw-stats-sliders"></div>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <button onclick="document.getElementById('cw-stat-food').value=100;document.getElementById('cw-stat-food-val').textContent=100;document.getElementById('cw-stat-happy').value=100;document.getElementById('cw-stat-happy-val').textContent=100;document.getElementById('cw-stat-clean').value=100;document.getElementById('cw-stat-clean-val').textContent=100;document.getElementById('cw-stat-energy').value=100;document.getElementById('cw-stat-energy-val').textContent=100;"
+              style="flex:1;padding:7px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.7rem;cursor:pointer;font-family:inherit">全部满值</button>
+            <button onclick="cwApply('stats')" class="cw-btn" style="flex:1">🪙20 应用属性</button>
+          </div>
+        </div>
+      </div><!-- end cwpanel-stats -->
+
+      <!-- ═══ 穿戴面板 ═══ -->
+      <div id="cwpanel-cloth" style="display:none">
+
+        <!-- 衣服选择 -->
+        <div class="cw-section">
+          <div class="cw-label">👗 选择穿戴衣服</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px" id="cw-cloth-grid"></div>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <button onclick="cwApply('cloth')" class="cw-btn" style="flex:1">🪙20 换上选中</button>
+          </div>
+        </div>
+
+        <!-- 自定义衣服图片 -->
+        <div class="cw-section">
+          <div class="cw-label">🖼️ 为当前选中衣服上传图片 <span style="font-size:.62rem;color:var(--muted);font-weight:400">（免费）</span></div>
+          <div style="font-size:.68rem;color:var(--muted);margin-bottom:6px">先在上方选中一件衣服，再上传图片替换其外观（最大2MB）</div>
+          <div style="display:flex;gap:6px">
+            <button onclick="cwUploadClothImg()" style="flex:1;padding:8px;border-radius:10px;border:1.5px solid #4a90d9;background:rgba(74,144,217,.07);color:#2060a0;font-size:.72rem;cursor:pointer;font-family:inherit">📤 上传衣服图片</button>
+            <button onclick="openSystemClothAdjust(_cwClothSel||undefined)" style="flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--green);background:rgba(100,160,100,.07);color:var(--dgreen);font-size:.72rem;cursor:pointer;font-family:inherit">🔧 调整位置大小</button>
+          </div>
+        </div>
+
+      </div><!-- end cwpanel-cloth -->
+
+      <!-- ═══ 对话面板 ═══ -->
+      <div id="cwpanel-dialog" style="display:none">
+        <div style="padding:10px 12px;background:rgba(100,160,100,.07);border-radius:10px;border:1px solid rgba(100,160,100,.2);font-size:.7rem;color:var(--muted);margin-bottom:6px;line-height:1.6">
+          💬 在各场景下自定义宠物说的话。每行一句，触发时随机选一句。留空则使用该品种的默认对话。<br>
+          支持变量：<b style="color:var(--dgreen)">{name}</b> = 宠物名字
+        </div>
+        <div id="cw-dialog-editor"></div>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button onclick="cwResetDialog()" style="flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:inherit;color:var(--muted)">🗑️ 清除全部</button>
+          <button onclick="cwApply('dialog')" class="cw-btn" style="flex:2;font-size:.76rem">✅ 保存全部对话</button>
+        </div>
+      </div><!-- end cwpanel-dialog -->
+
+    </div><!-- end scrollable content -->
   </div>
 </div>
 

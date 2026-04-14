@@ -49,6 +49,7 @@ window.SUBJECT_MODULES = {
         { id:'te_s3_b1', label:'课程论（课程类型·课程观·评价）', qbKey:'QB_TE_S3_B1' },
         { id:'te_s3_b2', label:'教学设计（三维目标·教案撰写）',  qbKey:'QB_TE_S3_B2' },
         { id:'te_s3_b3', label:'德育论（德育原则·方法·途径）',  qbKey:'QB_TE_S3_B3' },
+        { id:'te_s3_b4', label:'法律法规与时政',  qbKey:'QB_TE_S3_B4' },
       ]},
       { label:'📄 综合模拟卷', modules:[
         { id:'te_exam1', label:'教编模拟卷 · 第一套', qbKey:'QB_TE_EXAM1', isExam:true },

@@ -1512,7 +1512,11 @@ function getEvoStage(){
   const lockedLv=localStorage.getItem('jbfarm_displaylevel_'+(S.activePet||''));
   const displayLevel=lockedLv?Math.min(5,Math.max(1,parseInt(lockedLv))):(S.petLevel||1);
   const stages=(EVO_STAGES[S.petBreed||'hamster']||EVO_STAGES.hamster);
-  return stages[Math.min(displayLevel-1,stages.length-1)];
+  const stage=Object.assign({},stages[Math.min(displayLevel-1,stages.length-1)]);
+  // 应用自定义阶段名（优先级最高）
+  const customName=localStorage.getItem('jbfarm_stagename_'+(S.activePet||'')+'_'+displayLevel);
+  if(customName)stage.name=customName;
+  return stage;
 }
 
 
@@ -1794,8 +1798,7 @@ function openPetImgPreviewModal(title){
   };
   img.src=_petImgPreviewData;
 
-  document.getElementById('pet-img-preview-ov').classList.add('on');
-  // 绑定拖拽到对应canvas
+  openOverlay('pet-img-preview-ov');
   setTimeout(()=>{
     if(isCloth)_initClothImgDrag();
     else _initPetPreviewDrag();
@@ -1989,6 +1992,10 @@ function confirmPetImgUpload(){
   delete _petImgCache[key];
   document.getElementById('pet-img-preview-ov').classList.remove('on');
   drawPet();
+  // 若工坊已打开，同步刷新工坊预览画布
+  if(document.getElementById('custom-workshop-ov').classList.contains('on')){
+    setTimeout(_cwDraw,80); // 稍微延迟，等 localStorage 写入完成
+  }
   showToast('✅ 图片已保存！');
 }
 
@@ -3795,8 +3802,105 @@ function saveCustomPetDialog(petId,data){
 // ── 工坊状态 ──────────────────────────────────────
 let _cwBreedSel=null,_cwClothSel=null,_cwLevelSel=1;
 let _cwTab='basic'; // 当前子标签：basic | stats | cloth | dialog
+let _cwEditingPetId=null; // 当前正在编辑的宠物ID（null=当前宠物）
+
+// ── 渲染已领养的定制宠物列表 ──────────────────────
+function _cwRenderAdoptedList(){
+  const g=document.getElementById('cw-adopted-list');if(!g)return;
+  // 找出所有自定义宠物（ID以custom_开头）
+  const customPets=(S.ownedPets||[]).filter(id=>id.startsWith('custom_'));
+  if(customPets.length===0){
+    g.innerHTML='<div style="font-size:.68rem;color:var(--muted);text-align:center;padding:10px 0">还没有领养定制宠物哦~</div>';
+    return;
+  }
+  g.innerHTML='';
+  customPets.forEach(pid=>{
+    const save=(S.petSaves&&S.petSaves[pid])||{};
+    const name=save.petName||'定制宠物';
+    const breed=save.petBreed||'hamster';
+    const lv=save.petLevel||1;
+    const icons={hamster:'🐹',cat:'🐱',rabbit:'🐰',bird:'🐦',dog:'🐶',panda:'🐼',fox:'🦊',bear:'🐻',deer:'🦌',penguin:'🐧',owl:'🦉',dragon:'🐲',tiger:'🐯',unicorn:'🦄'};
+    const isActive=S.activePet===pid;
+    const card=document.createElement('div');
+    card.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;'
+      +'border:1.5px solid '+(isActive?'var(--green)':'var(--border)')+';'
+      +'background:'+(isActive?'rgba(100,160,100,.1)':'var(--panel)')+';'
+      +'cursor:pointer;margin-bottom:5px;transition:all .15s';
+    // 小预览画布
+    const miniCvs=document.createElement('canvas');
+    miniCvs.width=44;miniCvs.height=44;
+    miniCvs.style.cssText='border-radius:8px;flex-shrink:0;background:linear-gradient(145deg,rgba(100,160,100,.12),rgba(200,240,200,.2))';
+    card.appendChild(miniCvs);
+    // 绘制小预览
+    setTimeout(()=>{
+      const mc=miniCvs.getContext('2d');
+      const petImgKey='jbfarm_petimg_'+pid;
+      const petImgData=localStorage.getItem(petImgKey);
+      const stages=(EVO_STAGES[breed]||EVO_STAGES.hamster);
+      const st=stages[Math.min(lv-1,stages.length-1)];
+      const _br=S.petBreed,_lv=S.petLevel,_hp=S.petHappy,_en=S.petEnergy;
+      S.petBreed=breed;S.petLevel=lv;S.petHappy=75;S.petEnergy=75;
+      if(petImgData){
+        const pi=new Image();pi.onload=function(){
+          mc.clearRect(0,0,44,44);
+          const raw=localStorage.getItem(petImgKey+'_param');
+          const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
+          const size=Math.round(44*(p.scale!=null?p.scale:0.8));
+          mc.save();mc.translate(22+(p.offX||0)*0.4,22+(p.offY||0)*0.4);
+          if(p.rotation)mc.rotate(p.rotation*Math.PI/180);
+          mc.drawImage(pi,-size/2,-size/2,size,size);mc.restore();
+        };pi.src=petImgData;
+      } else {
+        try{drawPetBreed(mc,breed,22,22,st);}catch(e){}
+      }
+      S.petBreed=_br;S.petLevel=_lv;S.petHappy=_hp;S.petEnergy=_en;
+    },0);
+
+    const info=document.createElement('div');
+    info.style.cssText='flex:1;min-width:0';
+    info.innerHTML='<div style="font-size:.76rem;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+name+(isActive?' <span style="color:var(--dgreen);font-size:.6rem">▶当前</span>':'')+'</div>'
+      +'<div style="font-size:.62rem;color:var(--muted)">Lv.'+lv+' · '+(icons[breed]||'🐾')+breed+'</div>';
+    card.appendChild(info);
+
+    const editBtn=document.createElement('button');
+    editBtn.textContent='编辑';
+    editBtn.style.cssText='padding:4px 10px;border-radius:7px;border:1.5px solid var(--dgreen);background:rgba(100,160,100,.08);color:var(--dgreen);font-size:.62rem;cursor:pointer;font-family:inherit;flex-shrink:0';
+    editBtn.onclick=(e)=>{e.stopPropagation();_cwOpenForPet(pid);};
+    card.appendChild(editBtn);
+    card.onclick=()=>_cwOpenForPet(pid);
+    g.appendChild(card);
+  });
+}
+
+// 打开工坊编辑特定宠物
+function _cwOpenForPet(pid){
+  if(!pid||!(S.petSaves&&S.petSaves[pid]))return;
+  const save=S.petSaves[pid];
+  _cwEditingPetId=pid;
+  _cwDraw._imgCache=null;_cwDraw._imgCacheSrc=null; // 清除画布缓存
+  _cwBreedSel=save.petBreed||'hamster';
+  _cwClothSel=save.equippedCloth||null;
+  _cwLevelSel=save.petLevel||1;
+  const ni=document.getElementById('cw-name-input');
+  if(ni)ni.value=save.petName||'';
+  const cbn=document.getElementById('cw-custom-breed-name');
+  if(cbn)cbn.value=localStorage.getItem('jbfarm_custombreedname_'+pid)||'';
+  const lr=document.getElementById('cw-level-range');
+  if(lr)lr.value=_cwLevelSel;
+  cwLvPreview(_cwLevelSel);
+  _cwUpdateCoin();_cwDraw();_cwRenderBreedGrid();_cwRenderClothGrid();
+  _cwRenderStatsSliders();_cwRenderDialogEditor();_cwRenderStageNames();
+  _cwSwitchTab('basic');
+  // 更新编辑模式提示栏
+  const ttl=document.getElementById('cw-edit-mode-tip');
+  const ttlTxt=document.getElementById('cw-edit-mode-tip-text');
+  if(ttl){ttl.style.display='block';}
+  if(ttlTxt){ttlTxt.textContent='正在编辑定制宠物：'+(save.petName||pid);}
+}
 
 function openCustomWorkshop(){
+  _cwEditingPetId=null; // 重置：默认编辑当前宠物
+  _cwDraw._imgCache=null;_cwDraw._imgCacheSrc=null; // 清除图片缓存
   _cwBreedSel=S.petBreed||'hamster';
   _cwClothSel=S.equippedCloth||null;
   _cwLevelSel=S.petLevel||1;
@@ -3814,10 +3918,9 @@ function openCustomWorkshop(){
   if(lr)lr.value=_cwLevelSel;
   cwLvPreview(_cwLevelSel);
 
-  // 锁定展示等级
-  const lockedLv=localStorage.getItem('jbfarm_displaylevel_'+(S.activePet||''));
-  const dispSel=document.getElementById('cw-display-level');
-  if(dispSel)dispSel.value=lockedLv||'';
+  // 隐藏编辑模式提示
+  const ttl=document.getElementById('cw-edit-mode-tip');
+  if(ttl)ttl.style.display='none';
 
   _cwUpdateCoin();
   _cwDraw();
@@ -3825,6 +3928,8 @@ function openCustomWorkshop(){
   _cwRenderClothGrid();
   _cwRenderStatsSliders();
   _cwRenderDialogEditor();
+  _cwRenderStageNames();
+  _cwRenderAdoptedList();
   _cwSwitchTab('basic');
 
   document.getElementById('custom-workshop-ov').classList.add('on');
@@ -3928,7 +4033,35 @@ function _cwRenderStatsSliders(){
   });
 }
 
-// ── 对话编辑器 ───────────────────────────────────
+// ── 进化阶段名称设置 ─────────────────────────────
+function _cwRenderStageNames(){
+  const g=document.getElementById('cw-stage-names');if(!g)return;
+  g.innerHTML='';
+  const pid=_cwEditingPetId||S.activePet||'';
+  const stages=(EVO_STAGES[_cwBreedSel]||EVO_STAGES.hamster);
+  for(let lv=1;lv<=5;lv++){
+    const defStage=stages[Math.min(lv-1,stages.length-1)];
+    const saved=localStorage.getItem('jbfarm_stagename_'+pid+'_'+lv)||'';
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:6px';
+    row.innerHTML=`<span style="font-size:.68rem;color:var(--muted);flex-shrink:0;width:30px">Lv.${lv}</span>`
+      +`<input id="cw-sname-${lv}" class="ci" placeholder="${defStage.name||'阶段'+lv}" maxlength="10" value="${saved}" style="flex:1;font-size:.7rem;user-select:text">`
+      +`<span style="font-size:.62rem;color:var(--muted);flex-shrink:0">默认:${defStage.name||'-'}</span>`;
+    g.appendChild(row);
+  }
+}
+
+function cwSaveStageNames(){
+  const pid=_cwEditingPetId||S.activePet||'';
+  for(let lv=1;lv<=5;lv++){
+    const inp=document.getElementById('cw-sname-'+lv);
+    if(!inp)continue;
+    const v=inp.value.trim();
+    if(v){localStorage.setItem('jbfarm_stagename_'+pid+'_'+lv,v);}
+    else{localStorage.removeItem('jbfarm_stagename_'+pid+'_'+lv);}
+  }
+  updatePetUI();drawPet();showToast('✅ 进化阶段名称已保存！');
+}
 const CW_DIALOG_KEYS=[
   {key:'feed',    label:'🍎 喂食时'},
   {key:'play',    label:'🎾 玩耍时'},
@@ -3977,10 +4110,13 @@ function _cwRenderDialogEditor(){
 function _cwDraw(){
   const cvs=document.getElementById('cw-preview-canvas');if(!cvs)return;
   const ctx=cvs.getContext('2d');
-  ctx.clearRect(0,0,cvs.width,cvs.height);
   const stages=(EVO_STAGES[_cwBreedSel]||EVO_STAGES.hamster);
   const baseStage=stages[Math.min(_cwLevelSel-1,stages.length-1)];
   let previewStage=Object.assign({},baseStage);
+  // 应用自定义阶段名
+  const petIdForDraw=_cwEditingPetId||S.activePet||'';
+  const customStageName=localStorage.getItem('jbfarm_stagename_'+petIdForDraw+'_'+_cwLevelSel);
+  if(customStageName)previewStage.name=customStageName;
   // 应用当前皮肤颜色（取实际皮肤，不是工坊选项）
   const skinId=(S.petSkinColors&&S.petSkinColors[S.activePet])||'sc_default';
   const skinInfo=(window.PET_SKIN_COLORS||[]).find(s=>s.id===skinId);
@@ -3988,10 +4124,49 @@ function _cwDraw(){
   else if(skinInfo&&skinInfo.color==='rainbow'){const rc=['#ff9090','#ffcc60','#a0e880','#60c8ff','#d080ff'];previewStage.color=rc[Math.floor(Date.now()/1200)%rc.length];}
   const _br=S.petBreed,_lv=S.petLevel,_hp=S.petHappy,_en=S.petEnergy,_ec=S.equippedCloth;
   S.petBreed=_cwBreedSel;S.petLevel=_cwLevelSel;S.petHappy=80;S.petEnergy=80;S.equippedCloth=_cwClothSel;
-  ctx.save();
-  try{drawPetBreed(ctx,_cwBreedSel,55,58,previewStage);}catch(e){}
-  if(_cwClothSel){try{drawCloth(ctx,55,58,_cwClothSel);}catch(e){}}
-  ctx.restore();
+
+  // 检查是否有自定义宠物图片（优先显示）
+  const petImgKey='jbfarm_petimg_'+(petIdForDraw||'');
+  const petImgData=localStorage.getItem(petImgKey);
+
+  ctx.clearRect(0,0,cvs.width,cvs.height);
+
+  if(petImgData){
+    // 有自定义图：加载后绘制（用缓存避免闪烁）
+    if(_cwDraw._imgCache&&_cwDraw._imgCacheSrc===petImgData){
+      const img=_cwDraw._imgCache;
+      const raw=localStorage.getItem(petImgKey+'_param');
+      const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
+      const size=Math.round(cvs.width*(p.scale!=null?p.scale:0.8));
+      const cx=cvs.width/2+(p.offX||0),cy=cvs.height/2+(p.offY||0);
+      const rot=(p.rotation||0)*Math.PI/180;
+      ctx.save();ctx.translate(cx,cy);if(rot)ctx.rotate(rot);
+      ctx.drawImage(img,-size/2,-size/2,size,size);ctx.restore();
+      if(_cwClothSel){ctx.save();try{drawCloth(ctx,55,58,_cwClothSel);}catch(e){}ctx.restore();}
+    } else {
+      const img=new Image();
+      img.onload=function(){
+        _cwDraw._imgCache=img;_cwDraw._imgCacheSrc=petImgData;
+        ctx.clearRect(0,0,cvs.width,cvs.height);
+        const raw=localStorage.getItem(petImgKey+'_param');
+        const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
+        const size=Math.round(cvs.width*(p.scale!=null?p.scale:0.8));
+        const cx=cvs.width/2+(p.offX||0),cy=cvs.height/2+(p.offY||0);
+        const rot=(p.rotation||0)*Math.PI/180;
+        ctx.save();ctx.translate(cx,cy);if(rot)ctx.rotate(rot);
+        ctx.drawImage(img,-size/2,-size/2,size,size);ctx.restore();
+        if(_cwClothSel){ctx.save();try{drawCloth(ctx,55,58,_cwClothSel);}catch(e){}ctx.restore();}
+      };
+      img.src=petImgData;
+    }
+  } else {
+    // 无自定义图：画像素宠物
+    ctx.save();
+    try{drawPetBreed(ctx,_cwBreedSel,55,58,previewStage);}catch(e){}
+    if(_cwClothSel){try{drawCloth(ctx,55,58,_cwClothSel);}catch(e){}}
+    ctx.restore();
+  }
+
   S.petBreed=_br;S.petLevel=_lv;S.petHappy=_hp;S.petEnergy=_en;S.equippedCloth=_ec;
 }
 
@@ -4031,17 +4206,6 @@ function cwApply(type){
       saveCurPet();persistAccount();updatePetUI();drawPet();checkAchs();
       showToast('✅ 等级已调整为Lv.'+S.petLevel+'！');
     };
-  }
-  else if(type==='displaylevel'){
-    // 锁定展示等级（不改变实际等级，仅影响外观显示）
-    const selEl=document.getElementById('cw-display-level');
-    const val=selEl?selEl.value:'';
-    const pid=S.activePet||'';
-    if(val){localStorage.setItem('jbfarm_displaylevel_'+pid,val);}
-    else{localStorage.removeItem('jbfarm_displaylevel_'+pid);}
-    updatePetUI();drawPet();
-    showToast(val?'✅ 已锁定展示形态为Lv.'+val+'！':'✅ 已恢复跟随实际等级');
-    return;
   }
   else if(type==='stats'){
     // 读取各滑块值
@@ -4113,6 +4277,109 @@ function cwResetDialog(){
     _cwRenderDialogEditor();
     showToast('✅ 对话已恢复默认');
   });
+}
+
+// ── 领养定制宠物（另存为独立宠物槽位，一键结算） ─────────────────
+function cwAdoptPet(){
+  const ni=document.getElementById('cw-name-input');
+  const petName=(ni&&ni.value.trim())||S.petName||'定制宠物';
+  const breed=_cwBreedSel||S.petBreed||'hamster';
+  const level=_cwLevelSel||S.petLevel||1;
+
+  // ── 一键结算：汇总所有配置显示给玩家 ──
+  const icons={hamster:'🐹',cat:'🐱',rabbit:'🐰',bird:'🐦',dog:'🐶',panda:'🐼',fox:'🦊',bear:'🐻',deer:'🦌',penguin:'🐧',owl:'🦉',dragon:'🐲',tiger:'🐯',unicorn:'🦄'};
+  const breedIcon=icons[breed]||'🐾';
+  const clothInfo=_cwClothSel?((SHOP_CLOTHES||[]).find(c=>c.id===_cwClothSel)||{name:_cwClothSel,ico:'👗'}):{name:'无',ico:'🚫'};
+  const hasCustomPetImg=!!localStorage.getItem(getCustomPetImgKey());
+  const srcPetImgKey=getCustomPetImgKey();
+
+  // 收集自定义阶段名
+  const pid0=_cwEditingPetId||S.activePet||'';
+  const stageNameLines=[];
+  for(let lv=1;lv<=5;lv++){
+    const sn=localStorage.getItem('jbfarm_stagename_'+pid0+'_'+lv);
+    if(sn)stageNameLines.push('Lv.'+lv+' → 「'+sn+'」');
+  }
+
+  const summaryLines=[
+    '📛 名字：'+petName,
+    breedIcon+' 品种：'+breed+'  ·  ⭐ 等级：Lv.'+level,
+    (clothInfo.ico||'👗')+' 衣服：'+clothInfo.name,
+    '🖼️ 自定义形象：'+(hasCustomPetImg?'已上传':'未上传'),
+    stageNameLines.length?('✏️ 自定义阶段名：\n   '+stageNameLines.join('\n   ')):'',
+  ].filter(Boolean).join('\n');
+
+  openConfirm('🐣',
+    `领养这只定制宠物？（免费）\n\n${summaryLines}\n\n确认后将新增一只独立宠物，不影响现有宠物。`,
+    ()=>{
+      _doAdoptPet(petName,breed,level,srcPetImgKey,pid0);
+    }
+  );
+}
+
+function _doAdoptPet(petName,breed,level,srcPetImgKey,srcPid){
+  // 生成唯一ID
+  const newId='custom_'+Date.now();
+  // 注册到 ownedPets
+  if(!S.ownedPets)S.ownedPets=['p_hamster'];
+  if(!S.ownedPets.includes(newId))S.ownedPets.push(newId);
+  // 初始化存档
+  if(!S.petSaves)S.petSaves={};
+  S.petSaves[newId]={
+    petBreed:breed,petName:petName,petLevel:level,
+    petFood:100,petHappy:100,petClean:100,petEnergy:100,
+    petLearnExp:0,petFeedCount:0,equippedCloth:_cwClothSel||null
+  };
+  // 复制对话
+  const dialog=getCustomPetDialog(srcPid);
+  if(Object.keys(dialog).length>0)saveCustomPetDialog(newId,dialog);
+  // 复制皮肤颜色
+  const skinId=(S.petSkinColors&&S.petSkinColors[S.activePet])||'sc_default';
+  if(!S.petSkinColors)S.petSkinColors={};
+  S.petSkinColors[newId]=skinId;
+  // 复制自定义阶段名（不复制displaylevel锁定，新宠物重新设）
+  for(let lv=1;lv<=5;lv++){
+    const sn=localStorage.getItem('jbfarm_stagename_'+srcPid+'_'+lv);
+    if(sn)localStorage.setItem('jbfarm_stagename_'+newId+'_'+lv,sn);
+  }
+  // 复制自定义品种名
+  const cbn=document.getElementById('cw-custom-breed-name');
+  if(cbn&&cbn.value.trim())localStorage.setItem('jbfarm_custombreedname_'+newId,cbn.value.trim());
+  // 复制自定义宠物图片
+  const petImgData=localStorage.getItem(srcPetImgKey);
+  if(petImgData){
+    localStorage.setItem('jbfarm_petimg_'+newId,petImgData);
+    const param=localStorage.getItem(srcPetImgKey+'_param');
+    if(param)localStorage.setItem('jbfarm_petimg_'+newId+'_param',param);
+  }
+  // 复制自定义衣服图片（若有）
+  if(_cwClothSel){
+    const srcClothKey='jbfarm_clothimg_'+_cwClothSel;
+    const clothData=localStorage.getItem(srcClothKey);
+    if(clothData){
+      localStorage.setItem('jbfarm_clothimg_custom_'+newId,clothData);
+      const cp=localStorage.getItem(srcClothKey+'_param');
+      if(cp)localStorage.setItem('jbfarm_clothimg_custom_'+newId+'_param',cp);
+    }
+  }
+  persistAccount();
+  // 刷新工坊已领养列表
+  _cwRenderAdoptedList();
+  // 询问是否立即切换
+  openConfirm('🎉',
+    `🐾 「${petName}」已成功领养！\n是否立即切换到这只宠物？`,
+    ()=>{
+      saveCurPet();
+      S.activePet=newId;
+      loadPetSave(newId);
+      persistAccount();
+      updatePetUI();drawPet();
+      document.getElementById('custom-workshop-ov').classList.remove('on');
+      showToast('🐾 已切换到「'+petName+'」！');
+    },
+    true,
+    ()=>{showToast('🐾 「'+petName+'」已存入宠物列表！');}
+  );
 }
 
 // ─── CLASS SYSTEM ─────────────────────────────────
@@ -5436,6 +5703,8 @@ function openThemeModal(){
     fxBtn.textContent=noFx?'✨ 开启特效':'✨ 关闭特效';
     fxBtn.style.opacity=noFx?'0.55':'1';
   }
+  // 渲染字体设置
+  renderFontSettings();
   document.getElementById('theme-ov').classList.add('on');
 }
 
@@ -5459,6 +5728,73 @@ function toggleSeasonFX(){
 }
 
 // ── 自定义主题 ────────────────────────────────────────────
+// ── 全局字体大小 & 颜色设置 ─────────────────────────
+const FONT_SIZES={
+  small:  {label:'小',   scale:0.88,  css:'--font-scale:0.88'},
+  medium: {label:'中',   scale:1.0,   css:'--font-scale:1'},
+  large:  {label:'大',   scale:1.12,  css:'--font-scale:1.12'},
+  xlarge: {label:'超大', scale:1.25,  css:'--font-scale:1.25'},
+};
+
+function _applyFontSettings(){
+  const sz=localStorage.getItem('jbfarm_font_size')||'medium';
+  const fc=localStorage.getItem('jbfarm_font_color')||'';
+  const r=document.documentElement.style;
+  const scale=(FONT_SIZES[sz]||FONT_SIZES.medium).scale;
+  r.setProperty('--font-scale',String(scale));
+  // 修复：必须改 html 根元素的 font-size，rem 才会随之缩放
+  // 之前改的是 body.fontSize，对 rem 单位无效（rem 相对于 html 根元素）
+  document.documentElement.style.fontSize=(scale*16)+'px';
+  document.body.style.fontSize=''; // 清除 body 上可能残留的旧值
+  if(fc){
+    r.setProperty('--custom-ink',fc);
+    r.setProperty('--custom-text',fc);
+  } else {
+    // 修复：无自定义色时必须 removeProperty，否则之前设置的颜色永远残留
+    r.removeProperty('--custom-ink');
+    r.removeProperty('--custom-text');
+  }
+}
+
+function renderFontSettings(){
+  const curSz=localStorage.getItem('jbfarm_font_size')||'medium';
+  const curFc=localStorage.getItem('jbfarm_font_color')||'';
+  const g=document.getElementById('font-size-btns');
+  if(g){
+    g.innerHTML='';
+    Object.entries(FONT_SIZES).forEach(([id,f])=>{
+      const b=document.createElement('button');
+      b.textContent=f.label;
+      b.style.cssText=`padding:6px 14px;border-radius:8px;border:1.5px solid ${id===curSz?'var(--green)':'var(--border)'};`
+        +`background:${id===curSz?'rgba(100,160,100,.12)':'var(--panel)'};`
+        +`font-size:${f.scale*0.72}rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;`
+        +`color:${id===curSz?'var(--dgreen)':'var(--muted)'};transition:all .15s`;
+      b.onclick=()=>{
+        localStorage.setItem('jbfarm_font_size',id);
+        _applyFontSettings();renderFontSettings();
+        showToast('✅ 字体大小已调整为「'+f.label+'」');
+      };
+      g.appendChild(b);
+    });
+  }
+  const fc=document.getElementById('font-color-picker');
+  if(fc)fc.value=curFc||'#1e1814';
+  const fcClear=document.getElementById('font-color-clear');
+  if(fcClear)fcClear.style.display=curFc?'':'none';
+}
+
+function applyFontColor(){
+  const fc=document.getElementById('font-color-picker');
+  if(!fc)return;
+  localStorage.setItem('jbfarm_font_color',fc.value);
+  _applyFontSettings();renderFontSettings();
+  showToast('✅ 字体颜色已保存');
+}
+function clearFontColor(){
+  localStorage.removeItem('jbfarm_font_color');
+  _applyFontSettings();renderFontSettings();
+  showToast('✅ 字体颜色已恢复默认');
+}
 const CUSTOM_COLOR_FIELDS=[
   {key:'bg',    label:'背景色',     desc:'页面底色'},
   {key:'panel', label:'卡片色',     desc:'卡片/弹窗底色'},
@@ -5603,25 +5939,56 @@ function closeCustomTheme(){
 // ══════════════════════════════════════════════════════════════
 // ★ 系统衣服大小/位置调整
 // ══════════════════════════════════════════════════════════════
+let _adjCid=null; // 当前正在调整的衣服ID（全局，供reClothAdjPreview使用）
+// 修复闪烁：缓存预览弹窗中的宠物底图，避免每次拖动都重新decode图片
+let _adjPetImgCache=null;
+let _adjPetImgCacheSrc=null;
+
 function openSystemClothAdjust(overrideCid){
   const cid=overrideCid||S.equippedCloth||((S.ownedClothes&&S.ownedClothes.length)?S.ownedClothes[0]:null);
-  if(!cid){showToast('请先购买并装备一件衣服');return;}
-  const key='jbfarm_clothsys_'+cid;
-  const raw=localStorage.getItem(key);
-  const p=raw?JSON.parse(raw):{offsetX:0,offsetY:0,scale:100,rotation:0};
+  if(!cid){showToast('请先在衣柜购买并装备一件衣服，再点击调整');return;}
+  _adjCid=cid; // 记录当前正在调整的衣服
+
+  const clothKey='jbfarm_clothimg_'+cid;
+  // 判断是否有自定义衣服图片
+  const hasCustomImg=!!_getClothImgDataWithScope(clothKey);
+
+  let sc_val=100, ox_val=0, oy_val=0, rot_val=0;
+  if(hasCustomImg){
+    // 自定义图：从 _param key 加载（scale已是0-2.0浮点，转成百分比）
+    const raw=localStorage.getItem(clothKey+'_param');
+    const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
+    sc_val=Math.round((p.scale||0.8)*100);
+    ox_val=Math.max(-60,Math.min(60,Math.round(p.offX||0)));
+    oy_val=Math.max(-60,Math.min(60,Math.round(p.offY||0)));
+    rot_val=Math.round(p.rotation||0);
+  } else {
+    // 系统衣服：从 jbfarm_clothsys_ key 加载
+    const raw=localStorage.getItem('jbfarm_clothsys_'+cid);
+    const p=raw?JSON.parse(raw):{offsetX:0,offsetY:0,scale:100,rotation:0};
+    sc_val=Math.max(10,Math.min(200,p.scale||100));
+    ox_val=Math.max(-60,Math.min(60,p.offsetX||0));
+    oy_val=Math.max(-60,Math.min(60,p.offsetY||0));
+    rot_val=p.rotation||0;
+  }
+
   const sc=document.getElementById('cloth-adj-scale');
   const ox=document.getElementById('cloth-adj-ox');
   const oy=document.getElementById('cloth-adj-oy');
   const rot=document.getElementById('cloth-adj-rot');
-  if(sc){sc.value=p.scale||100;const sv=document.getElementById('cloth-adj-scale-val');if(sv)sv.textContent=(p.scale||100)+'%';}
-  if(ox)ox.value=p.offsetX||0;
-  if(oy)oy.value=p.offsetY||0;
-  if(rot){rot.value=p.rotation||0;const rv=document.getElementById('cloth-adj-rot-val');if(rv)rv.textContent=(p.rotation||0)+'°';}
+  if(sc){sc.value=sc_val;const sv=document.getElementById('cloth-adj-scale-val');if(sv)sv.textContent=sc_val+'%';}
+  if(ox)ox.value=ox_val;
+  if(oy)oy.value=oy_val;
+  if(rot){rot.value=rot_val;const rv=document.getElementById('cloth-adj-rot-val');if(rv)rv.textContent=rot_val+'°';}
+
   const cl=window.SHOP_CLOTHES&&SHOP_CLOTHES.find(c=>c.id===cid);
   const adjTtl=document.querySelector('#cloth-adj-ov .mttl');
-  if(adjTtl)adjTtl.textContent='👗 调整衣服：'+(cl?cl.name:cid);
+  if(adjTtl)adjTtl.textContent='👗 调整衣服：'+(cl?cl.name:cid)+(hasCustomImg?' 🖼️':'');
+
   const _adjCvs=document.getElementById('cloth-adj-canvas');
   if(_adjCvs)_adjCvs._dragInited=false;
+  // 清除宠物底图缓存（换了宠物或重新打开时需要重新加载）
+  _adjPetImgCache=null;_adjPetImgCacheSrc=null;
   reClothAdjPreview();
   openOverlay('cloth-adj-ov');
   setTimeout(()=>_initClothAdjDrag(),100);
@@ -5644,9 +6011,9 @@ function _initClothAdjDrag(){
     const t=e.touches?e.touches[0]:e;
     const dx=t.clientX-startX,dy=t.clientY-startY;
     const r=cvs.getBoundingClientRect();
-    const scale=cvs.width/r.width;
-    const nox=Math.max(-40,Math.min(40,baseOx+dx*scale));
-    const noy=Math.max(-40,Math.min(40,baseOy+dy*scale));
+    // 用CSS显示尺寸换算，避免DPR导致的偏移放大
+    const nox=Math.max(-60,Math.min(60,baseOx+dx*(cvs.offsetWidth/r.width)));
+    const noy=Math.max(-60,Math.min(60,baseOy+dy*(cvs.offsetHeight/r.height)));
     const oxEl=document.getElementById('cloth-adj-ox'),oyEl=document.getElementById('cloth-adj-oy');
     if(oxEl)oxEl.value=Math.round(nox);
     if(oyEl)oyEl.value=Math.round(noy);
@@ -5654,61 +6021,108 @@ function _initClothAdjDrag(){
     e.preventDefault();
   };
   const onUp=()=>{dragging=false;};
+  // 修复：先清理上一次注册的 document 级监听，防止多次开关弹窗后监听器累积
+  if(cvs._adjDragCleanup)cvs._adjDragCleanup();
   cvs.addEventListener('mousedown',onDown);
   cvs.addEventListener('touchstart',onDown,{passive:false});
   document.addEventListener('mousemove',onMove);
   document.addEventListener('touchmove',onMove,{passive:false});
   document.addEventListener('mouseup',onUp);
   document.addEventListener('touchend',onUp);
+  cvs._adjDragCleanup=()=>{
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('touchmove',onMove);
+    document.removeEventListener('mouseup',onUp);
+    document.removeEventListener('touchend',onUp);
+  };
 }
 
 function reClothAdjPreview(){
   const cvs=document.getElementById('cloth-adj-canvas');if(!cvs)return;
   const ctx=cvs.getContext('2d');
-  const cx=cvs.width/2,cy=cvs.height/2;
+  const cid=_adjCid||S.equippedCloth||(S.ownedClothes&&S.ownedClothes[0]);
+  if(!cid)return;
+  const cx=cvs.width/2, cy=cvs.height/2;
   // 强制重置变换矩阵，防止异常导致残影
   ctx.setTransform(1,0,0,1,0,0);
   ctx.clearRect(0,0,cvs.width,cvs.height);
-  const cid=S.equippedCloth||(S.ownedClothes&&S.ownedClothes[0]);
-  if(!cid)return;
 
-  const sc=parseInt((document.getElementById('cloth-adj-scale')||{}).value||100)/100;
+  const sc_pct=parseInt((document.getElementById('cloth-adj-scale')||{}).value||100);
   const ox=parseInt((document.getElementById('cloth-adj-ox')||{}).value||0);
   const oy=parseInt((document.getElementById('cloth-adj-oy')||{}).value||0);
   const rot2=parseFloat((document.getElementById('cloth-adj-rot')||{}).value||0)*Math.PI/180;
   const scaleVal=document.getElementById('cloth-adj-scale-val');
-  if(scaleVal)scaleVal.textContent=Math.round(sc*100)+'%';
+  if(scaleVal)scaleVal.textContent=sc_pct+'%';
 
   const petImgKey=getCustomPetImgKey();
   const petImgData=localStorage.getItem(petImgKey);
   const stage=getEvoStage?applySkinStage(getEvoStage()):null;
   const breed=S.petBreed||'hamster';
 
+  // 宠物底图绘制
+  function _drawPetBase(){
+    if(petImgData){
+      // 修复闪烁：复用已缓存的图片对象，避免每次拖动都触发图片重新decode导致画布闪白
+      if(_adjPetImgCache&&_adjPetImgCacheSrc===petImgData){
+        ctx.setTransform(1,0,0,1,0,0);
+        ctx.clearRect(0,0,cvs.width,cvs.height);
+        const raw=localStorage.getItem(petImgKey+'_param');
+        const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
+        const size=Math.round(150*(p.scale||0.8));
+        const dx=cx+(p.offX||0), dy=cy+(p.offY||0);
+        const rv=(p.rotation||0)*Math.PI/180;
+        if(rv!==0){ctx.save();ctx.translate(dx,dy);ctx.rotate(rv);ctx.drawImage(_adjPetImgCache,-size/2,-size/2,size,size);ctx.restore();}
+        else ctx.drawImage(_adjPetImgCache,dx-size/2,dy-size/2,size,size);
+        _drawClothLayer();
+      } else {
+        const pi=new Image();
+        pi.onload=function(){
+          _adjPetImgCache=pi;
+          _adjPetImgCacheSrc=petImgData;
+          ctx.setTransform(1,0,0,1,0,0);
+          ctx.clearRect(0,0,cvs.width,cvs.height);
+          const raw=localStorage.getItem(petImgKey+'_param');
+          const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
+          // 用150px基准（与主canvas一致）
+          const size=Math.round(150*(p.scale||0.8));
+          const dx=cx+(p.offX||0), dy=cy+(p.offY||0);
+          const rv=(p.rotation||0)*Math.PI/180;
+          if(rv!==0){ctx.save();ctx.translate(dx,dy);ctx.rotate(rv);ctx.drawImage(pi,-size/2,-size/2,size,size);ctx.restore();}
+          else ctx.drawImage(pi,dx-size/2,dy-size/2,size,size);
+          _drawClothLayer();
+        };
+        pi.onerror=function(){if(stage){try{drawPetBreed(ctx,breed,cx,cy,stage);}catch(e){}}_drawClothLayer();};
+        pi.src=petImgData;
+      }
+    } else {
+      if(stage){try{drawPetBreed(ctx,breed,cx,cy,stage);}catch(e){}}
+      _drawClothLayer();
+    }
+  }
+
   function _drawClothLayer(){
-    const clothKey=getCustomClothImgKey();
-    const clothData=S.equippedCloth?_getClothImgDataWithScope(clothKey):null;
+    const clothKey='jbfarm_clothimg_'+cid;
+    // 用 _adjCid 对应的衣服key，不要用S.equippedCloth（可能未换上）
+    const clothData=localStorage.getItem(clothKey)?_getClothImgDataWithScope(clothKey):null;
     if(clothData){
       loadCustomPetImg(clothKey,function(cimg){
         if(!cimg)return;
-        const canvasW=cvs.width;
-        const raw=localStorage.getItem(clothKey+'_param');
-        const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
-        const baseSize=Math.round(canvasW*(p.scale!=null?p.scale:0.8));
-        const adjustedSize=Math.round(baseSize*sc);
-        const dx=cx+(p.offX||0)+ox;
-        const dy=cy+(p.offY||0)+oy;
-        // 修复：正确对自定义衣服图片应用旋转
+        // 统一用150px基准，与主canvas(_drawImgWithParam)一致，消除预览≠实际的问题
+        const sc=sc_pct/100;
+        const size=Math.round(150*sc);
+        const dx=cx+ox, dy=cy+oy;
         ctx.save();
         ctx.translate(dx,dy);
         if(rot2!==0)ctx.rotate(rot2);
-        ctx.drawImage(cimg,-adjustedSize/2,-adjustedSize/2,adjustedSize,adjustedSize);
+        ctx.drawImage(cimg,-size/2,-size/2,size,size);
         ctx.restore();
       });
     } else {
-      // 系统衣服：用try-finally确保save/restore配对，彻底杜绝残影
+      // 系统衣服：临时清除保存的参数，用当前滑块值直接绘制
       const tmpKey='jbfarm_clothsys_'+cid;
       const savedParam=localStorage.getItem(tmpKey);
       localStorage.removeItem(tmpKey);
+      const sc=sc_pct/100;
       ctx.save();
       try{
         ctx.translate(cx+ox,cy+oy);
@@ -5723,55 +6137,31 @@ function reClothAdjPreview(){
     }
   }
 
-  if(petImgData){
-    loadCustomPetImg(petImgKey,function(img){
-      if(!img){
-        if(stage){try{drawPetBreed(ctx,breed,cx,cy,stage);}catch(e){}}
-        _drawClothLayer();return;
-      }
-      ctx.setTransform(1,0,0,1,0,0);
-      ctx.clearRect(0,0,cvs.width,cvs.height);
-      try{
-        const raw=localStorage.getItem(petImgKey+'_param');
-        const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
-        const size=Math.round(cvs.width*(p.scale!=null?p.scale:0.8));
-        const dx=cx+(p.offX||0),dy=cy+(p.offY||0);
-        const rot=(p.rotation||0)*Math.PI/180;
-        if(rot!==0){ctx.save();ctx.translate(dx,dy);ctx.rotate(rot);ctx.drawImage(img,-size/2,-size/2,size,size);ctx.restore();}
-        else{ctx.drawImage(img,dx-size/2,dy-size/2,size,size);}
-      }catch(e){}
-      _drawClothLayer();
-    });
-  } else {
-    if(stage){try{drawPetBreed(ctx,breed,cx,cy,stage);}catch(e){}}
-    _drawClothLayer();
-  }
+  _drawPetBase();
 }
 
 function confirmClothAdj(){
-  const cid=S.equippedCloth||(S.ownedClothes&&S.ownedClothes[0]);
+  const cid=_adjCid||S.equippedCloth||(S.ownedClothes&&S.ownedClothes[0]);
   if(!cid)return;
-  const sc=parseInt((document.getElementById('cloth-adj-scale')||{}).value||100);
+  const sc_pct=parseInt((document.getElementById('cloth-adj-scale')||{}).value||100);
   const ox=parseInt((document.getElementById('cloth-adj-ox')||{}).value||0);
   const oy=parseInt((document.getElementById('cloth-adj-oy')||{}).value||0);
   const rot=parseFloat((document.getElementById('cloth-adj-rot')||{}).value||0);
-  // 判断是否有自定义衣服图片，分别写入不同的key
-  const clothKey=getCustomClothImgKey();
-  const clothData=S.equippedCloth?_getClothImgDataWithScope(clothKey):null;
+  const clothKey='jbfarm_clothimg_'+cid;
+  const clothData=localStorage.getItem(clothKey)?_getClothImgDataWithScope(clothKey):null;
   if(clothData){
-    // 自定义衣服图片：合并参数写入_param key
-    const baseParamRaw=localStorage.getItem(clothKey+'_param');
-    const bp=baseParamRaw?JSON.parse(baseParamRaw):{scale:0.8,offX:0,offY:0,rotation:0};
-    const newScale=(bp.scale||0.8)*(sc/100);
-    const newOffX=(bp.offX||0)+ox;
-    const newOffY=(bp.offY||0)+oy;
-    const newRot=(bp.rotation||0)+rot;
-    localStorage.setItem(clothKey+'_param',JSON.stringify({scale:newScale,offX:newOffX,offY:newOffY,rotation:newRot}));
+    // 自定义衣服图：直接以当前滑块值为准（绝对值，不累加）
+    // scale以150px为基准存储（与主canvas一致）
+    localStorage.setItem(clothKey+'_param',JSON.stringify({
+      scale:sc_pct/100,
+      offX:ox,
+      offY:oy,
+      rotation:rot
+    }));
     delete _petImgCache[clothKey];
   } else {
-    // 系统衣服：写入jbfarm_clothsys_key
-    const sysKey='jbfarm_clothsys_'+cid;
-    localStorage.setItem(sysKey,JSON.stringify({scale:sc,offsetX:ox,offsetY:oy,rotation:rot}));
+    // 系统衣服
+    localStorage.setItem('jbfarm_clothsys_'+cid,JSON.stringify({scale:sc_pct,offsetX:ox,offsetY:oy,rotation:rot}));
   }
   closeOverlay('cloth-adj-ov');
   drawPet();
@@ -5802,6 +6192,8 @@ function initGame(){petX=75;petY=76;petWalking=false;
   if(_savedTheme==='custom'){_applyCustomCSSVars(_loadCustomColors());}
   _initSeasonCanvas();
   applyTheme(_savedTheme,false);
+  // 应用字体设置
+  _applyFontSettings();
   // 更新行走开关UI
   const tog=document.getElementById('walk-toggle'),ico=document.getElementById('walk-ico'),lbl=document.getElementById('walk-lbl');
   if(tog)tog.classList.remove('on');if(ico)ico.textContent='🧍';if(lbl)lbl.textContent='立正模式';
@@ -5814,6 +6206,8 @@ function initGame(){petX=75;petY=76;petWalking=false;
   if(_t==='custom'){try{_applyCustomCSSVars(_loadCustomColors());}catch(e){}}
   document.body.setAttribute('data-theme',(THEME_DEFS[_t]||{}).body||'');
   _initSeasonCanvas();_startSeasonEffect(_t);
+  // 应用字体设置（登录页也生效）
+  try{_applyFontSettings();}catch(e){}
   setInterval(naturalDecay,60000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&CURRENT_ACC_ID){if(!petAF)startPetAnim();else setTimeout(drawPet,100);}});
 })();

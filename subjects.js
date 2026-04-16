@@ -18,7 +18,7 @@ window.SUBJECTS = [
     desc:'从世界看中国·自然环境·资源·经济·四大地理区域', qbKey: null },
   { id:'geoh',     name:'高中地理',  icon:'🗺️', color:'#0848a0',
     desc:'必修一/二、选修一/二/三', qbKey: 'QB_GEO_HIGH' },
-  { id:'english',  name:'英语学习',  icon:'🇬🇧', color:'#7030b0',
+  { id:'english',  name:'英语学习',  icon:'🛫', color:'#7030b0',
     desc:'词汇·语法·旅行场景·文化礼仪', qbKey: 'QB_ENGLISH' },
 ];
 

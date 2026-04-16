@@ -1253,7 +1253,7 @@ body[data-theme="custom"]{
 
 <!-- 主题切换弹窗 -->
 <div class="overlay" id="theme-ov">
-  <div class="modal theme-modal" style="max-width:460px">
+  <div class="modal theme-modal" style="max-width:460px;max-height:90vh;overflow-y:auto">
     <div class="mttl">🎨 界面主题</div>
     <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">点击预览，选中后点击确认应用。</div>
     <div class="theme-grid" id="theme-grid"></div>
@@ -1261,6 +1261,24 @@ body[data-theme="custom"]{
     <div style="display:flex;align-items:center;justify-content:center;margin:6px 0 2px">
       <button id="fx-toggle-btn" onclick="toggleSeasonFX()" style="padding:5px 16px;border-radius:99px;border:1.5px solid var(--border);background:var(--panel);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--muted);transition:all .2s">✨ 关闭特效</button>
     </div>
+
+    <!-- 字体大小 -->
+    <div style="margin:10px 0 4px;padding:10px 12px;background:var(--panel);border-radius:11px;border:1.5px solid var(--border)">
+      <div style="font-size:.72rem;font-weight:600;color:var(--text);margin-bottom:7px">🔤 全局字体大小</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="font-size-btns"></div>
+    </div>
+
+    <!-- 字体颜色 -->
+    <div style="margin:6px 0 4px;padding:10px 12px;background:var(--panel);border-radius:11px;border:1.5px solid var(--border)">
+      <div style="font-size:.72rem;font-weight:600;color:var(--text);margin-bottom:7px">🎨 全局字体颜色</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="color" id="font-color-picker" value="#1e1814" style="width:40px;height:30px;border:none;border-radius:6px;cursor:pointer;padding:0;background:none">
+        <span style="font-size:.68rem;color:var(--muted);flex:1">选择颜色后点击应用</span>
+        <button onclick="applyFontColor()" style="padding:5px 11px;border-radius:8px;border:none;background:var(--dgreen);color:#fff;font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">应用</button>
+        <button id="font-color-clear" onclick="clearFontColor()" style="display:none;padding:5px 8px;border-radius:8px;border:1.5px solid var(--border);background:var(--panel);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--muted)">恢复</button>
+      </div>
+    </div>
+
     <div class="mbrow">
       <button class="mbtn mb-cancel" onclick="cancelTheme()">取消</button>
       <button class="mbtn mb-ok on" onclick="confirmTheme()">✅ 应用主题</button>
@@ -1337,16 +1355,16 @@ body[data-theme="custom"]{
     </div>
     <div style="margin-bottom:7px">
       <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">大小 <span id="cloth-adj-scale-val" style="color:var(--dgreen)">100%</span></label>
-      <input type="range" id="cloth-adj-scale" min="40" max="200" value="100" style="width:100%" oninput="document.getElementById('cloth-adj-scale-val').textContent=this.value+'%';reClothAdjPreview()">
+      <input type="range" id="cloth-adj-scale" min="10" max="200" value="100" style="width:100%" oninput="document.getElementById('cloth-adj-scale-val').textContent=this.value+'%';reClothAdjPreview()">
     </div>
     <div style="display:flex;gap:8px;margin-bottom:7px">
       <div style="flex:1">
         <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">左右偏移</label>
-        <input type="range" id="cloth-adj-ox" min="-40" max="40" value="0" style="width:100%" oninput="reClothAdjPreview()">
+        <input type="range" id="cloth-adj-ox" min="-60" max="60" value="0" style="width:100%" oninput="reClothAdjPreview()">
       </div>
       <div style="flex:1">
         <label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:3px">上下偏移</label>
-        <input type="range" id="cloth-adj-oy" min="-40" max="40" value="0" style="width:100%" oninput="reClothAdjPreview()">
+        <input type="range" id="cloth-adj-oy" min="-60" max="60" value="0" style="width:100%" oninput="reClothAdjPreview()">
       </div>
     </div>
     <div style="margin-bottom:10px">
@@ -1709,8 +1727,21 @@ body[data-theme="custom"]{
       </div>
     </div>
 
+    <!-- 编辑模式提示（编辑已领养宠物时显示） -->
+    <div id="cw-edit-mode-tip" style="display:none;flex-shrink:0;background:rgba(74,144,217,.1);border:1.5px solid rgba(74,144,217,.3);border-radius:9px;padding:6px 12px;font-size:.68rem;color:#2060a0;margin-bottom:6px">
+      <span>✏️</span><span id="cw-edit-mode-tip-text">正在编辑定制宠物</span>
+      <button onclick="_cwEditingPetId=null;openCustomWorkshop()" style="margin-left:auto;padding:2px 8px;border-radius:6px;border:1px solid #4a90d9;background:transparent;color:#2060a0;font-size:.6rem;cursor:pointer;font-family:inherit">↩ 返回当前宠物</button>
+    </div>
+
     <!-- 内容面板：可滚动 -->
     <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px">
+
+      <!-- ═══ 已领养定制宠物列表 ═══ -->
+      <div class="cw-section" style="padding:10px 12px">
+        <div class="cw-label" style="margin-bottom:6px">🐾 我的定制宠物</div>
+        <div id="cw-adopted-list"></div>
+        <div style="font-size:.62rem;color:var(--muted);margin-top:4px">点击宠物卡片可再次编辑属性</div>
+      </div>
 
       <!-- ═══ 基础面板 ═══ -->
       <div id="cwpanel-basic">
@@ -1755,21 +1786,12 @@ body[data-theme="custom"]{
           <div style="clear:both"></div>
         </div>
 
-        <!-- 锁定展示形态 -->
+        <!-- 进化阶段名称设置（替代原来的"锁定展示形态"） -->
         <div class="cw-section">
-          <div class="cw-label">🔒 锁定展示形态 <span style="font-size:.62rem;color:var(--muted);font-weight:400">（免费）</span></div>
-          <div style="font-size:.68rem;color:var(--muted);margin-bottom:5px">让宠物在页面永远显示指定等级的外形，实际等级经验不变</div>
-          <div style="display:flex;gap:6px;align-items:center">
-            <select id="cw-display-level" style="flex:1;padding:6px 8px;border-radius:9px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-size:.72rem;font-family:'Noto Sans SC',sans-serif">
-              <option value="">跟随实际等级（默认）</option>
-              <option value="1">锁定 Lv.1 形态</option>
-              <option value="2">锁定 Lv.2 形态</option>
-              <option value="3">锁定 Lv.3 形态</option>
-              <option value="4">锁定 Lv.4 形态</option>
-              <option value="5">锁定 Lv.5 最终形态</option>
-            </select>
-            <button onclick="cwApply('displaylevel')" class="cw-btn">保存</button>
-          </div>
+          <div class="cw-label">✏️ 自定义进化阶段名称 <span style="font-size:.62rem;color:var(--muted);font-weight:400">（免费）</span></div>
+          <div style="font-size:.68rem;color:var(--muted);margin-bottom:8px;line-height:1.5">为每个等级设置专属形象名称。留空则使用默认名称。</div>
+          <div id="cw-stage-names"></div>
+          <button onclick="cwSaveStageNames()" class="cw-btn" style="width:100%;margin-top:4px">✅ 保存全部阶段名称</button>
         </div>
 
         <!-- 自定义形象图 -->
@@ -1779,6 +1801,13 @@ body[data-theme="custom"]{
             <button onclick="openPetImageUpload()" style="flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--green);background:rgba(100,160,100,.07);color:var(--dgreen);font-size:.72rem;cursor:pointer;font-family:inherit">📤 上传宠物图</button>
             <button onclick="cwClearPetImg()" style="padding:8px 10px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;color:var(--muted);font-family:inherit">🗑️</button>
           </div>
+        </div>
+
+        <!-- 领养定制宠物 -->
+        <div class="cw-section" style="border-color:rgba(160,100,220,.35);background:rgba(160,100,220,.04)">
+          <div class="cw-label" style="color:#7040b0">🐣 领养为独立宠物</div>
+          <div style="font-size:.68rem;color:var(--muted);margin-bottom:8px;line-height:1.6">将当前配置（品种、名字、等级、阶段名称、衣服、形象图、对话）另存为一只<b style="color:#7040b0">全新的独立宠物</b>，不覆盖已有宠物。点击「一键结算」后会显示配置汇总供你确认。</div>
+          <button onclick="cwAdoptPet()" style="width:100%;padding:9px;border-radius:10px;border:none;background:linear-gradient(135deg,#9060d0,#6040a0);color:#fff;font-size:.76rem;font-weight:600;cursor:pointer;font-family:'Noto Sans SC',sans-serif;letter-spacing:.5px">🐣 一键结算 · 领养为新宠物</button>
         </div>
 
       </div><!-- end cwpanel-basic -->

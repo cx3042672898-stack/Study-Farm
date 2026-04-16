@@ -1098,7 +1098,7 @@ body[data-theme="custom"]{
                 <button onclick="openSystemClothAdjust()" style="flex:1;padding:7px 6px;border-radius:9px;border:1.5px solid var(--purple);background:rgba(160,122,208,.07);color:var(--purple);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📐 调整衣服位置</button>
                 <button onclick="clearPetCustomImg()" style="padding:7px 10px;border-radius:9px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">↩ 恢复默认</button>
               </div>
-              <div style="font-size:.58rem;color:var(--muted);margin-top:4px">支持 PNG/JPG，建议正方形，≤500KB；图片存储在本地，不上传服务器</div>
+              <div style="font-size:.58rem;color:var(--muted);margin-top:4px">支持 PNG/JPG，建议正方形，≤2MB；图片存储在本地，不上传服务器</div>
             </div>
           </div>
           <div class="card">
@@ -1736,13 +1736,6 @@ body[data-theme="custom"]{
     <!-- 内容面板：可滚动 -->
     <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px">
 
-      <!-- ═══ 已领养定制宠物列表 ═══ -->
-      <div class="cw-section" style="padding:10px 12px">
-        <div class="cw-label" style="margin-bottom:6px">🐾 我的定制宠物</div>
-        <div id="cw-adopted-list"></div>
-        <div style="font-size:.62rem;color:var(--muted);margin-top:4px">点击宠物卡片可再次编辑属性</div>
-      </div>
-
       <!-- ═══ 基础面板 ═══ -->
       <div id="cwpanel-basic">
 
@@ -1752,7 +1745,7 @@ body[data-theme="custom"]{
           <div style="display:flex;gap:6px;align-items:center">
             <input class="ci" id="cw-name-input" placeholder="输入新名字" maxlength="10" style="flex:1;user-select:text">
             <button onclick="cwRandomName()" style="padding:6px 9px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.7rem;cursor:pointer;font-family:inherit">随机</button>
-            <button onclick="cwApply('name')" class="cw-btn">🪙30</button>
+            <button onclick="cwApply('name')" class="cw-btn" style="background:var(--green)">✅ 保存（免费）</button>
           </div>
         </div>
 
@@ -1789,18 +1782,9 @@ body[data-theme="custom"]{
         <!-- 进化阶段名称设置（替代原来的"锁定展示形态"） -->
         <div class="cw-section">
           <div class="cw-label">✏️ 自定义进化阶段名称 <span style="font-size:.62rem;color:var(--muted);font-weight:400">（免费）</span></div>
-          <div style="font-size:.68rem;color:var(--muted);margin-bottom:8px;line-height:1.5">为每个等级设置专属形象名称。留空则使用默认名称。</div>
+          <div style="font-size:.68rem;color:var(--muted);margin-bottom:8px;line-height:1.5">为每个等级设置专属名称，并可上传该阶段专属形象图。不上传则沿用前一阶段图，无图则显示像素画。</div>
           <div id="cw-stage-names"></div>
           <button onclick="cwSaveStageNames()" class="cw-btn" style="width:100%;margin-top:4px">✅ 保存全部阶段名称</button>
-        </div>
-
-        <!-- 自定义形象图 -->
-        <div class="cw-section">
-          <div class="cw-label">🖼️ 自定义形象图 <span style="font-size:.62rem;color:var(--muted);font-weight:400">（免费，最大2MB）</span></div>
-          <div style="display:flex;gap:6px">
-            <button onclick="openPetImageUpload()" style="flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--green);background:rgba(100,160,100,.07);color:var(--dgreen);font-size:.72rem;cursor:pointer;font-family:inherit">📤 上传宠物图</button>
-            <button onclick="cwClearPetImg()" style="padding:8px 10px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;color:var(--muted);font-family:inherit">🗑️</button>
-          </div>
         </div>
 
         <!-- 领养定制宠物 -->

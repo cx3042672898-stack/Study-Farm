@@ -3327,8 +3327,7 @@ function drawCloth(ctx,cx,cy,previewId){
     ctx.fillStyle='#4080ff';ctx.beginPath();ctx.arc(cx,cy+6,4,0,Math.PI*2);ctx.fill();
     ctx.fillStyle='#fff';ctx.font='7px sans-serif';ctx.fillText('✦',cx-3,cy+9);
   }
-  if(_hasAdj)ctx.restore();
-  else ctx.restore();
+  ctx.restore();
 }
 
 // ─── PET UI ──────────────────────────────────────
@@ -6225,8 +6224,9 @@ function openSystemClothAdjust(overrideCid){
   if(_adjCvs)_adjCvs._dragInited=false;
   // 清除宠物底图缓存（换了宠物或重新打开时需要重新加载）
   _adjPetImgCache=null;_adjPetImgCacheSrc=null;
-  reClothAdjPreview();
+  // 修复：先打开弹窗，再刷新预览，防止预览报错导致弹窗永远不弹出
   openOverlay('cloth-adj-ov');
+  try{reClothAdjPreview();}catch(e){console.warn('cloth adj preview err',e);}
   setTimeout(()=>_initClothAdjDrag(),100);
 }
 

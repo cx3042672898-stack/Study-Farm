@@ -40,8 +40,8 @@ window.FIREBASE_CONFIG = {
   messagingSenderId: "889002649188",
   appId: "1:889002649188:web:472f687a3d11fbd8ebe171",
   measurementId: "G-NQS8RVVQ15",
-  // ↓ 新增这一行
-  databaseURL: "https://studyfarmgame-default-rttdb.firebaseio.com"
+// 正确（rtdb）
+databaseURL: "https://studyfarmgame-default-rtdb.firebaseio.com"
 };
 
 // ─── 功能开关 ─────────────────────────────────────────

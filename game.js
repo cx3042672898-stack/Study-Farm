@@ -164,7 +164,7 @@ function renderLoginScreen(){
       let avatarHtml='';
       if(imgData){avatarHtml=`<img src="${imgData}" style="width:42px;height:42px;border-radius:50%;object-fit:cover;display:block">`;}
       else{const ico=acc.playerAvatar||(acc.level>=5?'🌟':acc.level>=3?'⭐':'🌾');avatarHtml=ico;}
-      const shortId=acc.id?acc.id.slice(-6).toUpperCase():'??????';d.innerHTML=`<div class="acc-avatar">${avatarHtml}</div><div class="acc-info"><div class="acc-name">${acc.name}<span style="font-size:.58rem;color:var(--muted);margin-left:5px;font-family:monospace;opacity:.7">#${shortId}</span></div><div class="acc-meta">Lv.${acc.level||1} · ⭐${acc.score||0}分${acc.classId?' · '+acc.classId:''}</div></div><div class="acc-arrow">${acc.pin?'🔒':'▶'}</div>`;
+      const shortId=acc.id?acc.id.slice(-6).toUpperCase():'??????';d.innerHTML=`<div class="acc-avatar">${avatarHtml}</div><div class="acc-info"><div class="acc-name">${acc.name}</div><div class="acc-meta">Lv.${acc.level||1} · ⭐${acc.score||0}分${acc.classId?' · '+acc.classId:''} <span style="display:inline-block;font-size:.55rem;font-family:monospace;padding:1px 5px;border-radius:4px;background:rgba(90,154,90,.12);color:var(--dgreen);letter-spacing:.05em;margin-left:2px">${shortId}</span></div></div><div class="acc-arrow">${acc.pin?'🔒':'▶'}</div>`;
       d.onclick=()=>loginAcc(acc);containerEl.appendChild(d);
     });
   }

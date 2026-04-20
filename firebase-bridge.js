@@ -20,9 +20,10 @@
   }
 
   // ── 游戏存储键（与 game.js 一致） ──────────────────────
-  const ACCOUNTS_KEY  = 'jbfarm_accounts_v5';
-  const CLASS_KEY     = 'jbfarm_class_v5';
-  const SAVE_PREFIX   = 'jbfarm_save_';
+  const ACCOUNTS_KEY    = 'jbfarm_accounts_v5';
+  const CLASS_KEY       = 'jbfarm_class_v5';
+  const CLASS_ADMIN_KEY = 'jbfarm_class_admins';   // 教师-班级绑定表
+  const SAVE_PREFIX     = 'jbfarm_save_';
 
   // ── 本桥专用的存储键 ────────────────────────────────────
   const DEVICE_ID_KEY = 'jbfarm_fb_device';
@@ -201,6 +202,9 @@
 
       _origSetItem.call(localStorage, LAST_SYNC_KEY, Date.now().toString());
 
+      // 也拉取班级数据（教师视图需要）
+      await pullClassData();
+
     } catch (err) {
       log('拉取云存档失败（可能是无网络）:', err.message);
     }
@@ -305,6 +309,113 @@
   }, 1500);
 
   // ══════════════════════════════════════════════════════
+  // 班级数据 & 教师绑定同步（shared/classrooms 文档）
+  // ══════════════════════════════════════════════════════
+
+  /** 将本地班级花名册 + 教师绑定推送到 Firestore 共享文档 */
+  async function pushClassData() {
+    if (!_db || !_ready) return;
+    try {
+      const classData   = JSON.parse(localStorage.getItem(CLASS_KEY)       || '{}');
+      const classAdmins = JSON.parse(localStorage.getItem(CLASS_ADMIN_KEY) || '{}');
+      await _db.collection('shared').doc('classrooms').set({
+        classData,
+        classAdmins,
+        updatedAt: Date.now(),
+      }, { merge: true });
+      log('✅ 班级数据已推送');
+    } catch (err) {
+      log('推送班级数据失败:', err.message);
+    }
+  }
+
+  /** 从 Firestore 拉取班级花名册 + 教师绑定，合并到本地 */
+  async function pullClassData() {
+    if (!_db) return;
+    try {
+      const snap = await _db.collection('shared').doc('classrooms').get();
+      if (!snap.exists) {
+        // 云端没有 → 把本地的推上去
+        await pushClassData();
+        return;
+      }
+      const data = snap.data();
+      const cloudClassData   = data.classData   || {};
+      const cloudClassAdmins = data.classAdmins || {};
+
+      // 合并班级花名册（云端有、本地没有的班级 → 加进来）
+      const localClassData = JSON.parse(localStorage.getItem(CLASS_KEY) || '{}');
+      let classChanged = false;
+      Object.keys(cloudClassData).forEach(cls => {
+        if (!localClassData[cls]) {
+          localClassData[cls] = cloudClassData[cls];
+          classChanged = true;
+        } else {
+          // 班级存在 → 把云端有而本地没有的成员补进来
+          const localNames = new Set(localClassData[cls].map(m => m.name));
+          cloudClassData[cls].forEach(cm => {
+            if (!localNames.has(cm.name)) {
+              localClassData[cls].push(cm);
+              classChanged = true;
+            }
+          });
+          // 同步移除：本地有但云端已删除的班级成员
+          const cloudNames = new Set(cloudClassData[cls].map(m => m.name));
+          const before = localClassData[cls].length;
+          localClassData[cls] = localClassData[cls].filter(m => cloudNames.has(m.name));
+          if (localClassData[cls].length !== before) classChanged = true;
+        }
+      });
+      // 云端已删除的班级 → 本地也删
+      Object.keys(localClassData).forEach(cls => {
+        if (!(cls in cloudClassData)) {
+          delete localClassData[cls];
+          classChanged = true;
+        }
+      });
+
+      if (classChanged) {
+        _isSyncing = true;
+        _origSetItem.call(localStorage, CLASS_KEY, JSON.stringify(localClassData));
+        _isSyncing = false;
+        log('班级花名册已同步');
+      }
+
+      // 合并教师绑定（云端为准）
+      const localAdmins = JSON.parse(localStorage.getItem(CLASS_ADMIN_KEY) || '{}');
+      let adminsChanged = false;
+      Object.keys(cloudClassAdmins).forEach(cls => {
+        if (JSON.stringify(localAdmins[cls]) !== JSON.stringify(cloudClassAdmins[cls])) {
+          localAdmins[cls] = cloudClassAdmins[cls];
+          adminsChanged = true;
+        }
+      });
+      // 云端删除的教师绑定 → 本地也删
+      Object.keys(localAdmins).forEach(cls => {
+        if (!(cls in cloudClassAdmins)) { delete localAdmins[cls]; adminsChanged = true; }
+      });
+      if (adminsChanged) {
+        _isSyncing = true;
+        _origSetItem.call(localStorage, CLASS_ADMIN_KEY, JSON.stringify(localAdmins));
+        _isSyncing = false;
+        log('教师绑定已同步');
+      }
+
+      if (classChanged || adminsChanged) {
+        if (typeof window.renderTeacherClassView === 'function') window.renderTeacherClassView();
+        if (typeof window.renderLoginScreen      === 'function') window.renderLoginScreen();
+      }
+
+    } catch (err) {
+      log('拉取班级数据失败:', err.message);
+    }
+  }
+
+  const debouncedPushClass = debounce(async () => {
+    await pushClassData();
+  }, 1500);
+
+  // ══════════════════════════════════════════════════════
   // 云端删除单个账号（注销时同步删除 Firestore 文档）
   // ══════════════════════════════════════════════════════
   async function deleteCloudAccount(accountId) {
@@ -340,8 +451,12 @@
       }
 
       if (_isSyncing || !_ready || !window.FIREBASE_OPTIONS.cloudSave) return;
-      if (key === ACCOUNTS_KEY || key === CLASS_KEY || key.startsWith(SAVE_PREFIX)) {
+      if (key === ACCOUNTS_KEY || key.startsWith(SAVE_PREFIX)) {
         debouncedPush();
+      }
+      // 班级花名册或教师绑定变化 → 推到 shared/classrooms
+      if (key === CLASS_KEY || key === CLASS_ADMIN_KEY) {
+        debouncedPushClass();
       }
       if (key.startsWith(SAVE_PREFIX)) {
         debouncedSyncScore();

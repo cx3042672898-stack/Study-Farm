@@ -226,11 +226,29 @@
     const localAccounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || '[]');
     let changed = false;
     cloudAccounts.forEach(ca => {
-      if (!localAccounts.find(la => la.id === ca.id)) {
+      const idx = localAccounts.findIndex(la => la.id === ca.id);
+      if (idx < 0) {
+        // 本地没有这个账号 → 新增
         localAccounts.push(ca);
         changed = true;
         const save = cloudSaves[ca.id];
         if (save) _origSetItem.call(localStorage, SAVE_PREFIX + ca.id, JSON.stringify(save));
+      } else {
+        // 本地已有这个账号 → 用云端更新 pin 等字段（cloud 更新时间更新则覆盖）
+        const local = localAccounts[idx];
+        const cloudTs = ca.lastActive || 0;
+        const localTs = local.lastActive || 0;
+        if (cloudTs > localTs) {
+          // 云端版本更新：合并（保留本地 lastActive，更新 pin / name / score 等）
+          localAccounts[idx] = { ...local, ...ca };
+          changed = true;
+          const save = cloudSaves[ca.id];
+          if (save) _origSetItem.call(localStorage, SAVE_PREFIX + ca.id, JSON.stringify(save));
+        } else if (!local.pin && ca.pin) {
+          // 本地没密码但云端有：直接补上（避免密码丢失）
+          localAccounts[idx] = { ...local, pin: ca.pin };
+          changed = true;
+        }
       }
     });
     if (changed) {
@@ -287,11 +305,40 @@
   }, 1500);
 
   // ══════════════════════════════════════════════════════
+  // 云端删除单个账号（注销时同步删除 Firestore 文档）
+  // ══════════════════════════════════════════════════════
+  async function deleteCloudAccount(accountId) {
+    if (!_db || !_ready) return;
+    try {
+      await _db.collection('accounts').doc(safeKey(String(accountId))).delete();
+      log(`✅ 云端账号已删除：${accountId}`);
+      showStatus('☁️ 账号已云端注销 ✅');
+    } catch (err) {
+      log('删除云端账号失败:', err.message);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════
   // 拦截 localStorage.setItem
   // ══════════════════════════════════════════════════════
   function hookLocalStorage() {
     localStorage.setItem = function (key, value) {
-      _origSetItem.call(localStorage, key, value);
+      // 删除检测：写入前先比对账号列表，找出被删掉的账号，同步删云端
+      if (key === ACCOUNTS_KEY && !_isSyncing && _ready) {
+        const oldList = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || '[]');
+        _origSetItem.call(localStorage, key, value);
+        const newList = JSON.parse(value || '[]');
+        const deletedIds = oldList
+          .filter(a => !newList.find(n => n.id === a.id))
+          .map(a => a.id);
+        if (deletedIds.length > 0) {
+          log(`检测到 ${deletedIds.length} 个账号被删除，同步到云端…`);
+          deletedIds.forEach(id => deleteCloudAccount(id));
+        }
+      } else {
+        _origSetItem.call(localStorage, key, value);
+      }
+
       if (_isSyncing || !_ready || !window.FIREBASE_OPTIONS.cloudSave) return;
       if (key === ACCOUNTS_KEY || key === CLASS_KEY || key.startsWith(SAVE_PREFIX)) {
         debouncedPush();

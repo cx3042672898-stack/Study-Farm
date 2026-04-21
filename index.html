@@ -768,6 +768,7 @@ body[data-theme="custom"]{
         <div class="account-list" id="account-list-dt"></div>
         <div class="new-acc-btn" onclick="startCreateAccount()">➕ 新建账号</div>
         <div class="ls-import-link" onclick="openImportClass()">🏫 批量导入班级名单</div>
+        <div class="ls-import-link" onclick="openBatchDeleteModal()" style="color:var(--red)">🗑️ 批量管理账号</div>
       </div>
       <div id="teacher-view-dt" style="width:100%;display:none">
         <div id="class-list-dt" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
@@ -796,6 +797,7 @@ body[data-theme="custom"]{
       <div class="account-list" id="account-list"></div>
       <div class="new-acc-btn" onclick="startCreateAccount()">➕ 新建账号</div>
       <div class="ls-import-link" onclick="openImportClass()">🏫 批量导入班级名单</div>
+      <div class="ls-import-link" onclick="openBatchDeleteModal()" style="color:var(--red)">🗑️ 批量管理账号</div>
     </div>
     <!-- 教师视图：班级列表 -->
     <div id="teacher-view" style="width:100%;max-width:420px;display:none">
@@ -1687,10 +1689,71 @@ body[data-theme="custom"]{
   </div>
 </div>
 
+<!-- 批量删除账号弹窗 -->
+<div class="overlay" id="batch-delete-ov">
+  <div class="modal" style="max-height:88vh;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="mttl" style="margin-bottom:0">🗑️ 批量管理账号</div>
+      <span onclick="document.getElementById('batch-delete-ov').classList.remove('on')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);padding:2px 6px">✕</span>
+    </div>
+    <div style="font-size:.7rem;color:var(--muted);margin-bottom:10px;line-height:1.65;background:rgba(224,85,85,.05);border-radius:9px;padding:8px 10px">
+      🗑️ 勾选要删除的账号，点击确认后批量删除。<br>
+      🔒 <b>有密码的账号</b>将弹窗验证，验证失败可选择跳过，继续删除其他账号。
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding:0 2px">
+      <span style="font-size:.68rem;color:var(--muted)" id="bd-select-hint">已选 0 个账号</span>
+      <button onclick="toggleSelectAllBatchDelete()" id="bd-select-all-btn" style="padding:3px 10px;border-radius:7px;border:1.5px solid var(--border);background:transparent;font-size:.65rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">全选</button>
+    </div>
+    <div id="batch-delete-list" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:5px"></div>
+    <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+      <button onclick="startBatchDelete()" id="bd-confirm-btn" style="width:100%;padding:10px;border-radius:10px;border:none;background:var(--red);color:#fff;font-size:.82rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;font-weight:500">🗑️ 删除选中的账号</button>
+    </div>
+  </div>
+</div>
+
+<!-- 批量删除—密码账号处理弹窗 -->
+<div class="overlay" id="bd-pin-ov" style="z-index:310">
+  <div class="modal" style="max-width:340px;text-align:center">
+    <div style="font-size:2rem;margin-bottom:6px">🔒</div>
+    <div class="mttl" id="bd-pin-title">账号设有密码</div>
+    <div style="font-size:.74rem;color:var(--muted);margin-bottom:14px;line-height:1.7;white-space:pre-line" id="bd-pin-msg"></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button onclick="_bdEnterPin()" style="padding:10px;border-radius:10px;border:1.5px solid var(--red);background:rgba(224,85,85,.07);color:var(--red);font-size:.8rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;font-weight:500">🔑 输入密码删除此账号</button>
+      <button onclick="_bdSkipAcc()" style="padding:10px;border-radius:10px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:.8rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">⏭️ 跳过此账号，继续删除下一个</button>
+      <button onclick="_bdCancelAll()" style="padding:8px;border-radius:9px;border:none;background:transparent;color:var(--muted);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">❌ 取消整个批量删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 世界模式选择弹窗 -->
+<div class="overlay" id="world-mode-ov">
+  <div class="modal" style="max-width:380px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div class="mttl" style="margin-bottom:0">🌍 选择你的冒险世界</div>
+      <span onclick="document.getElementById('world-mode-ov').classList.remove('on')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);padding:2px 6px">✕</span>
+    </div>
+    <div style="font-size:.74rem;color:var(--muted);text-align:center;margin-bottom:14px;line-height:1.7">每位小农夫都可以选择自己的冒险方式～<br>随时切换，数据安全有保障 🌱</div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+      <!-- 共享世界 -->
+      <div id="wm-cloud-card" onclick="setWorldMode('cloud')" style="padding:14px 16px;border-radius:14px;border:2px solid var(--border);background:rgba(100,160,100,.04);cursor:pointer;transition:all .2s;text-align:center" onmouseenter="this.style.transform='scale(1.01)'" onmouseleave="this.style.transform='scale(1)'">
+        <div style="font-size:2.2rem;margin-bottom:6px">🌐</div>
+        <div style="font-weight:700;font-size:.9rem;color:var(--dgreen);margin-bottom:5px">共享世界</div>
+        <div style="font-size:.68rem;color:var(--muted);line-height:1.7">☁️ 存档漫游云端，换个设备也能继续种田！<br>与小伙伴一起出现在班级排行榜上～</div>
+        <div style="margin-top:8px;font-size:.62rem;padding:3px 10px;border-radius:99px;background:rgba(100,160,100,.1);color:var(--dgreen);display:inline-block">✅ 推荐多设备用户</div>
+      </div>
+      <!-- 独立世界 -->
+      <div id="wm-local-card" onclick="setWorldMode('local')" style="padding:14px 16px;border-radius:14px;border:2px solid var(--border);background:rgba(100,160,100,.04);cursor:pointer;transition:all .2s;text-align:center" onmouseenter="this.style.transform='scale(1.01)'" onmouseleave="this.style.transform='scale(1)'">
+        <div style="font-size:2.2rem;margin-bottom:6px">🏡</div>
+        <div style="font-weight:700;font-size:.9rem;color:var(--brown);margin-bottom:5px">独立世界</div>
+        <div style="font-size:.68rem;color:var(--muted);line-height:1.7">🔒 存档只住在这台设备里，离线也能畅玩！<br>不上传任何数据，完全的私人小农场～</div>
+        <div style="margin-top:8px;font-size:.62rem;padding:3px 10px;border-radius:99px;background:rgba(180,140,80,.1);color:var(--brown);display:inline-block">🏠 推荐单设备用户</div>
+      </div>
+    </div>
+    <div style="font-size:.62rem;color:var(--muted);text-align:center;line-height:1.6">💡 切换世界模式不会删除已有存档，随时可以更改</div>
+  </div>
+</div>
+
 <script>/* questions.js optional */</script>
-<script src="subject_geo7.js"></script>
-<script src="subject_geo8.js"></script>
-<script src="subject_history8.js"></script>
 <script src="gamedata.js"></script>
 <script src="subjects.js"></script>
 <script src="subject_english.js"></script>

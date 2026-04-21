@@ -153,21 +153,78 @@ function renderLoginScreen(){
   const barDt=document.getElementById('ls-subject-bar-dt');
   if(barDt){barDt.innerHTML='';SUBJECTS.forEach(sub=>{const b=document.createElement('div');b.className='ls-sub-btn'+(sub.id===ACTIVE_SUBJECT_ID?' on':'');if(sub.id===ACTIVE_SUBJECT_ID)b.style.background=sub.color||'#5a9a5a';b.textContent=sub.icon+' '+sub.name;b.onclick=()=>{setSubject(sub.id);renderLoginScreen();};barDt.appendChild(b);});}
 
-  // 辅助：生成账号卡片HTML
+  // 辅助：生成账号卡片（含搜索/展开折叠，默认只显示最近活跃前5个）
   function _makeAccCards(containerEl,accounts){
     if(!containerEl)return;containerEl.innerHTML='';
     if(accounts.length===0){containerEl.innerHTML='<div style="font-size:.78rem;color:var(--muted);text-align:center;padding:18px 0">还没有账号，点击下方新建！</div>';return;}
-    accounts.forEach(acc=>{
-      const d=document.createElement('div');d.className='acc-card';
-      const imgKey='jbfarm_profileimg_'+acc.id;
-      const imgData=localStorage.getItem(imgKey);
-      let avatarHtml='';
-      if(imgData){avatarHtml=`<img src="${imgData}" style="width:42px;height:42px;border-radius:50%;object-fit:cover;display:block">`;}
-      else{const ico=acc.playerAvatar||(acc.level>=5?'🌟':acc.level>=3?'⭐':'🌾');avatarHtml=ico;}
-      const shortId=acc.id?acc.id.slice(-6).toUpperCase():'??????';d.innerHTML=`<div class="acc-avatar">${avatarHtml}</div><div class="acc-info"><div class="acc-name">${acc.name}</div><div class="acc-meta">Lv.${acc.level||1} · ⭐${acc.score||0}分${acc.classId?' · '+acc.classId:''} <span style="display:inline-block;font-size:.55rem;font-family:monospace;padding:1px 5px;border-radius:4px;background:rgba(90,154,90,.12);color:var(--dgreen);letter-spacing:.05em;margin-left:2px">${shortId}</span></div></div><div class="acc-arrow">${acc.pin?'🔒':'▶'}</div>`;
-      d.onclick=()=>loginAcc(acc);containerEl.appendChild(d);
-    });
+    const cid=containerEl.id||('acc_'+Math.random().toString(36).slice(2,6));
+    containerEl.id=cid;
+    // 按最近活跃时间降序排列
+    const sorted=[...accounts].sort((a,b)=>(b.lastActive||0)-(a.lastActive||0));
+    const MAX_V=5;
+
+    // ── 搜索栏 ──
+    const searchWrap=document.createElement('div');
+    searchWrap.style.cssText='position:relative;margin-bottom:8px';
+    const searchId='_accsrch_'+cid;
+    searchWrap.innerHTML=`<span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:.8rem;pointer-events:none">🔍</span><input id="${searchId}" placeholder="搜索账号姓名或班级…" style="width:100%;padding:7px 10px 7px 28px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.76rem;font-family:'Noto Sans SC',sans-serif;color:var(--ink);outline:none;box-sizing:border-box;user-select:text" oninput="window._accSearch('${cid}')">`;
+    containerEl.appendChild(searchWrap);
+
+    // ── 卡片区域 ──
+    const listWrap=document.createElement('div');
+    listWrap.id='_accwrap_'+cid;
+    containerEl.appendChild(listWrap);
+
+    // ── 展开/收起按钮 ──
+    const expBtn=document.createElement('div');
+    expBtn.id='_accexp_'+cid;
+    expBtn.style.cssText='display:none;text-align:center;font-size:.7rem;color:var(--dgreen);cursor:pointer;padding:7px;border-radius:9px;border:1px dashed rgba(100,160,100,.3);margin-top:4px;transition:background .15s';
+    expBtn.onmouseenter=()=>{expBtn.style.background='rgba(100,160,100,.06)';};
+    expBtn.onmouseleave=()=>{expBtn.style.background='';};
+    containerEl.appendChild(expBtn);
+
+    // ── 状态存储在容器上 ──
+    containerEl._accSorted=sorted;
+    containerEl._accExpanded=false;
+    containerEl._accQuery='';
+
+    function renderCards(){
+      const q=containerEl._accQuery;
+      const exp=containerEl._accExpanded;
+      const filtered=q?sorted.filter(a=>a.name.includes(q)||(a.classId||'').includes(q)):sorted;
+      const showAll=q||exp||filtered.length<=MAX_V;
+      const visible=showAll?filtered:filtered.slice(0,MAX_V);
+      listWrap.innerHTML='';
+      if(filtered.length===0){listWrap.innerHTML='<div style="font-size:.74rem;color:var(--muted);text-align:center;padding:10px 0">没有找到匹配的账号</div>';expBtn.style.display='none';return;}
+      visible.forEach(acc=>{
+        const d=document.createElement('div');d.className='acc-card';
+        const imgKey='jbfarm_profileimg_'+acc.id;
+        const imgData=localStorage.getItem(imgKey);
+        let avatarHtml='';
+        if(imgData){avatarHtml=`<img src="${imgData}" style="width:42px;height:42px;border-radius:50%;object-fit:cover;display:block">`;}
+        else{const ico=acc.playerAvatar||(acc.level>=5?'🌟':acc.level>=3?'⭐':'🌾');avatarHtml=ico;}
+        const shortId=acc.id?acc.id.slice(-6).toUpperCase():'??????';
+        d.innerHTML=`<div class="acc-avatar">${avatarHtml}</div><div class="acc-info"><div class="acc-name">${acc.name}</div><div class="acc-meta">Lv.${acc.level||1} · ⭐${acc.score||0}分${acc.classId?' · '+acc.classId:''} <span style="display:inline-block;font-size:.55rem;font-family:monospace;padding:1px 5px;border-radius:4px;background:rgba(90,154,90,.12);color:var(--dgreen);letter-spacing:.05em;margin-left:2px">${shortId}</span></div></div><div class="acc-arrow">${acc.pin?'🔒':'▶'}</div>`;
+        d.onclick=()=>loginAcc(acc);
+        listWrap.appendChild(d);
+      });
+      if(!q&&filtered.length>MAX_V){
+        const hidden=filtered.length-MAX_V;
+        expBtn.innerHTML=exp?'▲ 收起账号列表':`▼ 还有 ${hidden} 个账号，点击展开`;
+        expBtn.style.display='block';
+      } else {expBtn.style.display='none';}
+    }
+    containerEl._accRender=renderCards;
+    expBtn.onclick=()=>{containerEl._accExpanded=!containerEl._accExpanded;renderCards();};
+    renderCards();
   }
+
+  // 搜索回调（全局，供oninput使用）
+  window._accSearch=function(cid){
+    const containerEl=document.getElementById(cid);if(!containerEl||!containerEl._accRender)return;
+    const inp=document.getElementById('_accsrch_'+cid);
+    if(inp){containerEl._accQuery=inp.value.trim();containerEl._accRender();}
+  };
 
   // 学生视图 - 手机 + 桌面
   const listEl=document.getElementById('account-list');
@@ -468,6 +525,8 @@ function renderAccountSettings(){
   const el=document.getElementById('account-settings');if(!el)return;
   const list=getAllAccounts();const acc=list.find(a=>a.id===CURRENT_ACC_ID);
   const hasPin=acc&&acc.pin;
+  const mode=getSyncMode(CURRENT_ACC_ID);
+  const isCloud=mode!=='local';
   el.innerHTML=`
   <div style="display:flex;flex-direction:column;gap:8px">
     <!-- 第1行：修改昵称 + 修改头像 -->
@@ -488,7 +547,162 @@ function renderAccountSettings(){
            <button onclick="removePin()" style="flex:1;padding:9px 10px;border-radius:10px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.75rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;display:flex;align-items:center;justify-content:center;gap:5px">🔓 移除密码</button>`
       }
     </div>
+    <!-- 第4行：存档世界模式 -->
+    <div onclick="openWorldModeModal()" style="padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);background:rgba(100,160,100,.04);cursor:pointer;display:flex;align-items:center;gap:9px;transition:all .15s" onmouseenter="this.style.borderColor='var(--green)'" onmouseleave="this.style.borderColor='var(--border)'">
+      <span style="font-size:1.1rem">${isCloud?'🌐':'🏡'}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.75rem;font-weight:600;color:var(--ink)">${isCloud?'共享世界（云端同步）':'独立世界（仅本设备）'}</div>
+        <div style="font-size:.6rem;color:var(--muted);margin-top:1px">${isCloud?'换设备也能继续种田 · 点击切换':'不上传任何数据 · 点击切换'}</div>
+      </div>
+      <span style="color:var(--muted);font-size:.75rem">›</span>
+    </div>
   </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// ★ 存档世界模式（独立世界 / 共享世界）
+// ══════════════════════════════════════════════════════════════
+const _SYNC_MODE_PFX='jbfarm_syncmode_';
+function getSyncMode(accId){if(!accId)return'cloud';return localStorage.getItem(_SYNC_MODE_PFX+accId)||'cloud';}
+function setSyncMode(accId,mode){if(!accId)return;localStorage.setItem(_SYNC_MODE_PFX+accId,mode);}
+function setWorldMode(mode){
+  if(!CURRENT_ACC_ID)return;
+  setSyncMode(CURRENT_ACC_ID,mode);
+  // 更新弹窗高亮
+  const cb=document.getElementById('wm-cloud-card');const lb=document.getElementById('wm-local-card');
+  if(cb){cb.style.borderColor=mode==='cloud'?'var(--green)':'var(--border)';cb.style.background=mode==='cloud'?'rgba(100,160,100,.12)':'rgba(100,160,100,.04)';}
+  if(lb){lb.style.borderColor=mode==='local'?'var(--green)':'var(--border)';lb.style.background=mode==='local'?'rgba(100,160,100,.12)':'rgba(100,160,100,.04)';}
+  renderAccountSettings();
+  showToast(mode==='cloud'?'🌐 已切换到共享世界！存档将同步云端～':'🏡 已切换到独立世界！存档安全保存在本设备～');
+}
+function openWorldModeModal(){
+  if(!CURRENT_ACC_ID)return;
+  const mode=getSyncMode(CURRENT_ACC_ID);
+  setTimeout(()=>{
+    const cb=document.getElementById('wm-cloud-card');const lb=document.getElementById('wm-local-card');
+    if(cb){cb.style.borderColor=mode==='cloud'?'var(--green)':'var(--border)';cb.style.background=mode==='cloud'?'rgba(100,160,100,.12)':'rgba(100,160,100,.04)';}
+    if(lb){lb.style.borderColor=mode==='local'?'var(--green)':'var(--border)';lb.style.background=mode==='local'?'rgba(100,160,100,.12)':'rgba(100,160,100,.04)';}
+  },50);
+  openOverlay('world-mode-ov');
+}
+
+// ══════════════════════════════════════════════════════════════
+// ★ 批量删除账号
+// ══════════════════════════════════════════════════════════════
+let _bdQueue=[],_bdDeleted=[],_bdSkipped=[],_bdCurrentAcc=null;
+
+function openBatchDeleteModal(){
+  const accounts=getAllAccounts().filter(a=>!a.isTeacher);
+  if(accounts.length===0){showToast('暂无学生账号可管理');return;}
+  renderBatchDeleteList();
+  openOverlay('batch-delete-ov');
+}
+
+function renderBatchDeleteList(){
+  const listEl=document.getElementById('batch-delete-list');if(!listEl)return;
+  const accounts=getAllAccounts().filter(a=>!a.isTeacher);
+  const sorted=[...accounts].sort((a,b)=>(b.lastActive||0)-(a.lastActive||0));
+  listEl.innerHTML='';
+  sorted.forEach(acc=>{
+    const imgKey='jbfarm_profileimg_'+acc.id;
+    const imgData=localStorage.getItem(imgKey);
+    let avHtml=imgData?`<img src="${imgData}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0">`:`<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#d4f0d4,#a0d0a0);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">${acc.playerAvatar||(acc.level>=5?'🌟':acc.level>=3?'⭐':'🌾')}</div>`;
+    const div=document.createElement('div');
+    div.dataset.accId=acc.id;
+    div.style.cssText='display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:11px;border:1.5px solid var(--border);background:var(--panel);cursor:pointer;transition:all .15s;user-select:none';
+    div.innerHTML=`<input type="checkbox" class="bd-cb" data-acc-id="${acc.id}" style="width:17px;height:17px;accent-color:var(--red);flex-shrink:0;cursor:pointer">${avHtml}<div style="flex:1;min-width:0"><div style="font-size:.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${acc.name}</div><div style="font-size:.62rem;color:var(--muted);margin-top:1px">Lv.${acc.level||1} · ⭐${acc.score||0}分${acc.classId?' · '+acc.classId:''}${acc.pin?' · 🔒已设密码':''}</div></div>`;
+    div.onclick=e=>{
+      if(e.target.tagName==='INPUT')return;
+      const cb=div.querySelector('.bd-cb');cb.checked=!cb.checked;
+      _bdUpdateStyle(div,cb.checked);_bdUpdateHint();
+    };
+    const cb=div.querySelector('.bd-cb');
+    cb.onchange=()=>{_bdUpdateStyle(div,cb.checked);_bdUpdateHint();};
+    listEl.appendChild(div);
+  });
+  _bdUpdateHint();
+}
+
+function _bdUpdateStyle(div,checked){
+  div.style.borderColor=checked?'var(--red)':'var(--border)';
+  div.style.background=checked?'rgba(224,85,85,.05)':'var(--panel)';
+}
+
+function _bdUpdateHint(){
+  const sel=document.querySelectorAll('.bd-cb:checked').length;
+  const hint=document.getElementById('bd-select-hint');if(hint)hint.textContent=`已选 ${sel} 个账号`;
+  const btn=document.getElementById('bd-confirm-btn');if(btn)btn.textContent=`🗑️ 删除选中的 ${sel||''} 个账号`;
+  const allBtn=document.getElementById('bd-select-all-btn');
+  if(allBtn){const total=document.querySelectorAll('.bd-cb').length;allBtn.textContent=(sel===total&&total>0)?'取消全选':'全选';}
+}
+
+function toggleSelectAllBatchDelete(){
+  const cbs=document.querySelectorAll('.bd-cb');
+  const allChecked=[...cbs].every(c=>c.checked);
+  cbs.forEach(cb=>{
+    cb.checked=!allChecked;
+    const row=cb.closest('[data-acc-id]');if(row)_bdUpdateStyle(row,cb.checked);
+  });
+  _bdUpdateHint();
+}
+
+function startBatchDelete(){
+  const selected=[...document.querySelectorAll('.bd-cb:checked')].map(cb=>cb.dataset.accId);
+  if(selected.length===0){showToast('请先勾选要删除的账号！');return;}
+  openConfirm('🗑️',`确定要删除选中的 ${selected.length} 个账号吗？\n\n有密码的账号将需要验证，无法验证可选择跳过。`,()=>{
+    const accounts=getAllAccounts();
+    _bdQueue=selected.map(id=>accounts.find(a=>a.id===id)).filter(Boolean);
+    _bdDeleted=[];_bdSkipped=[];
+    closeOverlay('batch-delete-ov');
+    _processBdQueue();
+  },true);
+}
+
+function _processBdQueue(){
+  if(_bdQueue.length===0){
+    closeOverlay('bd-pin-ov');
+    if(_bdDeleted.length>0||_bdSkipped.length>0)renderLoginScreen();
+    const msg=_bdDeleted.length>0?`✅ 已删除 ${_bdDeleted.length} 个账号${_bdSkipped.length?'，跳过 '+_bdSkipped.length+' 个密码账号':''}`:(_bdSkipped.length>0?`已跳过全部密码账号（共${_bdSkipped.length}个）`:'');
+    if(msg)showToast(msg);
+    return;
+  }
+  const acc=_bdQueue.shift();
+  if(!acc.pin){
+    _doDeleteBdAcc(acc);_bdDeleted.push(acc.name);
+    _processBdQueue();
+  } else {
+    _bdCurrentAcc=acc;
+    const msgEl=document.getElementById('bd-pin-msg');const titleEl=document.getElementById('bd-pin-title');
+    if(titleEl)titleEl.textContent=`🔒 「${acc.name}」设有密码`;
+    if(msgEl)msgEl.textContent=`还剩 ${_bdQueue.length+1} 个账号待处理，此账号有密码保护，请选择处理方式：`;
+    openOverlay('bd-pin-ov');
+  }
+}
+
+function _doDeleteBdAcc(acc){
+  if(acc.classId){const cd=getClassData();if(cd[acc.classId]){cd[acc.classId]=cd[acc.classId].filter(m=>m.name!==acc.name);saveClassData(cd);}}
+  localStorage.removeItem(getAccKey(acc.id));
+  const list=getAllAccounts();saveAllAccounts(list.filter(a=>a.id!==acc.id));
+}
+
+function _bdEnterPin(){
+  closeOverlay('bd-pin-ov');
+  const acc=_bdCurrentAcc;if(!acc)return;
+  openPinPad(acc.name,entered=>{
+    if(entered===acc.pin){_doDeleteBdAcc(acc);_bdDeleted.push(acc.name);_bdCurrentAcc=null;_processBdQueue();return true;}
+    showToast('密码错误，请重试！');return false;
+  });
+}
+function _bdSkipAcc(){
+  closeOverlay('bd-pin-ov');
+  if(_bdCurrentAcc){_bdSkipped.push(_bdCurrentAcc.name);_bdCurrentAcc=null;}
+  _processBdQueue();
+}
+function _bdCancelAll(){
+  closeOverlay('bd-pin-ov');
+  _bdQueue=[];_bdCurrentAcc=null;
+  if(_bdDeleted.length>0){renderLoginScreen();showToast(`已删除 ${_bdDeleted.length} 个账号，批量操作已取消`);}
+  else showToast('已取消批量删除');
 }
 
 // 头像选择弹窗：合并上传图片和emoji两种方式

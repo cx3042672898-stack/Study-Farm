@@ -275,9 +275,15 @@
       const accounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || '[]');
       if (accounts.length === 0) return;
 
+      // 只同步选择了"共享世界"（cloud）模式的账号
+      const syncAccounts = accounts.filter(acc => {
+        const mode = localStorage.getItem('jbfarm_syncmode_' + acc.id) || 'cloud';
+        return mode !== 'local';
+      });
+
       const batch = _db.batch();
 
-      accounts.forEach(acc => {
+      syncAccounts.forEach(acc => {
         const raw = localStorage.getItem(SAVE_PREFIX + acc.id);
         let save = {};
         if (raw) { try { save = JSON.parse(raw); } catch (e) {} }
@@ -295,7 +301,7 @@
       await batch.commit();
 
       _origSetItem.call(localStorage, LAST_SYNC_KEY, Date.now().toString());
-      log(`✅ ${accounts.length} 个账号已推送到云端`);
+      log(`✅ ${syncAccounts.length} 个账号已推送到云端（共享世界）`);
 
     } catch (err) {
       log('推送云存档失败:', err.message);
@@ -452,6 +458,12 @@
 
       if (_isSyncing || !_ready || !window.FIREBASE_OPTIONS.cloudSave) return;
       if (key === ACCOUNTS_KEY || key.startsWith(SAVE_PREFIX)) {
+        // 如果是存档key，检查该账号是否选择了共享世界
+        if (key.startsWith(SAVE_PREFIX)) {
+          const accId = key.slice(SAVE_PREFIX.length);
+          const mode = localStorage.getItem('jbfarm_syncmode_' + accId) || 'cloud';
+          if (mode === 'local') return; // 独立世界，跳过云同步
+        }
         debouncedPush();
       }
       // 班级花名册或教师绑定变化 → 推到 shared/classrooms

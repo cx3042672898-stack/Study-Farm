@@ -1867,6 +1867,8 @@ function drawPet(){
       ctx.setTransform(1,0,0,1,0,0);
       ctx.clearRect(0,0,cvs.width,cvs.height);
       _drawImgWithParam(img,_activeImgKey,petX,petY+bob);
+      // 【仓鼠特效叠加】在自定义图片上方叠加 ZZZ / 气泡 / 星星等动画
+      if(breed==='hamster'&&window.HamsterAnim){try{HamsterAnim.drawOverlay(ctx,petX,petY+bob,petT);}catch(e){}}
       const clothKey=getCustomClothImgKey();
       const clothData=S.equippedCloth?_getClothImgDataWithScope(clothKey):null;
       if(clothData){
@@ -1876,10 +1878,17 @@ function drawPet(){
       }
     });
   } else {
-    try{drawPetBreed(ctx,breed,petX,petY+bob,stage);}catch(e){
-      // 绘制失败时显示占位符
-      ctx.fillStyle='rgba(100,160,100,.15)';ctx.beginPath();ctx.arc(petX,petY,30,0,Math.PI*2);ctx.fill();
-      ctx.font='24px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🐾',petX,petY);
+    // 【仓鼠精灵动画】优先使用 HamsterAnim 图片+特效
+    let _usedSprite = false;
+    if (breed === 'hamster' && window.HamsterAnim) {
+      try { _usedSprite = HamsterAnim.drawFull(ctx, petX, petY + bob, petT, stage); } catch(e) {}
+    }
+    if (!_usedSprite) {
+      try{drawPetBreed(ctx,breed,petX,petY+bob,stage);}catch(e){
+        // 绘制失败时显示占位符
+        ctx.fillStyle='rgba(100,160,100,.15)';ctx.beginPath();ctx.arc(petX,petY,30,0,Math.PI*2);ctx.fill();
+        ctx.font='24px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🐾',petX,petY);
+      }
     }
     const clothKey=getCustomClothImgKey();
     const clothImgData=S.equippedCloth?_getClothImgDataWithScope(clothKey):null;
@@ -2311,6 +2320,11 @@ function drawTears(ctx,cx,cy,h){
 }
 
 function drawHamster(ctx, cx, cy, stage) {
+    // 【精灵图委托】所有调用此函数的地方（主画布/预览/商店/工坊）统一走图片模式
+    if (window.HamsterAnim) {
+      const _t = (typeof petT !== 'undefined') ? petT : 0;
+      if (HamsterAnim.drawBase(ctx, cx, cy, _t)) return;
+    }
     const lv = S.petLevel, h = S.petHappy / 100, col = stage.color || '#e8b070';
     const light = adjustColor(col, 60), dark = adjustColor(col, -30);
 
@@ -3660,7 +3674,7 @@ function petAct(type){
       if(type==='feed'){S.petFeedCount++;S.coins+=2;S.totalCoins+=2;}
       if(type==='train'){S.petLearnExp=(S.petLearnExp||0)+30;gainExp(25);S.coins+=5;S.totalCoins+=5;}
       else{gainExp(cfg.n*12);}
-      showPetTalk(cfg.key);saveCurPet();persistAccount();updatePetUI();checkAchs();
+      showPetTalk(cfg.key);if(window.HamsterAnim&&(S.petBreed||'hamster')==='hamster')HamsterAnim.setAction(type);saveCurPet();persistAccount();updatePetUI();checkAchs();
       const msgs={feed:`饱腹+28→${Math.round(S.petFood)}\n心情+5→${Math.round(S.petHappy)}`,play:`心情+30→${Math.round(S.petHappy)}\n体力-15→${Math.round(S.petEnergy)}`,bath:`清洁+45→${Math.round(S.petClean)}\n心情+12→${Math.round(S.petHappy)}`,train:`心情+15→${Math.round(S.petHappy)}\n学习经验+30→${S.petLearnExp||0}\n金币+5`,sleep:`体力+40→${Math.round(S.petEnergy)}\n心情+10→${Math.round(S.petHappy)}`};
       const icos={feed:'🍎',play:'🎾',bath:'🛁',train:'📖',sleep:'💤'};
       showResult(icos[type]||'✨',cfg.t+'完成！',msgs[type]||'');

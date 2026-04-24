@@ -1196,8 +1196,20 @@ body[data-theme="custom"]{
               <div class="card" id="pcard-data">
                 <div class="cttl">💾 数据管理</div>
                 <div style="font-size:.7rem;color:var(--muted);margin-bottom:8px;line-height:1.7">
-                  导出存档可在其他设备导入。<br>
-                  <span style="color:var(--red);font-size:.62rem">⚠️ 不支持自动云同步，请手动操作。</span>
+                  导出存档可在其他设备导入。
+                </div>
+                <!-- 云同步控制区 -->
+                <div id="cloud-sync-ctrl" style="background:rgba(100,160,100,.06);border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                    <span style="font-size:.76rem;font-weight:600;color:var(--dgreen)">☁️ 云同步</span>
+                    <span id="cloud-sync-status" style="font-size:.62rem;color:var(--muted)">检测中…</span>
+                  </div>
+                  <div style="font-size:.65rem;color:var(--muted);margin-bottom:8px;line-height:1.6">需要梯子（访问境外服务器）。不同步时仅与同设备同学比较排名。</div>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <button onclick="toggleCloudSync()" id="cloud-sync-toggle-btn" style="padding:6px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.08);color:var(--dgreen);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">切换同步</button>
+                    <button onclick="if(window.FBBridge)FBBridge.syncNow();else showToast('云同步未初始化')" style="padding:6px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🔄 立即同步</button>
+                    <button onclick="resetSyncChoice()" style="padding:6px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">重新选择</button>
+                  </div>
                 </div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                   <button onclick="exportSave()" style="padding:7px 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📤 导出存档</button>

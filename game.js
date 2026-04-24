@@ -346,7 +346,14 @@ function renderTeacherClassView(){
       return `<span class="student-chip${isAsst?' asst-admin':''}" onclick="event.stopPropagation();loginByName('${encodeURIComponent(s.name)}','${encodeURIComponent(className)}')">${isAsst?'🎖️ ':''}${s.name}</span>`;
     }).join('');
     const more=students.length>8?`<span class="student-chip">+${students.length-8}人</span>`:'';
-    const cardInner=`<div class="class-header"><div class="class-ico">🏫</div><div class="class-info"><div class="class-name">${className}</div><div class="class-meta">👥 ${students.length}名学生${teachers.length>0?' · 👨‍🏫 '+teachers.length+'位教师':''}</div></div></div><div class="class-students">${teacherChips}${studentChips}${more}</div>`;
+    // 判断当前登录教师是否是该班级教师（兼容 managedClasses 丢失的情况）
+    const curAccounts=getAllAccounts();
+    const curAcc=curAccounts.find(a=>a.id===CURRENT_ACC_ID);
+    const curIsTeacherInClass=curAcc&&curAcc.isTeacher&&teachers.some(t=>t.name===curAcc.name);
+    const forceDelBtn=curIsTeacherInClass
+      ?`<div style="margin-top:6px"><button onclick="event.stopPropagation();teacherDeleteClass(encodeURIComponent('${className.replace(/'/g,"\'")}'))" style="font-size:.62rem;padding:3px 10px;border-radius:7px;border:1px solid var(--red);background:transparent;color:var(--red);cursor:pointer;font-family:'Noto Sans SC',sans-serif">💥 解散班级</button></div>`
+      :'';
+    const cardInner=`<div class="class-header"><div class="class-ico">🏫</div><div class="class-info"><div class="class-name">${className}</div><div class="class-meta">👥 ${students.length}名学生${teachers.length>0?' · 👨‍🏫 '+teachers.length+'位教师':''}</div></div></div><div class="class-students">${teacherChips}${studentChips}${more}</div>${forceDelBtn}`;
     // 手机端
     if(classListEl){const c=document.createElement('div');c.className='class-card';c.innerHTML=cardInner;c.onclick=()=>viewClassDetail(className);classListEl.appendChild(c);}
     // 桌面端
@@ -359,7 +366,22 @@ function loginByName(encodedName,encodedClass){
   const className=decodeURIComponent(encodedClass);
   const accounts=getAllAccounts();
   let acc=accounts.find(a=>a.name===name&&a.classId===className)||accounts.find(a=>a.name===name);
-  if(acc)loginAcc(acc);else showToast('未找到该账号');
+  if(!acc){showToast('未找到该账号');return;}
+  // 修复：教师登录时自动将 className 加入 managedClasses（防止权限丢失）
+  if(acc.isTeacher||acc.name===name){
+    const save=loadAccSave(acc.id);
+    const cd=getClassData();
+    const inClass=(cd[className]||[]).some(m=>m.isTeacher&&m.name===name);
+    if(inClass){
+      if(!save.managedClasses)save.managedClasses=[];
+      if(!save.managedClasses.includes(className)){
+        save.managedClasses.push(className);
+        localStorage.setItem(getAccKey(acc.id),JSON.stringify(save));
+        console.log('[loginByName] 已自动修复 managedClasses：',name,'→',className);
+      }
+    }
+  }
+  loginAcc(acc);
 }
 
 function openCreateClass(){
@@ -461,8 +483,12 @@ function viewClassDetail(className){
       +`<div class="rank-name">${s.name}${monitorBadge}</div>`
       +`<div class="rank-score">Lv.${s.level||1} ⭐ ${s.score||0}</div></div>`;
   });
-// 教师可批量导入/管理
-const isMgr=S.isTeacher&&(S.managedClasses||[]).includes(className);
+// 教师可批量导入/管理（兼容修复：classData里有教师记录也算管理权限）
+const _classMembers4Mgr=(getClassData()[className]||[]);
+const isMgr=S.isTeacher&&(
+  (S.managedClasses||[]).includes(className)||
+  _classMembers4Mgr.some(m=>m.isTeacher&&m.name===S.playerName)
+);
 if(isMgr){
   const safeClassName = encodeURIComponent(className).replace(/'/g, "\'");
   html+=`
@@ -530,7 +556,25 @@ function _orig_renderLoginScreen_unused(){
   accounts.forEach(acc=>{const d=document.createElement('div');d.className='acc-card';const ico=acc.level>=5?'🌟':acc.level>=3?'⭐':'🌾';d.innerHTML=`<div class="acc-avatar">${ico}</div><div class="acc-info"><div class="acc-name">${acc.name}</div><div class="acc-meta">Lv.${acc.level||1} · ⭐${acc.score||0}分${acc.classId?' · '+acc.classId:''}</div></div><div class="acc-arrow">${acc.pin?'🔒':'▶'}</div>`;d.onclick=()=>loginAcc(acc);listEl.appendChild(d);});
 }
 function loginAcc(acc){if(acc.pin){openPinPad(acc.name,entered=>{if(entered===acc.pin){doEnterAcc(acc.id);return true;}showToast('密码错误！');return false;});}else{doEnterAcc(acc.id);}}
-function doEnterAcc(id){CURRENT_ACC_ID=id;S=loadAccSave(id);processTimePass();document.getElementById('login-screen').style.display='none';document.getElementById('app').classList.add('active');initGame();}
+function doEnterAcc(id){
+  CURRENT_ACC_ID=id;
+  S=loadAccSave(id);
+  // 修复：如果 S.classId 为空，但 classData 里能找到该玩家，自动修复 classId
+  if(!S.classId||S.classId===''){
+    const cd=getClassData();
+    for(const cls of Object.keys(cd)){
+      if((cd[cls]||[]).some(m=>m.name===S.playerName)){
+        S.classId=cls;
+        console.log('[doEnterAcc] 自动修复 classId:',S.playerName,'→',cls);
+        break;
+      }
+    }
+  }
+  processTimePass();
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').classList.add('active');
+  initGame();
+}
 function goToLogin(){if(CURRENT_ACC_ID)persistAccount();CURRENT_ACC_ID=null;if(petAF){cancelAnimationFrame(petAF);petAF=null;}document.getElementById('app').classList.remove('active');document.getElementById('login-screen').style.display='flex';renderLoginScreen();}
 
 // PIN PAD
@@ -1078,7 +1122,19 @@ function _tcmRemoveStudent(encodedName, encodedClass) {
 // 教师注销班级（含密码验证）
 function teacherDeleteClass(encodedClass){
   const className=decodeURIComponent(encodedClass);
-  if(!S.isTeacher||(S.managedClasses||[]).indexOf(className)===-1){showToast('无权操作');return;}
+  if(!S.isTeacher){showToast('只有教师账号才能注销班级');return;}
+  // 兼容修复：managedClasses 可能未同步，只要 classData 里该班级有本教师记录就允许操作
+  const cd0=getClassData();
+  const classMembers0=cd0[className]||[];
+  const isTeacherInClass=classMembers0.some(m=>m.isTeacher&&m.name===S.playerName);
+  const isManagedLocally=(S.managedClasses||[]).includes(className);
+  if(!isTeacherInClass&&!isManagedLocally){showToast('你不是该班级的教师，无法操作');return;}
+  // 同时修复 managedClasses（防止后续其他操作权限检查失败）
+  if(!isManagedLocally){
+    if(!S.managedClasses)S.managedClasses=[];
+    S.managedClasses.push(className);
+    persistAccount();
+  }
   const list=getAllAccounts();
   const acc=list.find(a=>a.id===CURRENT_ACC_ID);
 
@@ -1744,11 +1800,13 @@ function startPetAnim(){
   const cvs=document.getElementById('pet-canvas');
   if(cvs&&!cvs._petHandlersSet){
     cvs._petHandlersSet=true;
-    const getPos=(e,touch)=>{const r=cvs.getBoundingClientRect();const src=touch?e.touches[0]:e;return{x:(src.clientX-r.left)*(cvs.width/r.width),y:(src.clientY-r.top)*(cvs.height/r.height)};};
+    // getPos 返回逻辑坐标（0~150），而非 Canvas 像素坐标
+    // cvs.width = px × DPR，r.width = px（CSS尺寸），逻辑坐标 = 触摸位置 / CSS尺寸 × 150
+    const getPos=(e,touch)=>{const r=cvs.getBoundingClientRect();const src=touch?e.touches[0]:e;return{x:(src.clientX-r.left)/r.width*150,y:(src.clientY-r.top)/r.height*150};};
     // 鼠标事件
     let _mouseDownOnPet=false,_mouseMoved=false;
     cvs.addEventListener('mousedown',e=>{const pos=getPos(e,false);if(Math.abs(pos.x-petX)<45&&Math.abs(pos.y-petY)<45){petDragging=true;_mouseDownOnPet=true;_mouseMoved=false;petDragOx=pos.x-petX;petDragOy=pos.y-petY;cvs.style.cursor='grabbing';}});
-    document.addEventListener('mousemove',e=>{if(!petDragging)return;_mouseMoved=true;const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;petX=Math.max(20,Math.min(130,(e.clientX-r.left)*scale-petDragOx));petY=Math.max(20,Math.min(130,(e.clientY-r.top)*scale-petDragOy));});
+    document.addEventListener('mousemove',e=>{if(!petDragging)return;_mouseMoved=true;const r=cvs.getBoundingClientRect();petX=Math.max(20,Math.min(130,(e.clientX-r.left)/r.width*150-petDragOx));petY=Math.max(20,Math.min(130,(e.clientY-r.top)/r.height*150-petDragOy));});
     document.addEventListener('mouseup',e=>{if(petDragging){petDragging=false;cvs.style.cursor='';if(_mouseMoved){S.dragCount=(S.dragCount||0)+1;checkAchs();persistAccount();}else if(_mouseDownOnPet){showPetTalk('tap');spawnP(['💕','✨','⭐']);}}_mouseDownOnPet=false;_mouseMoved=false;});
     // 触摸事件 - 独立于click事件处理，防止preventDefault后click不触发
     let _touchStartX=0,_touchStartY=0,_touchOnPet=false,_touchMoved=false;
@@ -1764,8 +1822,8 @@ function startPetAnim(){
     document.addEventListener('touchmove',e=>{
       if(!petDragging)return;
       e.preventDefault();
-      const r=cvs.getBoundingClientRect();const scale=cvs.width/r.width;const t=e.touches[0];
-      const nx=(t.clientX-r.left)*scale,ny=(t.clientY-r.top)*scale;
+      const r=cvs.getBoundingClientRect();const t=e.touches[0];
+      const nx=(t.clientX-r.left)/r.width*150,ny=(t.clientY-r.top)/r.height*150;
       if(Math.abs(nx-_touchStartX)>8||Math.abs(ny-_touchStartY)>8)_touchMoved=true;
       petX=Math.max(20,Math.min(130,nx-petDragOx));
       petY=Math.max(20,Math.min(130,ny-petDragOy));
@@ -5157,6 +5215,13 @@ function syncClassScore(){if(!S.classId||!S.playerName)return;joinClassBoard(S.c
 function sortMembers(members){return [...members].sort((a,b)=>{if(b.level!==a.level)return (b.level||1)-(a.level||1);return b.score-a.score;});}
 
 let _lastPickedName='';
+// 防抖版 updateClassSection，避免云端实时更新时频繁重绘导致卡顿
+let _classRenderTimer = null;
+function renderClassSection() {
+  clearTimeout(_classRenderTimer);
+  _classRenderTimer = setTimeout(updateClassSection, 300);
+}
+
 function updateClassSection(){
   const sec=document.getElementById('class-section');if(!sec)return;
   if(!S.classId){sec.innerHTML=`<div style="font-size:.74rem;color:var(--muted);margin-bottom:9px">加入班级后可参与排行榜！</div><div style="margin-bottom:8px"><label class="ci-label">班级名称</label><input class="ci" id="ci-class" placeholder="如：高三2班" style="user-select:text"></div><button onclick="joinClass()" style="width:100%;padding:10px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.82rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">加入/创建班级</button>`;return;}
@@ -5177,9 +5242,11 @@ function updateClassSection(){
 }
 
 let _rankExp=false;
+const _RANK_PAGE = 20; // 每页最多显示20人，避免大班级卡顿
 function renderRankList(members){
   const show=_rankExp||members.length<=5;
-  const list=show?members:members.slice(0,5);
+  // 展开时最多渲染 _RANK_PAGE 条，超出提示"共X人"
+  const list=show?members.slice(0,_RANK_PAGE):members.slice(0,5);
   const admins=getClassAdmins();
   const asstAdmin=S.classId?admins[S.classId]:null;
   let html=list.map((m,i)=>{
@@ -5195,7 +5262,10 @@ function renderRankList(members){
       +'<div class="rank-score">Lv.'+(m.level||1)+' · ⭐'+m.score+'</div>'
       +'</div>';
   }).join('');
-  if(members.length>5){html+='<div onclick="_rankExp=!_rankExp;updateClassSection()" style="text-align:center;padding:8px;font-size:.75rem;color:var(--muted);cursor:pointer;border-top:1px solid var(--border);margin-top:4px">'+(show?'▲ 收起':'▼ 展开全部('+members.length+'人)')+'</div>';}
+  if(members.length>5){
+    const _lbl=show?(members.length>_RANK_PAGE?'▲ 收起（显示前'+_RANK_PAGE+'/'+members.length+'人）':'▲ 收起'):'▼ 展开全部（'+members.length+'人）';
+    html+='<div onclick="_rankExp=!_rankExp;updateClassSection()" style="text-align:center;padding:8px;font-size:.75rem;color:var(--muted);cursor:pointer;border-top:1px solid var(--border);margin-top:4px">'+_lbl+'</div>';
+  }
   return html;
 }
 // 委托点击事件（在updateClassSection里挂载）
@@ -5714,7 +5784,32 @@ function applyScoreBatch(){
     }
   });
 }
-// setClassAdmin: 已停用 — 班级负责人（课代表）现在只能由教师设置
+// ── 云同步控制（「我的」页面）──
+function updateCloudSyncStatus(){
+  const el=document.getElementById('cloud-sync-status');
+  if(!el)return;
+  if(!window.FBBridge){el.textContent='未初始化';return;}
+  if(FBBridge.isSyncEnabled()){
+    el.textContent=FBBridge.isReady()?'已开启 ✅':'开启中…';
+    el.style.color='var(--dgreen)';
+  } else {
+    el.textContent='已关闭';
+    el.style.color='var(--muted)';
+  }
+}
+function toggleCloudSync(){
+  if(!window.FBBridge){showToast('云同步未初始化，请刷新页面');return;}
+  const cur=FBBridge.isSyncEnabled();
+  FBBridge.setSyncEnabled(!cur);
+  showToast(!cur?'☁️ 云同步已开启（需要梯子）':'☁️ 云同步已关闭');
+  updateCloudSyncStatus();
+}
+function resetSyncChoice(){
+  localStorage.removeItem('jbfarm_sync_choice');
+  showToast('已重置，下次进入加载页时重新选择');
+  updateCloudSyncStatus();
+}
+
 function setClassAdmin(){ showToast('课代表只能由教师设置，请联系任课教师'); }
 function _doSetAdmin(pin){}  // legacy stub
 // dissolveClass: 已停用 — 注销班级只能由教师通过注销面板操作
@@ -6106,7 +6201,7 @@ function switchTab(name){
     checkAchs();
   }
   if(name==='shop')renderShop();
-  if(name==='profile')updateProfile();
+  if(name==='profile'){updateProfile();updateCloudSyncStatus();}
   if(name==='pet'){updatePetUI();if(!petAF)startPetAnim();drawPet();setTimeout(drawPet,50);setTimeout(drawPet,200);setTimeout(drawPet,800);}
 }
 

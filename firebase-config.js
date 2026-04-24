@@ -31,18 +31,17 @@
 //  第五步：把下面的 YOUR_* 替换成你的实际值，保存文件
 //
 // ═══════════════════════════════════════════════════════
-
 window.FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDs-B3sMFc7FxOWlmR27FQTbxaIn7mZlMU",
-  authDomain: "studyfarmgame.firebaseapp.com",
-  projectId: "studyfarmgame",
-  storageBucket: "studyfarmgame.firebasestorage.app",
-  messagingSenderId: "889002649188",
-  appId: "1:889002649188:web:472f687a3d11fbd8ebe171",
-  measurementId: "G-NQS8RVVQ15",
-// 正确（rtdb）
-databaseURL: "https://studyfarmgame-default-rtdb.firebaseio.com"
+  apiKey: "AIzaSyBr8uA1pQufSCR9I-3q4VNzhN1LpvbO4_w",
+  authDomain: "studyfarm-9f6ba.firebaseapp.com",
+  projectId: "studyfarm-9f6ba",
+  storageBucket: "studyfarm-9f6ba.firebasestorage.app",
+  messagingSenderId: "113070796458",
+  appId: "1:113070796458:web:a2a65729bf967be520ead3",
+  // 把databaseURL放到这里，和其他字段同级！
+  databaseURL: "https://studyfarm-9f6ba-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
+
 
 // ─── 功能开关 ─────────────────────────────────────────
 window.FIREBASE_OPTIONS = {

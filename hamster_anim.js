@@ -10,7 +10,7 @@
      精灵阶段定义：哪些品种的哪些阶段使用精灵图
      格式: { breed: [lv, lv, ...] }
   ───────────────────────────────────────── */
-  var SPRITE_STAGES = { hamster: [2] };
+  var SPRITE_STAGES = { hamster: [2, 3] };
 
   /* ─────────────────────────────────────────
      皮肤数据
@@ -26,10 +26,30 @@
         { id: 'white',  name: '雪白色',   price: 30, desc: '纯洁雪白，清新可爱' },
         { id: 'grey',   name: '银灰色',   price: 30, desc: '高雅银灰，低调百搭' },
         { id: 'purple', name: '薰衣草紫', price: 30, desc: '梦幻淡紫，甜美浪漫' },
-        { id: 'black',  name: '墨黑色',   price: 50, desc: '神秘深黑，独特帅气' }
+        { id: 'black',  name: '墨黑色',   price: 30, desc: '神秘深黑，独特帅气' }
+      ],
+      3: [
+        { id: 'orange', name: '骑士橙',   price: 0,  desc: '默认骑士配色' },
+        { id: 'silver', name: '银甲色',   price: 50, desc: '闪亮银色铠甲' },
+        { id: 'gold',   name: '黄金骑士', price: 80, desc: '传说黄金骑士' }
       ]
     }
   };
+
+  /* ─────────────────────────────────────────
+     文件名回退映射
+     动作 → 按优先级尝试的文件名列表（不含扩展名）
+     支持 idle.jpg / hamster_eating.jpg / hamster_study.png 等多种命名
+  ───────────────────────────────────────── */
+  var _FALLBACK_NAMES = {
+    idle:     ['idle',     'hamster_idle'],
+    eating:   ['eating',   'hamster_eating'],
+    bathing:  ['bathing',  'hamster_bathing'],
+    happy:    ['happy',    'hamster_happy'],
+    sleeping: ['sleeping', 'hamster_sleeping'],
+    studying: ['studying', 'study', 'hamster_studying', 'hamster_study']
+  };
+  var _FALLBACK_EXTS = ['.jpg', '.png'];
 
   /* ─────────────────────────────────────────
      图片缓存（按完整路径缓存）
@@ -38,29 +58,69 @@
   var _failed = {};      // path → true (加载失败，不重试)
   var _idleLoaded = {};  // 'breed/lv/skin' → true
 
+  /**
+   * 同步获取缓存图片（不触发异步加载）
+   * 按照与 _getImg 相同的路径优先级查找，找到即返回，找不到返回 null
+   */
+  function getCachedImg(breed, lv, skin, action) {
+    var base = 'assets/' + breed + '/stage' + lv;
+    var names = _FALLBACK_NAMES[action] || [action];
+    var paths = [];
+    names.forEach(function(nm) {
+      _FALLBACK_EXTS.forEach(function(ext) { paths.push(base+'/'+skin+'/'+nm+ext); });
+    });
+    names.forEach(function(nm) {
+      _FALLBACK_EXTS.forEach(function(ext) { paths.push(base+'/'+nm+ext); });
+    });
+    paths.push(base+'/'+skin+'/idle.jpg');
+    for (var i = 0; i < paths.length; i++) {
+      if (_cache[paths[i]]) return _cache[paths[i]];
+    }
+    return null;
+  }
+
   function _load(path, onDone) {
     if (_cache[path]) { if (onDone) onDone(_cache[path]); return; }
     if (_failed[path]) { if (onDone) onDone(null); return; }
     var img = new Image();
-    img.onload = function () { _cache[path] = img; if (onDone) onDone(img); };
+    img.onload = function () {
+      _cache[path] = img;
+      if (onDone) onDone(img);
+      // 图片首次加载完成后，通知主画布重绘
+      if (window.drawPet) { try { drawPet(); } catch(e) {} }
+    };
     img.onerror = function () { _failed[path] = true; if (onDone) onDone(null); };
     img.src = path;
   }
 
   function _getImg(breed, lv, skin, action, cb) {
-    var p = 'assets/' + breed + '/stage' + lv + '/' + skin + '/' + action + '.jpg';
-    var idleP = 'assets/' + breed + '/stage' + lv + '/' + skin + '/idle.jpg';
-    if (_cache[p]) { cb(_cache[p]); return; }
-    if (_failed[p]) {
-      // 回退到 idle
-      if (_cache[idleP]) { cb(_cache[idleP]); return; }
-      if (_failed[idleP]) { cb(null); return; }
-      _load(idleP, cb);
-      return;
-    }
-    _load(p, function (img) {
-      if (img) { cb(img); } else { _load(idleP, cb); }
+    var base = 'assets/' + breed + '/stage' + lv;
+    var names = _FALLBACK_NAMES[action] || [action];
+    // 构建按优先级排列的候选路径：
+    //   1. 皮肤子目录（idle.jpg / hamster_eating.jpg / hamster_study.png …）
+    //   2. 根目录回退（hamster_eating.jpg 等原始配色文件）
+    //   3. 皮肤子目录 idle.jpg 终极保底
+    var paths = [];
+    names.forEach(function (nm) {
+      _FALLBACK_EXTS.forEach(function (ext) {
+        paths.push(base + '/' + skin + '/' + nm + ext);
+      });
     });
+    names.forEach(function (nm) {
+      _FALLBACK_EXTS.forEach(function (ext) {
+        paths.push(base + '/' + nm + ext);
+      });
+    });
+    paths.push(base + '/' + skin + '/idle.jpg');
+
+    function tryNext(i) {
+      if (i >= paths.length) { cb(null); return; }
+      var p = paths[i];
+      if (_cache[p])  { cb(_cache[p]); return; }
+      if (_failed[p]) { tryNext(i + 1); return; }
+      _load(p, function (img) { if (img) cb(img); else tryNext(i + 1); });
+    }
+    tryNext(0);
   }
 
   /* ─────────────────────────────────────────
@@ -69,9 +129,15 @@
   var _ACTIONS = ['idle', 'eating', 'bathing', 'happy', 'sleeping', 'studying'];
 
   function preloadSkin(breed, lv, skin) {
+    var base = 'assets/' + breed + '/stage' + lv;
     _ACTIONS.forEach(function (act) {
-      var p = 'assets/' + breed + '/stage' + lv + '/' + skin + '/' + act + '.jpg';
-      _load(p, null);
+      var names = _FALLBACK_NAMES[act] || [act];
+      names.forEach(function (nm) {
+        _FALLBACK_EXTS.forEach(function (ext) {
+          _load(base + '/' + skin + '/' + nm + ext, null); // 皮肤子目录
+          _load(base + '/' + nm + ext, null);              // 根目录
+        });
+      });
     });
   }
 
@@ -324,6 +390,7 @@
     preloadSkin:     preloadSkin,
     isSpritedStage:  isSpritedStage,
     getActiveSkin:   getActiveSkin,
+    getCachedImg:    getCachedImg,
     setAction:       setAction,
     getState:        _resolveState,
     drawBase:        drawBase,

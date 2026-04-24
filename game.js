@@ -12,6 +12,55 @@ let S={};
 let petWalking=false; // 默认立正
 const _petImgCache={}; // 自定义宠物图片缓存
 
+// ── 精灵皮肤图片系统（独立于 hamster_anim.js 缓存）──
+// key: 'breed/lv/skin/action'  value: HTMLImageElement | 'loading' | 'failed'
+const _spCache={};
+const _SPRITE_ACTIONS=['idle','eating','bathing','happy','sleeping','studying'];
+const _SPRITE_ACTION_FILES={
+  idle:['idle.jpg','idle.png'],
+  eating:['eating.jpg','eating.png'],
+  bathing:['bathing.jpg','bathing.png'],
+  happy:['happy.jpg','happy.png'],
+  sleeping:['sleeping.jpg','sleeping.png'],
+  studying:['studying.jpg','studying.png','study.jpg','study.png']
+};
+
+// 异步加载一张精灵图，成功后触发 drawPet
+function _spLoad(breed,lv,skin,action){
+  const key=breed+'/'+lv+'/'+skin+'/'+action;
+  if(_spCache[key])return; // 已加载或正在加载
+  _spCache[key]='loading';
+  const files=_SPRITE_ACTION_FILES[action]||[action+'.jpg'];
+  let idx=0;
+  function tryNext(){
+    if(idx>=files.length){_spCache[key]='failed';return;}
+    const img=new Image();
+    img.onload=()=>{_spCache[key]=img;try{drawPet();}catch(e){}};
+    img.onerror=()=>{idx++;tryNext();};
+    img.src='assets/'+breed+'/stage'+lv+'/'+skin+'/'+files[idx++];
+  }
+  tryNext();
+}
+
+// 同步取缓存图（找不到返回 null），action 找不到自动退回 idle
+function _spGet(breed,lv,skin,action){
+  const key=breed+'/'+lv+'/'+skin+'/'+action;
+  const v=_spCache[key];
+  if(v&&v!=='loading'&&v!=='failed')return v;
+  // 退回 idle
+  if(action!=='idle'){
+    const ik=breed+'/'+lv+'/'+skin+'/idle';
+    const iv=_spCache[ik];
+    if(iv&&iv!=='loading'&&iv!=='failed')return iv;
+  }
+  return null;
+}
+
+// 预加载某皮肤所有动作图
+function _spPreload(breed,lv,skin){
+  _SPRITE_ACTIONS.forEach(function(act){_spLoad(breed,lv,skin,act);});
+}
+
 // ─── 弹窗层级管理 ──────────────────────────────────
 let _modalZBase=200;
 function openOverlay(id){
@@ -1035,8 +1084,8 @@ function teacherDeleteClass(encodedClass){
 
   const doDeleteClass=(alsoDeleteAccounts)=>{
     // 先弹确认
-    const extraMsg=alsoDeleteAccounts?'\n⚠️ 同时注销所有学生账号（不可恢复！）':'';
-    openConfirm('💥',`确定注销班级「${className}」？${extraMsg}\n班级数据将彻底清除。`,()=>{
+    const extraMsg=alsoDeleteAccounts?'\n⚠️ 注销所有学生账号（不可恢复！）':'';
+    openConfirm('💥',`确定${alsoDeleteAccounts?'注销班级所有学生账号':'解散班级'}「${className}」？${extraMsg}\n${alsoDeleteAccounts?'所有学生账号及数据将彻底删除。':'班级将彻底消失，学生变为无班级状态。'}`,()=>{
       const cd=getClassData();
       const members=cd[className]||[];
       const accounts=getAllAccounts();
@@ -1064,7 +1113,7 @@ function teacherDeleteClass(encodedClass){
       if(S.managedClasses){S.managedClasses=S.managedClasses.filter(c=>c!==className);persistAccount();}
       renderAccountSettings();
       renderTeacherClassView();
-      showToast('✅ 班级「'+className+'」已注销'+(alsoDeleteAccounts?'，学生账号已同步删除':''));
+      showToast('✅ 班级「'+className+'」已解散'+(alsoDeleteAccounts?'，学生账号已全部注销':''));
     },true);
   };
 
@@ -1074,14 +1123,14 @@ function teacherDeleteClass(encodedClass){
     const ovHTML=`<div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px" id="_del-class-choice-ov">
       <div style="background:var(--panel);border-radius:18px;padding:20px 18px;max-width:360px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.18)">
         <div style="font-size:1.2rem;text-align:center;margin-bottom:6px">💥</div>
-        <div style="font-family:'Ma Shan Zheng',cursive;font-size:1rem;color:var(--dgreen);text-align:center;margin-bottom:10px">注销「${className}」</div>
-        <div style="font-size:.76rem;color:var(--muted);line-height:1.8;margin-bottom:14px;text-align:center">请选择注销方式：</div>
+        <div style="font-family:'Ma Shan Zheng',cursive;font-size:1rem;color:var(--dgreen);text-align:center;margin-bottom:10px">操作「${className}」</div>
+        <div style="font-size:.76rem;color:var(--muted);line-height:1.8;margin-bottom:14px;text-align:center">请选择操作方式：</div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <button onclick="document.getElementById('_del-class-choice-ov').remove();window._doDeleteClassChoice('${encodeURIComponent(className)}',false)" style="padding:11px;border-radius:11px;border:1.5px solid var(--red);background:rgba(224,85,85,.06);color:var(--red);font-size:.8rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">
-            🏫 仅注销班级<br><span style="font-size:.65rem;font-weight:400">学生账号保留，仅清除班级数据</span>
+            🏫 解散班级<br><span style="font-size:.65rem;font-weight:400">班级彻底消失，学生账号保留但变为无班级状态</span>
           </button>
           <button onclick="document.getElementById('_del-class-choice-ov').remove();window._doDeleteClassChoice('${encodeURIComponent(className)}',true)" style="padding:11px;border-radius:11px;border:2px solid var(--red);background:rgba(224,85,85,.12);color:var(--red);font-size:.8rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;font-weight:600">
-            💥 注销班级 + 删除所有学生账号<br><span style="font-size:.65rem;font-weight:400">所有学生账号及数据将彻底清除，不可恢复</span>
+            💥 注销所有学生账号<br><span style="font-size:.65rem;font-weight:400">所有学生账号及数据将彻底清除，不可恢复</span>
           </button>
           <button onclick="document.getElementById('_del-class-choice-ov').remove()" style="padding:9px;border-radius:10px;border:1.5px solid var(--border);background:transparent;font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--muted)">取消</button>
         </div>
@@ -1233,11 +1282,14 @@ function setPetDisplaySize(px){
   px=Math.max(100,Math.min(240,parseInt(px)||150));
   const cvs=document.getElementById('pet-canvas');
   if(!cvs)return;
-  // 只改CSS展示尺寸，canvas内部分辨率保持150×150不变（避免重绘模糊）
-  cvs.style.width=px+'px';cvs.style.height=px+'px';
-  // 持久化
+  // 根据设备像素比提升内部分辨率，彻底解决放大模糊
+  const dpr=Math.min(window.devicePixelRatio||1,3);
+  const res=Math.round(px*dpr);
+  cvs.width=res; cvs.height=res;
+  cvs.style.width=px+'px'; cvs.style.height=px+'px';
+  // 让逻辑坐标系保持在 0~150，petX/petY 不需要改
+  cvs.getContext('2d').setTransform(res/150,0,0,res/150,0,0);
   if(window.S){S.petDisplaySize=px;persistAccount();}
-  // 同步滑块
   const sl=document.getElementById('pet-size-slider');
   if(sl&&parseInt(sl.value)!==px)sl.value=px;
 }
@@ -1259,12 +1311,14 @@ function processTimePass(){
     if(!['s0','s1','s2'].includes(p.s))return;
     const sd=SEEDS[p.seed||'wheat'];const autoH=sd.autoGrowH||3;
     const noWH=(now-(p.lastWater||last))/3600000;
-    if(noWH>autoH*1.5&&!p.hasCrack)p.hasCrack=true;
+    // Bug1 fix: 有自动喷水器时不产生干渴状态
+    if(!S.hasAutoWater&&noWH>autoH*1.5&&!p.hasCrack)p.hasCrack=true;
     if(!p.hasBug&&Math.random()<sd.bugChance*hoursGone)p.hasBug=true;
     if(p.hasCrack||p.hasBug)return;
     growPlot(i,Math.min(hoursGone*(100/(autoH*4)),35));
   });
-  if(S.hasAutoWater){const wc=Math.floor(hoursGone/2);if(wc>0){S.plots.forEach((p,i)=>{if(['s0','s1','s2'].includes(p.s)&&!p.hasCrack&&!p.hasBug){p.lastWater=now;growPlot(i,Math.min(wc*30,90));}})}}
+  // Bug1 fix: 自动浇水同时清除已有的干裂状态
+  if(S.hasAutoWater){const wc=Math.floor(hoursGone/2);if(wc>0){S.plots.forEach((p,i)=>{if(['s0','s1','s2'].includes(p.s)&&!p.hasBug){p.lastWater=now;p.hasCrack=false;growPlot(i,Math.min(wc*30,90));}});}}
   if(S.hasAutoPest){S.plots.forEach(p=>{p.hasBug=false;});}
   const dh=Math.min(hoursGone,8);
   S.petFood=Math.max(0,S.petFood-dh*4);S.petHappy=Math.max(0,S.petHappy-dh*2);
@@ -1842,8 +1896,11 @@ function loadCustomPetImg(key, cb){
 function drawPet(){
   const cvs=document.getElementById('pet-canvas');if(!cvs)return;
   const ctx=cvs.getContext('2d');
-  ctx.setTransform(1,0,0,1,0,0); // 防止残留变换导致画面空白
-  ctx.clearRect(0,0,cvs.width,cvs.height);
+  // 还原 DPR 缩放（不能重置为1，否则高分辨率 Canvas 内容会糊）
+  const _dpr=Math.min(window.devicePixelRatio||1,3);
+  const _scale=cvs.width/150; // 当前实际缩放比 = 内部像素/逻辑像素
+  ctx.setTransform(_scale,0,0,_scale,0,0);
+  ctx.clearRect(0,0,150,150);
   const bob=petWalking?Math.sin(petT*3)*1.5:Math.sin(petT)*2;
   const stage=applySkinStage(getEvoStage());const breed=S.petBreed||'hamster';
   const petImgKey=getCustomPetImgKey();
@@ -1906,20 +1963,49 @@ function drawPet(){
       }
     });
   } else {
-    // 【仓鼠精灵动画】仅阶段2使用精灵图；其他阶段代码绘制后叠加特效
-    let _usedSprite = false;
-    if (breed === 'hamster' && S.petLevel === 2 && window.HamsterAnim) {
-      try { _usedSprite = HamsterAnim.drawFull(ctx, petX, petY + bob, petT, stage); } catch(e) {}
-    }
-    if (!_usedSprite) {
+    // ── 仓鼠第2阶段：完全同步精灵图绘制，彻底消除异步时序问题 ──
+    if (breed === 'hamster' && window.HamsterAnim && HamsterAnim.isSpritedStage(breed, S.petLevel)) {
+      // 获取当前皮肤
+      const _skin = (S.petSpriteSkins&&S.petSpriteSkins[S.activePet+'_hamster_'+S.petLevel])||'orange';
+      // 获取当前动作状态
+      const _state = window.HamsterAnim ? HamsterAnim.getState() : 'idle';
+      const _energy = S.petEnergy != null ? S.petEnergy : 50;
+      const _food   = S.petFood   != null ? S.petFood   : 50;
+      // 动作优先级：显式操作 > 体力睡觉 > idle
+      let _action;
+      if (_state && _state !== 'idle') { _action = _state; }
+      else if (_energy < 18) { _action = 'sleeping'; }
+      else { _action = 'idle'; }
+      // 确保当前皮肤图片在加载中
+      _spLoad('hamster',S.petLevel,_skin,_action);
+      // 同步取图，找不到退回 idle
+      const _sImg = _spGet('hamster',S.petLevel,_skin,_action);
+      if (_sImg) {
+        const _thin = _food < 15 ? { x:0.72+(_food/15)*0.28, y:0.90+(_food/15)*0.10 } : {x:1,y:1};
+        ctx.save();
+        // 圆形裁剪：对 PNG 透明底和 JPG 白底都正确
+        ctx.beginPath(); ctx.arc(petX, petY+bob, 52*_thin.x, 0, Math.PI*2); ctx.clip();
+        ctx.translate(petX, petY+bob); ctx.scale(_thin.x, _thin.y);
+        ctx.drawImage(_sImg,-51,-51,102,102);
+        ctx.restore();
+        if(window.HamsterAnim) try{HamsterAnim.drawOverlay(ctx,petX,petY+bob,petT);}catch(e){}
+      } else {
+        // 还未加载完：显示占位圆
+        ctx.save();
+        ctx.beginPath(); ctx.arc(petX,petY+bob,44,0,Math.PI*2);
+        ctx.fillStyle='rgba(240,185,120,0.25)'; ctx.fill();
+        ctx.font='44px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText('🐹',petX,petY+bob);
+        ctx.restore();
+      }
+    } else {
+      // 其他品种 / 其他阶段：代码绘制 + 特效叠加
       try{drawPetBreed(ctx,breed,petX,petY+bob,stage);}catch(e){
-        // 绘制失败时显示占位符
         ctx.fillStyle='rgba(100,160,100,.15)';ctx.beginPath();ctx.arc(petX,petY,30,0,Math.PI*2);ctx.fill();
         ctx.font='24px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🐾',petX,petY);
       }
-      // 所有阶段叠加 ZZZ / 气泡 / 星星等特效
       if (breed === 'hamster' && window.HamsterAnim) {
-        try { HamsterAnim.drawOverlay(ctx, petX, petY + bob, petT); } catch(e) {}
+        try { HamsterAnim.drawOverlay(ctx, petX, petY+bob, petT); } catch(e) {}
       }
     }
     const clothKey=getCustomClothImgKey();
@@ -2306,10 +2392,28 @@ function drawPetPreviewInCanvas(cvs,breed,level){
   if(!cvs)return;
   const ctx=cvs.getContext('2d');
   ctx.clearRect(0,0,cvs.width,cvs.height);
-  const stages=(window.EVO_STAGES&&EVO_STAGES[breed])||EVO_STAGES.hamster;
-  const stage=stages[0]; // 商店一律显示初始形态
   const cx=Math.round(cvs.width/2),cy=Math.round(cvs.height/2)+4;
-  // 临时借用S字段绘制（保存/恢复）
+  // 仓鼠第2阶段：用 game.js 自建缓存
+  if(breed==='hamster'&&level===2){
+    const _lvKey='hamster_'+level;
+    const _skin=(S.petSpriteSkins&&S.petSpriteSkins[(S.activePet||'')+"_"+_lvKey])||'orange';
+    _spLoad('hamster',level,_skin,'idle');
+    const _img=_spGet('hamster',level,_skin,'idle');
+    if(_img){
+      ctx.save();
+      const _r=Math.min(cx,cy)-2;
+      ctx.beginPath(); ctx.arc(cx,cy,_r,0,Math.PI*2); ctx.clip();
+      const _sz=Math.min(cvs.width,cvs.height)*0.92;
+      ctx.drawImage(_img,cx-_sz/2,cy-_sz/2,_sz,_sz);
+      ctx.restore();
+    } else {
+      ctx.font=Math.round(cvs.width*0.5)+'px serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText('🐹',cx,cy);
+    }
+    return;
+  }
+  const stages=(window.EVO_STAGES&&EVO_STAGES[breed])||EVO_STAGES.hamster;
+  const stage=stages[Math.min((level||1)-1,stages.length-1)];
   const _br=S.petBreed,_lv=S.petLevel,_hp=S.petHappy,_en=S.petEnergy;
   S.petBreed=breed;S.petLevel=level||1;S.petHappy=75;S.petEnergy=75;
   try{drawPetBreed(ctx,breed,cx,cy,stage);}catch(e){}
@@ -2352,10 +2456,32 @@ function drawTears(ctx,cx,cy,h){
 }
 
 function drawHamster(ctx, cx, cy, stage) {
-    // 【精灵图委托】仅阶段2使用精灵图；阶段1/3/4/5保留代码绘制
-    if (window.HamsterAnim && S.petLevel === 2) {
-      const _t = (typeof petT !== 'undefined') ? petT : 0;
-      if (HamsterAnim.drawBase(ctx, cx, cy, _t)) return;
+    // 【第2阶段】走 game.js 自建图片缓存，彻底绕开 hamster_anim 内部缓存
+    if (window.HamsterAnim && HamsterAnim.isSpritedStage('hamster', S.petLevel)) {
+      const _skin = (S.petSpriteSkins&&S.petSpriteSkins[S.activePet+'_hamster_'+S.petLevel])||'orange';
+      const _state = window.HamsterAnim&&HamsterAnim.getState ? HamsterAnim.getState() : 'idle';
+      const _energy = S.petEnergy!=null?S.petEnergy:50;
+      const _food   = S.petFood!=null?S.petFood:50;
+      let _action;
+      if(_state&&_state!=='idle'){_action=_state;}
+      else if(_energy<18){_action='sleeping';}
+      else{_action='idle';}
+      _spLoad('hamster',2,_skin,_action);
+      const _sImg=_spGet('hamster',2,_skin,_action);
+      if(_sImg){
+        const _thin=_food<15?{x:0.72+(_food/15)*0.28,y:0.90+(_food/15)*0.10}:{x:1,y:1};
+        ctx.save();
+        ctx.beginPath(); ctx.arc(cx, cy, 52*_thin.x, 0, Math.PI*2); ctx.clip();
+        ctx.translate(cx, cy); ctx.scale(_thin.x, _thin.y);
+        ctx.drawImage(_sImg,-51,-51,102,102);
+        ctx.restore();
+      } else {
+        ctx.save();ctx.beginPath();ctx.arc(cx,cy,44,0,Math.PI*2);
+        ctx.fillStyle='rgba(240,185,120,0.25)';ctx.fill();
+        ctx.font='44px serif';ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText('🐹',cx,cy);ctx.restore();
+      }
+      return;
     }
     const lv = S.petLevel, h = S.petHappy / 100, col = stage.color || '#e8b070';
     const light = adjustColor(col, 60), dark = adjustColor(col, -30);
@@ -3593,7 +3719,8 @@ function drawCloth(ctx,cx,cy,previewId){
 // ─── PET UI ──────────────────────────────────────
 function updatePetUI(){
   // 恢复宠物显示大小
-  if(S.petDisplaySize){setPetDisplaySize(S.petDisplaySize);}
+  // 初始化时按 DPR 设置 Canvas 分辨率（有存档用存档值，无存档用默认150）
+  setPetDisplaySize(S.petDisplaySize||150);
   // 数值显示整数
   ['food','happy','clean','energy'].forEach(k=>{const v=Math.round(S['pet'+k.charAt(0).toUpperCase()+k.slice(1)]);const bar=document.getElementById('sf-'+k),val=document.getElementById('sv-'+k);if(bar)bar.style.width=v+'%';if(val)val.textContent=v;});
   const evoReq=EVO_EXP_REQUIRED[Math.min(S.petLevel,EVO_EXP_REQUIRED.length-1)]||0;
@@ -4086,7 +4213,9 @@ function renderSkinsShop(g){
   // ── 精灵阶段：显示图片皮肤选择器 ──
   if(window.HamsterAnim && HamsterAnim.isSpritedStage(breed, lv)){
     const skins = (HamsterAnim.SPRITE_SKINS[breed]||{})[lv]||[];
-    const activeSkin = HamsterAnim.getActiveSkin(breed, lv);
+    // Bug fix: 直接从 S.petSpriteSkins 读取，避免 getActiveSkin 因 activePet 为空返回错误值
+    const _skinKey = (S.activePet||'')+'_'+breed+'_'+lv;
+    const activeSkin = (S.petSpriteSkins&&S.petSpriteSkins[_skinKey]) || 'orange';
     const hdr = document.createElement('div');
     hdr.style.cssText='font-size:.7rem;color:var(--muted);margin:0 4px 8px;';
     hdr.textContent='当前为第'+lv+'阶段精灵形象，每种皮肤有独立图片';
@@ -4097,15 +4226,17 @@ function renderSkinsShop(g){
       const d = document.createElement('div');
       d.className='shop-item'+(active?' equipped':owned?' owned':'');
       // 图片预览：尝试显示 idle 缩略图
-      const imgPath='assets/'+breed+'/stage'+lv+'/'+item.id+'/idle.jpg';
       const priceLabel=active?'✓当前':owned?'已拥有':item.price===0?'免费':'🪙'+item.price;
-      d.innerHTML=`<img src="${imgPath}" onerror="this.style.display='none'" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid #ddd;display:block;margin:0 auto 4px">
+      d.innerHTML=`<img id="skin-thumb-${breed}-${lv}-${item.id}" src="assets/${breed}/stage${lv}/${item.id}/idle.jpg"
+        onerror="var _t=this;if(_t.src.indexOf('.jpg')>-1){_t.src=_t.src.replace('.jpg','.png');}else{_t.style.display='none';}"
+        style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid #ddd;display:block;margin:0 auto 4px">
         <div class="si-nm">${item.name}</div>
         <div class="si-desc" style="font-size:.58rem;color:var(--muted)">${item.desc}</div>
         <div class="si-price">${priceLabel}</div>`;
       d.onclick=()=>{
-        if(active)return;
+        if(active)return; // 已是当前皮肤，不响应
         if(!owned&&item.price>0&&S.coins<item.price){showToast('金币不足！需要🪙'+item.price);return;}
+        // 无论是否已拥有，都弹出试穿预览弹窗，让用户确认后再切换
         _openSpriteSkinPreview(breed, lv, item, owned);
       };
       g.appendChild(d);
@@ -4131,54 +4262,66 @@ function renderSkinsShop(g){
   });
 }
 
-// ── 精灵皮肤预览弹窗 ──
+// ── 精灵皮肤：直接应用（不弹窗）──
+function _applySpriteSkin(breed, lv, item){
+  if(!S.petSpriteSkins)S.petSpriteSkins={};
+  const key=S.activePet+'_'+breed+'_'+lv;
+  S.petSpriteSkins[key]=item.id;
+  // 预加载该皮肤所有动作图到 game.js 自建缓存
+  _spPreload(breed, lv, item.id);
+  saveCurPet();persistAccount();
+  renderShop();updatePetUI();drawPet();
+  showToast('🎨已换为【'+item.name+'】皮肤！');
+}
+
+// ── 精灵皮肤预览弹窗（购买时使用）──
 function _openSpriteSkinPreview(breed, lv, item, alreadyOwned){
   const ov=document.getElementById('skin-prev-ov');
+  if(!ov)return;
   const ttl=document.getElementById('skin-prev-title');
   const desc=document.getElementById('skin-prev-desc');
   if(ttl)ttl.textContent='🎨 '+item.name+' 皮肤预览';
-  if(desc)desc.textContent=alreadyOwned?'已拥有此皮肤':'需要 🪙'+item.price+' 金币';
+  if(desc)desc.textContent=alreadyOwned?'点击换上此皮肤':'需要 🪙'+item.price+' 金币';
+  // 预览画布：优先用 game.js 缓存，没有就异步加载
   const cvs=document.getElementById('skin-prev-canvas');
   if(cvs){
     const ctx=cvs.getContext('2d');ctx.clearRect(0,0,120,120);
-    const img=new Image();
-    img.onload=()=>{
+    function _drawPreviewImg(img){
       ctx.clearRect(0,0,120,120);
-      ctx.save();ctx.beginPath();ctx.arc(60,62,54,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.restore();
-      ctx.save();ctx.globalCompositeOperation='multiply';ctx.drawImage(img,9,11,102,102);ctx.restore();
-    };
-    img.onerror=()=>{
-      ctx.clearRect(0,0,120,120);
-      ctx.font='36px serif';ctx.textAlign='center';ctx.fillText('🐹',60,70);
-    };
-    img.src='assets/'+breed+'/stage'+lv+'/'+item.id+'/idle.jpg';
+      ctx.save();
+      ctx.beginPath(); ctx.arc(60,60,54,0,Math.PI*2); ctx.clip();
+      ctx.drawImage(img,9,9,102,102);
+      ctx.restore();
+    }
+    const _cached=_spGet(breed,lv,item.id,'idle');
+    if(_cached){
+      _drawPreviewImg(_cached);
+    } else {
+      ctx.font='48px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🐹',60,60);
+      const img=new Image();
+      img.onload=()=>_drawPreviewImg(img);
+      img.src='assets/'+breed+'/stage'+lv+'/'+item.id+'/idle.jpg';
+    }
   }
   const confirmBtn=document.getElementById('skin-prev-confirm-btn');
   const cancelBtn=document.getElementById('skin-prev-cancel-btn');
   if(confirmBtn){
     confirmBtn.textContent=alreadyOwned?'换上！':'购买并换上';
     confirmBtn.onclick=()=>{
-      if(!alreadyOwned&&item.price>0){
+      if(!alreadyOwned){
         if(S.coins<item.price){showToast('金币不足！需要🪙'+item.price);return;}
         S.coins-=item.price;
         if(!S.ownedSpriteSkins)S.ownedSpriteSkins=[];
-        const key=breed+'_'+lv+'_'+item.id;
-        if(!S.ownedSpriteSkins.includes(key))S.ownedSpriteSkins.push(key);
+        const ownedKey=breed+'_'+lv+'_'+item.id;
+        if(!S.ownedSpriteSkins.includes(ownedKey))S.ownedSpriteSkins.push(ownedKey);
         updateTop();
       }
-      if(!S.petSpriteSkins)S.petSpriteSkins={};
-      S.petSpriteSkins[S.activePet+'_'+breed+'_'+lv]=item.id;
-      // 预加载新皮肤的所有动作图
-      if(window.HamsterAnim)HamsterAnim.preloadSkin(breed,lv,item.id);
-      saveCurPet();persistAccount();
-      ov.classList.remove('on');
-      renderShop();updatePetUI();drawPet();
-      showToast('🎨已换为【'+item.name+'】皮肤！');
-      showPetTalk('feed'); // 借用高兴台词
+      closeOverlay('skin-prev-ov');
+      _applySpriteSkin(breed,lv,item);
     };
   }
-  if(cancelBtn)cancelBtn.onclick=()=>ov.classList.remove('on');
-  ov.classList.add('on');
+  if(cancelBtn)cancelBtn.onclick=()=>closeOverlay('skin-prev-ov');
+  openOverlay('skin-prev-ov');
 }
 
 // ── 皮肤预览弹窗 ──
@@ -5100,10 +5243,27 @@ function randomPickMember(){
   // 弹出结果，提供切换账号选项
   const accounts=getAllAccounts();const accExist=accounts.some(a=>a.name===picked.name&&a.classId===S.classId);
   const extraBtn=accExist&&picked.name!==S.playerName?`<button onclick="onRankItemClick('${picked.name}');closeResult()" style="margin-top:8px;width:100%;padding:8px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.8rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">切换到该账号</button>`:'';
+  // Bug3 fix: 教师或辅助管理员抽人后额外显示"给学生加积分"按钮
+  const _admins=getClassAdmins();
+  const _isTeacherPick=S.isTeacher&&(S.managedClasses||[]).includes(S.classId);
+  const _isAsstPick=_admins[S.classId]&&_admins[S.classId].name===S.playerName;
+  const addScoreBtn=(_isTeacherPick||_isAsstPick)?`<button onclick="closeResult();_quickAddScoreForPicked('${encodeURIComponent(picked.name)}')" style="margin-top:8px;width:100%;padding:8px;border-radius:10px;border:none;background:linear-gradient(135deg,#e8a020,#c07000);color:#fff;font-size:.8rem;font-weight:700;cursor:pointer;font-family:'Noto Sans SC',sans-serif">⭐ 给 ${picked.name} 加积分</button>`:'';
   document.getElementById('res-ico').textContent='🎲';
   document.getElementById('res-ttl').textContent='随机抽取结果！';
-  document.getElementById('res-body').innerHTML=`<div style="font-size:1.1rem;font-weight:700;margin:6px 0">🌟 ${picked.name} 🌟</div><div style="font-size:.8rem;color:var(--muted)">Lv.${picked.level||1} · ⭐${picked.score||0}分</div>${extraBtn}`;
+  document.getElementById('res-body').innerHTML=`<div style="font-size:1.1rem;font-weight:700;margin:6px 0">🌟 ${picked.name} 🌟</div><div style="font-size:.8rem;color:var(--muted)">Lv.${picked.level||1} · ⭐${picked.score||0}分</div>${addScoreBtn}${extraBtn}`;
   document.getElementById('res-ov').classList.add('on');
+}
+
+// Bug3 fix: 教师抽人后快速加积分弹窗（直接预选该学生并打开积分面板）
+function _quickAddScoreForPicked(encodedName){
+  const name=decodeURIComponent(encodedName);
+  openAddScorePanel(S.classId);
+  // 延迟等待面板渲染后自动选中该学生
+  setTimeout(()=>{
+    if(!_scoreSelected)return;
+    _scoreSelected=new Set([name]);
+    _renderScoreList();
+  },80);
 }
 
 function joinClass(){const cls=((document.getElementById('ci-class')||{}).value||'').trim();if(!cls){showToast('请输入班级名称！');return;}S.classId=cls;joinClassBoard(cls,S.playerName,S.score);persistAccount();updateClassSection();showToast(`✅ 已加入班级 ${cls}！`);}
@@ -5285,42 +5445,53 @@ function openClassManage(){
   const body=document.getElementById('class-manage-body');if(!body)return;
   const admins=getClassAdmins();const asstAdmin=admins[S.classId];
   const cd=getClassData();const clsMembers=cd[S.classId]||[];
-  const selfMember=clsMembers.find(m=>m.name===S.playerName);
   const isTeacher=S.isTeacher&&(S.managedClasses||[]).includes(S.classId);
-  const isAsstAdmin=asstAdmin&&asstAdmin.name===S.playerName;
+  const isKeDaiLong=!isTeacher&&asstAdmin&&asstAdmin.name===S.playerName; // 课代表（非教师）
   const teachers=clsMembers.filter(m=>m.isTeacher);
+  const btnBase='width:100%;padding:9px;border-radius:10px;font-size:.78rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif;margin-bottom:8px';
   let html='';
-  // 教师信息
+  // 班级教师信息
   if(teachers.length>0)html+=`<div style="font-size:.74rem;color:#a06000;font-weight:600;margin-bottom:8px">👨‍🏫 班级教师：${teachers.map(t=>t.name).join('、')}</div>`;
-  // 辅助管理员信息
-  if(asstAdmin)html+=`<div style="font-size:.72rem;color:#2060a0;margin-bottom:8px">🎖️ 辅助管理员：<b>${asstAdmin.name}</b></div>`;
-  // 教师专属：任命辅助管理员
-  if(isTeacher&&!asstAdmin){
-    html+=`<button onclick="openSetAsstAdmin()" style="width:100%;padding:9px;border-radius:10px;border:1.5px solid #4a90d9;background:rgba(74,144,217,.06);color:#2060a0;font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;margin-bottom:8px">🎖️ 任命辅助管理员（课代表）</button>`;
-  } else if(isTeacher&&asstAdmin){
-    html+=`<button onclick="openSetAsstAdmin()" style="width:100%;padding:9px;border-radius:10px;border:1.5px solid #4a90d9;background:rgba(74,144,217,.06);color:#2060a0;font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;margin-bottom:8px">🎖️ 更换辅助管理员</button>`;
-  }
-  // 加积分（教师或辅助管理员）
-  if(isTeacher||isAsstAdmin){
-    html+=`<button onclick="openAddScorePanel()" style="width:100%;padding:9px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;margin-bottom:8px">⭐ 给学生加积分</button>`;
-  }
-  // 解散班级（教师或辅助管理员）
-  if(isTeacher||isAsstAdmin){
-    html+=`<button onclick="dissolveClass()" style="width:100%;padding:9px;border-radius:10px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">💥 解散班级</button><div style="font-size:.6rem;color:var(--muted);margin-top:4px;text-align:center">${isTeacher?'解散后所有班级数据将清除':'辅助管理员也可解散班级'}</div>`;
-  } else if(!asstAdmin&&!isTeacher){
-    // 普通学生：显示设置负责人入口
-    html+=`<div style="font-size:.74rem;color:var(--muted);margin-bottom:10px;line-height:1.8">该班级暂无负责人。<br>如果你是老师/班主任，可以设置自己为班级负责人。</div><button onclick="setClassAdmin()" style="width:100%;padding:9px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;margin-bottom:8px">👑 设置我为班级负责人</button>`;
+  // 课代表信息
+  if(asstAdmin)html+=`<div style="font-size:.72rem;color:#2060a0;margin-bottom:10px">🎖️ 课代表：<b>${asstAdmin.name}</b></div>`;
+
+  if(isTeacher){
+    // ── 教师视图 ──
+    if(!asstAdmin){
+      html+=`<button onclick="openSetAsstAdmin()" style="${btnBase};border:1.5px solid #4a90d9;background:rgba(74,144,217,.06);color:#2060a0">🎖️ 设置课代表</button>`;
+    } else {
+      html+=`<button onclick="openSetAsstAdmin()" style="${btnBase};border:1.5px solid #4a90d9;background:rgba(74,144,217,.06);color:#2060a0">🎖️ 更换课代表</button>`;
+    }
+    html+=`<button onclick="openAddScorePanel()" style="${btnBase};border:none;background:var(--green);color:#fff">⭐ 给学生加积分</button>`;
+    html+=`<button onclick="teacherDismissClassFromManage()" style="${btnBase};border:1.5px solid var(--red);background:transparent;color:var(--red)">💥 注销班级</button>`;
+    html+=`<div style="font-size:.6rem;color:var(--muted);margin-top:-4px;margin-bottom:8px;text-align:center">可选择解散班级或注销所有学生账号</div>`;
+  } else if(isKeDaiLong){
+    // ── 课代表视图：可以加积分，不可解散班级 ──
+    html+=`<button onclick="openAddScorePanel()" style="${btnBase};border:none;background:var(--green);color:#fff">⭐ 给学生加积分</button>`;
+    html+=`<div style="font-size:.72rem;color:var(--muted);line-height:1.7;padding:8px;background:rgba(0,0,0,.03);border-radius:9px;text-align:center">课代表无权注销班级<br>如需解散请联系教师</div>`;
   } else {
-    html+=`<div style="font-size:.72rem;color:var(--muted);line-height:1.7">如需解散班级，请联系班级负责人。</div>`;
+    // ── 普通学生视图 ──
+    if(!asstAdmin){
+      html+=`<div style="font-size:.76rem;color:var(--muted);line-height:1.9;padding:10px 12px;background:rgba(0,0,0,.03);border-radius:10px;text-align:center">📭 暂未设置课代表<br>请联系教师进行设置</div>`;
+    } else {
+      html+=`<div style="font-size:.76rem;color:var(--muted);line-height:1.9;padding:10px 12px;background:rgba(0,0,0,.03);border-radius:10px;text-align:center">🔒 暂无权限<br>请联系班级负责人（${asstAdmin.name}）设置</div>`;
+    }
   }
   body.innerHTML=html;
   ov.classList.add('on');
 }
 
+// 教师从班级管理弹窗触发注销
+function teacherDismissClassFromManage(){
+  if(!S.isTeacher||(S.managedClasses||[]).indexOf(S.classId)===-1){showToast('无权操作');return;}
+  document.getElementById('class-manage-ov').classList.remove('on');
+  teacherDeleteClass(encodeURIComponent(S.classId));
+}
+
 function openSetAsstAdmin(){
   const cd=getClassData();
   const members=(cd[S.classId]||[]).filter(m=>!m.isTeacher);
-  let html='<div style="font-size:.7rem;color:var(--muted);margin-bottom:8px">选择一名学生作为辅助管理员（课代表）：</div><div style="max-height:50vh;overflow-y:auto">';
+  let html='<div style="font-size:.7rem;color:var(--muted);margin-bottom:8px">选择一名学生作为课代表（班级负责人）：</div><div style="max-height:50vh;overflow-y:auto">';
   members.forEach(s=>{
     html+=`<div style="padding:8px;border-radius:8px;border:1px solid var(--border);margin-bottom:4px;cursor:pointer;background:var(--panel)" onclick="setAsstAdmin('${encodeURIComponent(s.name)}')">${s.name} - Lv.${s.level||1} · ⭐${s.score||0}</div>`;
   });
@@ -5330,13 +5501,13 @@ function openSetAsstAdmin(){
 
 function setAsstAdmin(encodedName){
   const name=decodeURIComponent(encodedName);
-  openConfirm('🎖️','将「'+name+'」设为辅助管理员（课代表）？\n可给同学加积分、解散班级，不能任命其他管理员。',()=>{
+  openConfirm('🎖️','将「'+name+'」设为课代表？\n课代表可给同学加减积分，不能解散班级。',()=>{
     const admins=getClassAdmins();
     admins[S.classId]={name,pin:''};
     saveClassAdmins(admins);
     document.getElementById('class-manage-ov').classList.remove('on');
     updateClassSection();
-    showToast('✅ 已将「'+name+'」设为辅助管理员！');
+    showToast('✅ 已将「'+name+'」设为课代表！');
   });
 }
 
@@ -5543,69 +5714,11 @@ function applyScoreBatch(){
     }
   });
 }
-function setClassAdmin(){
-  const list=getAllAccounts();
-  const acc=list.find(a=>a.id===CURRENT_ACC_ID);
-  const hasPin=acc&&acc.pin;
-if(!hasPin){
-  openConfirm('👑',`设置自己为班级负责人？
-建议先设置账号密码，负责人密码用于解散班级时验证身份。`,()=>{
-    _doSetAdmin('');
-  });
-  return;
-}
-
-  openPinPad(S.playerName,entered=>{
-    if(entered===acc.pin){
-      _doSetAdmin(entered);
-      document.getElementById('pin-ov').classList.remove('on');
-      return true;
-    }
-    showToast('密码错误！');return false;
-  });
-}
-function _doSetAdmin(pin){
-  const admins=getClassAdmins();
-  admins[S.classId]={name:S.playerName,pin:pin};
-  saveClassAdmins(admins);
-  document.getElementById('class-manage-ov').classList.remove('on');
-  showToast(`✅ 已设置 ${S.playerName} 为班级负责人！`);
-}
-function dissolveClass(){
-  const admins=getClassAdmins();
-  const curAdmin=admins[S.classId];
-  if(!curAdmin||curAdmin.name!==S.playerName){showToast('只有班级负责人才能解散班级');return;}
-  const list=getAllAccounts();
-  const acc=list.find(a=>a.id===CURRENT_ACC_ID);
-  const doDissolve=()=>{
-    openConfirm('💥',`确定解散【${S.classId}】？
-
-此操作不可撤销！
-班级排名数据将永久清除。`,()=>{
-      const cd=getClassData();
-      delete cd[S.classId];
-      saveClassData(cd);
-      delete admins[S.classId];
-      saveClassAdmins(admins);
-      // 所有该班级成员的classId清空
-      const accounts=getAllAccounts();
-      accounts.forEach(a=>{if(a.classId===S.classId){a.classId='';const save=localStorage.getItem(getAccKey(a.id));if(save){try{const s=JSON.parse(save);s.classId='';localStorage.setItem(getAccKey(a.id),JSON.stringify(s));}catch(e){}}}});
-      saveAllAccounts(accounts);
-      S.classId='';persistAccount();
-      document.getElementById('class-manage-ov').classList.remove('on');
-      updateProfile();
-      showToast('班级已解散');
-    },true);
-  };
-  if(curAdmin.pin){
-    openPinPad(S.playerName,entered=>{
-      if(entered===curAdmin.pin){document.getElementById('pin-ov').classList.remove('on');doDissolve();return true;}
-      showToast('密码错误！');return false;
-    });
-  } else {
-    doDissolve();
-  }
-}
+// setClassAdmin: 已停用 — 班级负责人（课代表）现在只能由教师设置
+function setClassAdmin(){ showToast('课代表只能由教师设置，请联系任课教师'); }
+function _doSetAdmin(pin){}  // legacy stub
+// dissolveClass: 已停用 — 注销班级只能由教师通过注销面板操作
+function dissolveClass(){ showToast('只有教师账号才能注销班级'); }
 
 // ══════════════════════════════════════════════════════════════
 // ★ 全设备导入导出
@@ -5919,7 +6032,8 @@ function renderAchs(){
   const allGot=S.unlockedAch.length;
   const ac=document.getElementById('ach-count');
   if(_achTab==='all'&&ac)ac.textContent=`${allGot}/${ACHS.length}`;
-  const n=S.newAch.length;
+  // Bug2 fix: 用 pendingAchReward 控制红点（已领取时清零）
+  const n=(S.pendingAchReward||[]).length;
   ['bd-ach','sbd-ach'].forEach(id=>{const el=document.getElementById(id);if(!el)return;if(n>0){el.textContent=n;el.classList.add('on');}else{el.textContent='';el.classList.remove('on');}});
   if(_achTab==='archive')renderPetArchive();
 }
@@ -5987,11 +6101,13 @@ function switchTab(name){
   if(sbn){sbn.querySelectorAll('.sb-item').forEach((el,i)=>el.classList.toggle('on',['farm','pet','shop','ach','profile'][i]===name));}
   if(name==='ach'){
     switchAchTab(_achTab||'all');
-    // 红点由 pendingAchReward 控制，不在这里清零
+    // Bug2 fix: 切换到成就页时清除 newAch 通知，并刷新红点
+    if(S.newAch&&S.newAch.length>0){S.newAch=[];persistAccount();}
+    checkAchs();
   }
   if(name==='shop')renderShop();
   if(name==='profile')updateProfile();
-  if(name==='pet'){updatePetUI();if(!petAF)startPetAnim();drawPet();setTimeout(drawPet,50);setTimeout(drawPet,200);}
+  if(name==='pet'){updatePetUI();if(!petAF)startPetAnim();drawPet();setTimeout(drawPet,50);setTimeout(drawPet,200);setTimeout(drawPet,800);}
 }
 
 // ─── EXPORT / IMPORT ──────────────────────────────
@@ -6047,7 +6163,8 @@ function naturalDecay(){
     const stageKey='stage_'+Math.min(S.petLevel,5);
     showPetTalk(stageKey);
   }
-  if(S.hasAutoWater){S.plots.forEach((p,i)=>{if(['s0','s1','s2'].includes(p.s)&&!p.hasCrack&&!p.hasBug){p.lastWater=Date.now();growPlot(i,0.5);}});}
+  // Bug1 fix: 自动喷水器实时浇水，清除干渴状态
+  if(S.hasAutoWater){S.plots.forEach((p,i)=>{if(['s0','s1','s2'].includes(p.s)&&!p.hasBug){p.lastWater=Date.now();p.hasCrack=false;growPlot(i,0.5);}});}
   updatePetUI();persistAccount();
 }
 
@@ -6874,6 +6991,9 @@ function initGame(){petX=75;petY=76;petWalking=false;
   const sbpl=document.getElementById('sb-pause-lbl');if(sbpl)sbpl.textContent='暂停游戏';
   (document.getElementById('pause-ov')||{}).classList.remove('on');
   renderFarm();updatePetUI();updateTop();renderAchs();checkAchs();renderSubjectBars();startPetAnim();updateProfile();switchTab('farm');
+  // 启动时预加载所有精灵皮肤图片到 game.js 自建缓存
+  ['orange','white','grey','purple','black'].forEach(function(sk){_spPreload('hamster',2,sk);});
+  ['orange','silver','gold'].forEach(function(sk){_spPreload('hamster',3,sk);});
   _loadProfileImgIfAny();
   const _savedTheme=localStorage.getItem('jbfarm_theme')||'default';
   // 若是自定义主题，先恢复CSS变量再应用主题

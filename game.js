@@ -80,6 +80,22 @@ function loadAccSave(id){
       if(!s.firstSwitchDone)s.firstSwitchDone={};
       if(!s.petSkinColors)s.petSkinColors={};
       if(!Array.isArray(s.ownedSkins))s.ownedSkins=[];
+      if(!s.petSpriteSkins)s.petSpriteSkins={};
+      if(!Array.isArray(s.ownedSpriteSkins))s.ownedSpriteSkins=[];
+      if(!s.petDisplaySize)s.petDisplaySize=150;
+      if(!Array.isArray(s.pendingAchReward))s.pendingAchReward=[];
+      if(!Array.isArray(s.claimedAchReward))s.claimedAchReward=[];
+      // ── 旧存档迁移：已解锁但未被tracked为claimed/pending的成就 → 视为已领取
+      // 这样旧档成就页面会显示"✓ 已领取"而不是"✓ 已解锁"，红点也不会卡住
+      s.unlockedAch.forEach(function(id){
+        if(!s.pendingAchReward.includes(id)&&!s.claimedAchReward.includes(id)){
+          s.claimedAchReward.push(id);
+        }
+      });
+      // 清理 pendingAchReward 中已 claimed 的条目，防止红点无法消除
+      s.pendingAchReward=s.pendingAchReward.filter(function(id){
+        return !s.claimedAchReward.includes(id);
+      });
       // 兼容旧存档：已设置的皮肤视为已拥有
       if(s.petSkinColors&&s.ownedSkins){Object.values(s.petSkinColors).forEach(sid=>{if(sid&&sid!=='sc_default'&&!s.ownedSkins.includes(sid))s.ownedSkins.push(sid);});}
       return s;
@@ -1213,6 +1229,18 @@ function openModulePicker(){
 
 
 // ─── 宠物行走开关 ─────────────────────────────────
+function setPetDisplaySize(px){
+  px=Math.max(100,Math.min(240,parseInt(px)||150));
+  const cvs=document.getElementById('pet-canvas');
+  if(!cvs)return;
+  // 只改CSS展示尺寸，canvas内部分辨率保持150×150不变（避免重绘模糊）
+  cvs.style.width=px+'px';cvs.style.height=px+'px';
+  // 持久化
+  if(window.S){S.petDisplaySize=px;persistAccount();}
+  // 同步滑块
+  const sl=document.getElementById('pet-size-slider');
+  if(sl&&parseInt(sl.value)!==px)sl.value=px;
+}
 function togglePetWalk(){
   petWalking=!petWalking;
   const tog=document.getElementById('walk-toggle'),ico=document.getElementById('walk-ico'),lbl=document.getElementById('walk-lbl');
@@ -1878,9 +1906,9 @@ function drawPet(){
       }
     });
   } else {
-    // 【仓鼠精灵动画】优先使用 HamsterAnim 图片+特效
+    // 【仓鼠精灵动画】仅阶段2使用精灵图；其他阶段代码绘制后叠加特效
     let _usedSprite = false;
-    if (breed === 'hamster' && window.HamsterAnim) {
+    if (breed === 'hamster' && S.petLevel === 2 && window.HamsterAnim) {
       try { _usedSprite = HamsterAnim.drawFull(ctx, petX, petY + bob, petT, stage); } catch(e) {}
     }
     if (!_usedSprite) {
@@ -1888,6 +1916,10 @@ function drawPet(){
         // 绘制失败时显示占位符
         ctx.fillStyle='rgba(100,160,100,.15)';ctx.beginPath();ctx.arc(petX,petY,30,0,Math.PI*2);ctx.fill();
         ctx.font='24px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🐾',petX,petY);
+      }
+      // 所有阶段叠加 ZZZ / 气泡 / 星星等特效
+      if (breed === 'hamster' && window.HamsterAnim) {
+        try { HamsterAnim.drawOverlay(ctx, petX, petY + bob, petT); } catch(e) {}
       }
     }
     const clothKey=getCustomClothImgKey();
@@ -2320,8 +2352,8 @@ function drawTears(ctx,cx,cy,h){
 }
 
 function drawHamster(ctx, cx, cy, stage) {
-    // 【精灵图委托】所有调用此函数的地方（主画布/预览/商店/工坊）统一走图片模式
-    if (window.HamsterAnim) {
+    // 【精灵图委托】仅阶段2使用精灵图；阶段1/3/4/5保留代码绘制
+    if (window.HamsterAnim && S.petLevel === 2) {
       const _t = (typeof petT !== 'undefined') ? petT : 0;
       if (HamsterAnim.drawBase(ctx, cx, cy, _t)) return;
     }
@@ -3560,6 +3592,8 @@ function drawCloth(ctx,cx,cy,previewId){
 
 // ─── PET UI ──────────────────────────────────────
 function updatePetUI(){
+  // 恢复宠物显示大小
+  if(S.petDisplaySize){setPetDisplaySize(S.petDisplaySize);}
   // 数值显示整数
   ['food','happy','clean','energy'].forEach(k=>{const v=Math.round(S['pet'+k.charAt(0).toUpperCase()+k.slice(1)]);const bar=document.getElementById('sf-'+k),val=document.getElementById('sv-'+k);if(bar)bar.style.width=v+'%';if(val)val.textContent=v;});
   const evoReq=EVO_EXP_REQUIRED[Math.min(S.petLevel,EVO_EXP_REQUIRED.length-1)]||0;
@@ -3682,7 +3716,21 @@ function petAct(type){
     onFail:()=>{S.petHappy=Math.max(0,S.petHappy-8);S.petEnergy=Math.max(0,S.petEnergy-5);saveCurPet();persistAccount();updatePetUI();showResult('😢','答题失败…',`${S.petName}有点失望\n心情-8→${Math.round(S.petHappy)}\n体力-5→${Math.round(S.petEnergy)}`);}
   });
 }
+function _claimAchRewardById(aid){
+  const a=ACHS.find(x=>x.id===aid);if(!a)return;
+  if(!S.pendingAchReward||!S.pendingAchReward.includes(aid)){showToast('奖励已领取过了！');return;}
+  const reward=a.reward||{coins:50,score:20};
+  const idx=S.pendingAchReward.indexOf(aid);if(idx>=0)S.pendingAchReward.splice(idx,1);
+  if(!S.claimedAchReward)S.claimedAchReward=[];
+  if(!S.claimedAchReward.includes(aid))S.claimedAchReward.push(aid);
+  S.coins+=(reward.coins||50);S.totalCoins+=(reward.coins||50);
+  S.score+=(reward.score||20);
+  gainExp(20);updateTop();persistAccount();
+  checkAchs();spawnP(['🪙','⭐','🎊','✨']);
+  showToast('🎉已领取！🪙+'+(reward.coins||50)+'　⭐+'+(reward.score||20));
+}
 
+// 新增：给第二个函数加上函数名 openStageSelect
 function openStageSelect(title,desc,opts,onSelect,onCancel){
   const ov=document.createElement('div');
   ov.id='stage-sel-ov';
@@ -4033,6 +4081,38 @@ function renderToolsShop(g){
   });
 }
 function renderSkinsShop(g){
+  const breed = S.petBreed||'hamster';
+  const lv = S.petLevel||1;
+  // ── 精灵阶段：显示图片皮肤选择器 ──
+  if(window.HamsterAnim && HamsterAnim.isSpritedStage(breed, lv)){
+    const skins = (HamsterAnim.SPRITE_SKINS[breed]||{})[lv]||[];
+    const activeSkin = HamsterAnim.getActiveSkin(breed, lv);
+    const hdr = document.createElement('div');
+    hdr.style.cssText='font-size:.7rem;color:var(--muted);margin:0 4px 8px;';
+    hdr.textContent='当前为第'+lv+'阶段精灵形象，每种皮肤有独立图片';
+    g.appendChild(hdr);
+    skins.forEach(item=>{
+      const active = activeSkin===item.id;
+      const owned = item.price===0||(S.ownedSpriteSkins&&S.ownedSpriteSkins.includes(breed+'_'+lv+'_'+item.id));
+      const d = document.createElement('div');
+      d.className='shop-item'+(active?' equipped':owned?' owned':'');
+      // 图片预览：尝试显示 idle 缩略图
+      const imgPath='assets/'+breed+'/stage'+lv+'/'+item.id+'/idle.jpg';
+      const priceLabel=active?'✓当前':owned?'已拥有':item.price===0?'免费':'🪙'+item.price;
+      d.innerHTML=`<img src="${imgPath}" onerror="this.style.display='none'" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid #ddd;display:block;margin:0 auto 4px">
+        <div class="si-nm">${item.name}</div>
+        <div class="si-desc" style="font-size:.58rem;color:var(--muted)">${item.desc}</div>
+        <div class="si-price">${priceLabel}</div>`;
+      d.onclick=()=>{
+        if(active)return;
+        if(!owned&&item.price>0&&S.coins<item.price){showToast('金币不足！需要🪙'+item.price);return;}
+        _openSpriteSkinPreview(breed, lv, item, owned);
+      };
+      g.appendChild(d);
+    });
+    return;
+  }
+  // ── 代码绘制阶段：原有颜色皮肤 ──
   const activeSkin=(S.petSkinColors&&S.petSkinColors[S.activePet])||'sc_default';
   (window.PET_SKIN_COLORS||[]).forEach(item=>{
     const active=activeSkin===item.id;
@@ -4044,11 +4124,61 @@ function renderSkinsShop(g){
     d.innerHTML=sw+'<div class="si-nm">'+item.name+'</div><div class="si-price">'+priceLabel+'</div>';
     d.onclick=()=>{
       if(active)return;
-      if(!owned&&item.price>0&&S.coins<item.price){showToast('金币不足！');return;}
+      if(!owned&&item.price>0&&S.coins<item.price){showToast('金币不足！需要🪙'+item.price);return;}
       openSkinPreview(item);
     };
     g.appendChild(d);
   });
+}
+
+// ── 精灵皮肤预览弹窗 ──
+function _openSpriteSkinPreview(breed, lv, item, alreadyOwned){
+  const ov=document.getElementById('skin-prev-ov');
+  const ttl=document.getElementById('skin-prev-title');
+  const desc=document.getElementById('skin-prev-desc');
+  if(ttl)ttl.textContent='🎨 '+item.name+' 皮肤预览';
+  if(desc)desc.textContent=alreadyOwned?'已拥有此皮肤':'需要 🪙'+item.price+' 金币';
+  const cvs=document.getElementById('skin-prev-canvas');
+  if(cvs){
+    const ctx=cvs.getContext('2d');ctx.clearRect(0,0,120,120);
+    const img=new Image();
+    img.onload=()=>{
+      ctx.clearRect(0,0,120,120);
+      ctx.save();ctx.beginPath();ctx.arc(60,62,54,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.restore();
+      ctx.save();ctx.globalCompositeOperation='multiply';ctx.drawImage(img,9,11,102,102);ctx.restore();
+    };
+    img.onerror=()=>{
+      ctx.clearRect(0,0,120,120);
+      ctx.font='36px serif';ctx.textAlign='center';ctx.fillText('🐹',60,70);
+    };
+    img.src='assets/'+breed+'/stage'+lv+'/'+item.id+'/idle.jpg';
+  }
+  const confirmBtn=document.getElementById('skin-prev-confirm-btn');
+  const cancelBtn=document.getElementById('skin-prev-cancel-btn');
+  if(confirmBtn){
+    confirmBtn.textContent=alreadyOwned?'换上！':'购买并换上';
+    confirmBtn.onclick=()=>{
+      if(!alreadyOwned&&item.price>0){
+        if(S.coins<item.price){showToast('金币不足！需要🪙'+item.price);return;}
+        S.coins-=item.price;
+        if(!S.ownedSpriteSkins)S.ownedSpriteSkins=[];
+        const key=breed+'_'+lv+'_'+item.id;
+        if(!S.ownedSpriteSkins.includes(key))S.ownedSpriteSkins.push(key);
+        updateTop();
+      }
+      if(!S.petSpriteSkins)S.petSpriteSkins={};
+      S.petSpriteSkins[S.activePet+'_'+breed+'_'+lv]=item.id;
+      // 预加载新皮肤的所有动作图
+      if(window.HamsterAnim)HamsterAnim.preloadSkin(breed,lv,item.id);
+      saveCurPet();persistAccount();
+      ov.classList.remove('on');
+      renderShop();updatePetUI();drawPet();
+      showToast('🎨已换为【'+item.name+'】皮肤！');
+      showPetTalk('feed'); // 借用高兴台词
+    };
+  }
+  if(cancelBtn)cancelBtn.onclick=()=>ov.classList.remove('on');
+  ov.classList.add('on');
 }
 
 // ── 皮肤预览弹窗 ──
@@ -5555,8 +5685,63 @@ function importAllSaves(input){
 }
 
 // ─── ACHIEVEMENTS ─────────────────────────────────
-function checkAchs(){let got=false;ACHS.forEach(a=>{if(!S.unlockedAch.includes(a.id)&&a.cond(S)){S.unlockedAch.push(a.id);if(!S.newAch.includes(a.id))S.newAch.push(a.id);triggerAchPop(a);gainExp(20);S.coins+=10;S.totalCoins+=10;got=true;}});if(got){updateTop();persistAccount();}const n=S.newAch.length;['bd-ach','sbd-ach'].forEach(id=>{const el=document.getElementById(id);if(!el)return;if(n>0){el.textContent=n;el.classList.add('on');}else{el.textContent='';el.classList.remove('on');}});renderAchs();}
-function triggerAchPop(a){document.getElementById('ap-ico').textContent=a.ico;document.getElementById('ap-nm').textContent=a.nm;const p=document.getElementById('achpop');p.classList.add('on');setTimeout(()=>p.classList.remove('on'),3000);}
+function checkAchs(){let got=false;ACHS.forEach(a=>{if(!S.unlockedAch.includes(a.id)&&a.cond(S)){S.unlockedAch.push(a.id);if(!S.newAch.includes(a.id))S.newAch.push(a.id);if(!S.pendingAchReward)S.pendingAchReward=[];if(!S.pendingAchReward.includes(a.id))S.pendingAchReward.push(a.id);triggerAchPop(a);got=true;}});if(got){persistAccount();}const n=(S.pendingAchReward||[]).length;['bd-ach','sbd-ach'].forEach(id=>{const el=document.getElementById(id);if(!el)return;if(n>0){el.textContent=n;el.classList.add('on');}else{el.textContent='';el.classList.remove('on');}});renderAchs();}
+function triggerAchPop(a){
+  // 桌面通知条（底部小横幅，3秒后消失）
+  document.getElementById('ap-ico').textContent=a.ico;
+  document.getElementById('ap-nm').textContent=a.nm;
+  const p=document.getElementById('achpop');p.classList.add('on');
+  setTimeout(()=>p.classList.remove('on'),4000);
+  // 全屏弹窗（移动端友好）
+  _showAchModal(a);
+}
+function _showAchModal(a){
+  let ov=document.getElementById('ach-reward-ov');
+  if(!ov){
+    ov=document.createElement('div');ov.id='ach-reward-ov';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:4000;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .25s';
+    ov.innerHTML=`<div id="ach-reward-box" style="background:#fff;border-radius:22px;padding:28px 24px 20px;max-width:300px;width:88%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.2);transform:scale(.85);transition:transform .25s">
+      <div style="font-size:2.4rem" id="ar-ico">🏆</div>
+      <div style="font-size:.68rem;color:var(--gold);font-weight:700;letter-spacing:.5px;margin:4px 0 2px">✨ 成就解锁！</div>
+      <div style="font-size:1rem;font-weight:700;color:var(--ink);margin-bottom:4px" id="ar-nm"></div>
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:14px" id="ar-desc"></div>
+      <div style="background:linear-gradient(135deg,#fffbe8,#fff3c8);border-radius:12px;padding:10px;margin-bottom:16px">
+        <div style="font-size:.65rem;color:#a07000;margin-bottom:4px">🎁 完成奖励</div>
+        <div style="font-size:.9rem;font-weight:700;color:#c07800" id="ar-reward">🪙+50　⭐+20</div>
+      </div>
+      <button id="ar-claim-btn" onclick="_claimAchReward()" style="width:100%;padding:12px;border-radius:12px;border:none;background:linear-gradient(135deg,#5a9a5a,#4a8a4a);color:#fff;font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit">🎉 领取奖励</button>
+    </div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener('click',e=>{if(e.target===ov)ov.style.opacity='0';});
+    setTimeout(()=>{const box=ov.querySelector('#ach-reward-box');if(box)box.style.transform='scale(1)';},10);
+  }
+  document.getElementById('ar-ico').textContent=a.ico;
+  document.getElementById('ar-nm').textContent=a.nm;
+  document.getElementById('ar-desc').textContent=a.desc||'';
+  const reward=a.reward||{coins:50,score:20};
+  document.getElementById('ar-reward').textContent=(reward.coins?'🪙+'+reward.coins:'')+(reward.coins&&reward.score?'　':'')+(reward.score?'⭐+'+reward.score:'');
+  // 存储当前待领取
+  ov._pendingAch=a.id;ov._pendingReward=reward;
+  ov.style.opacity='0';ov.style.display='flex';
+  setTimeout(()=>{ov.style.opacity='1';const box=ov.querySelector('#ach-reward-box');if(box)box.style.transform='scale(1)';},10);
+}
+function _claimAchReward(){
+  const ov=document.getElementById('ach-reward-ov');if(!ov)return;
+  const aid=ov._pendingAch,reward=ov._pendingReward||{coins:50,score:20};
+  if(aid){
+    if(!S.pendingAchReward)S.pendingAchReward=[];
+    const idx=S.pendingAchReward.indexOf(aid);if(idx>=0)S.pendingAchReward.splice(idx,1);
+    if(!S.claimedAchReward)S.claimedAchReward=[];
+    if(!S.claimedAchReward.includes(aid))S.claimedAchReward.push(aid);
+    S.coins+=(reward.coins||50);S.totalCoins+=(reward.coins||50);
+    S.score+=(reward.score||20);
+    gainExp(20);updateTop();persistAccount();
+    checkAchs();// 刷新红点
+    spawnP(['🪙','⭐','🎊','✨']);
+    showToast('🎉已领取！🪙+'+(reward.coins||50)+'　⭐+'+(reward.score||20));
+  }
+  ov.style.opacity='0';setTimeout(()=>{ov.style.display='none';},250);
+}
 
 // ─── TOP BAR ──────────────────────────────────────
 function updateTop(){const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};const setW=(id,w)=>{const el=document.getElementById(id);if(el)el.style.width=w;};const mx=expForLv(S.level);const expPct=Math.min(100,S.exp/mx*100)+'%';set('dc',S.coins);set('ds',S.score);set('dlv','Lv.'+S.level);set('dexph',S.exp+'/'+mx);setW('dexp',expPct);const nm=S.playerName||(S.expBoostLeft>0?`📖×${S.expBoostLeft}`:'');set('pname',nm||'点击查看我的');const _avo=S.playerAvatar||'';const ico=_avo||( S.petLevel>=5?'🌟':S.petLevel>=3?'⭐':'🌾');const av=document.getElementById('avatar');if(av)av.textContent=ico;set('sb-pname',S.playerName||'-');set('sb-pmeta',`Lv.${S.level} · ⭐${S.score}`);set('sb-lv',`Lv.${S.level} · ${S.exp}/${mx} EXP`);setW('sb-expfill',expPct);set('sb-coins',S.coins);set('sb-score',S.score);const sbav=document.getElementById('sb-av');if(sbav)sbav.textContent=ico;const pav=document.getElementById('prof-av');if(pav)pav.textContent=ico;}
@@ -5708,9 +5893,20 @@ function renderAchsFiltered(tab){
   }
   list.forEach(a=>{
     const got=S.unlockedAch.includes(a.id);
+    const pending=(S.pendingAchReward||[]).includes(a.id);
+    const claimed=(S.claimedAchReward||[]).includes(a.id);
     const d=document.createElement('div');
     d.className='ach '+(got?'got':'no');
-    d.innerHTML=`<div class="aico2">${a.ico}</div><div class="anm2">${a.nm}</div><div class="adesc">${a.desc}</div>${got?'<div class="atag">✓ 已解锁</div>':''}`;
+    if(pending)d.style.cssText='outline:2px solid var(--gold);outline-offset:2px';
+    const reward=a.reward||{coins:50,score:20};
+    const rewardTxt=(reward.coins?'🪙'+reward.coins:'')+(reward.score?'　⭐'+reward.score:'');
+    let claimHtml='';
+    if(pending){
+      claimHtml=`<button onclick="event.stopPropagation();_claimAchRewardById('${a.id}')" style="margin-top:5px;padding:5px 12px;border-radius:8px;border:none;background:var(--gold);color:#fff;font-size:.68rem;font-weight:700;cursor:pointer;font-family:inherit">🎁 领取 ${rewardTxt}</button>`;
+    }else if(got){
+      claimHtml=`<div class="atag">✓ 已${claimed?'领取':'解锁'}</div>`;
+    }
+    d.innerHTML=`<div class="aico2">${a.ico}</div><div class="anm2">${a.nm}</div><div class="adesc">${a.desc}</div>${claimHtml}`;
     g.appendChild(d);
   });
   const gotCount=list.filter(a=>S.unlockedAch.includes(a.id)).length;
@@ -5790,9 +5986,8 @@ function switchTab(name){
   const sbn=document.querySelector('.sb-nav');
   if(sbn){sbn.querySelectorAll('.sb-item').forEach((el,i)=>el.classList.toggle('on',['farm','pet','shop','ach','profile'][i]===name));}
   if(name==='ach'){
-    S.newAch=[];persistAccount();
-    ['bd-ach','sbd-ach'].forEach(id=>{const el=document.getElementById(id);if(el){el.textContent='';el.classList.remove('on');}});
     switchAchTab(_achTab||'all');
+    // 红点由 pendingAchReward 控制，不在这里清零
   }
   if(name==='shop')renderShop();
   if(name==='profile')updateProfile();

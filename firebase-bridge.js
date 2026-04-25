@@ -1,44 +1,35 @@
 // ╔══════════════════════════════════════════════════════╗
 // ║   🔥 学习农场 Firebase 数据桥接  firebase-bridge.js  ║
-// ║   功能：云存档同步 + 班级实时排行榜                    ║
+// ║   v2 — 修复频繁提示 / 独立模式 / 无网误报 / 按需同步  ║
 // ╚══════════════════════════════════════════════════════╝
-//
-// ⚠️ 注意：这个文件需要放在 game.js 的 <script> 标签之后
-// 不需要修改 game.js，本文件会自动接管数据同步
-//
 (function () {
   'use strict';
 
-  // ── 检查配置是否填写 ──────────────────────────────────
-  if (!window.FIREBASE_CONFIG || !window.FIREBASE_OPTIONS || !window.FIREBASE_OPTIONS.enabled) {
-    console.log('[🔥Bridge] Firebase 未配置或已关闭，跳过初始化');
-    return;
-  }
-  if (window.FIREBASE_CONFIG.apiKey === 'YOUR_API_KEY') {
-    console.warn('[🔥Bridge] ⚠️ 请先填写 firebase-config.js 里的配置！');
-    return;
-  }
+  if (!window.FIREBASE_CONFIG || !window.FIREBASE_OPTIONS || !window.FIREBASE_OPTIONS.enabled) return;
+  if (window.FIREBASE_CONFIG.apiKey === 'YOUR_API_KEY') return;
 
-  // ── 游戏存储键（与 game.js 一致） ──────────────────────
+  // ── 存储键 ──────────────────────────────────────────────
   const ACCOUNTS_KEY    = 'jbfarm_accounts_v5';
   const CLASS_KEY       = 'jbfarm_class_v5';
-  const CLASS_ADMIN_KEY = 'jbfarm_class_admins';   // 教师-班级绑定表
+  const CLASS_ADMIN_KEY = 'jbfarm_class_admins';
   const SAVE_PREFIX     = 'jbfarm_save_';
+  const DEVICE_ID_KEY   = 'jbfarm_fb_device';
+  const LAST_SYNC_KEY   = 'jbfarm_fb_last_sync';
+  // 用户同步选择持久化：'yes' | 'no' | null(未决定)
+  const SYNC_CHOICE_KEY = 'jbfarm_sync_choice';
 
-  // ── 本桥专用的存储键 ────────────────────────────────────
-  const DEVICE_ID_KEY = 'jbfarm_fb_device';
-  const LAST_SYNC_KEY = 'jbfarm_fb_last_sync';
-
-  // ── Firebase SDK 版本（固定，避免版本跳动引起问题） ────
   const FB_VER  = '10.7.1';
   const FB_BASE = `https://www.gstatic.com/firebasejs/${FB_VER}`;
 
-  // ── 内部状态 ────────────────────────────────────────────
-  let _db            = null;
-  let _rtdb          = null;
-  let _ready         = false;
-  let _isSyncing     = false;
-  let _classUnsubFn  = null;
+  let _db           = null;
+  let _rtdb         = null;
+  let _ready        = false;
+  let _isSyncing    = false;
+  let _classUnsubFn = null;
+  // 用户是否选择同步（true=同步 false=不同步 null=还没选）
+  let _userWantsSync = null;
+  // 是否仍在加载页（用于控制提示只在加载页显示）
+  let _onLoadingScreen = true;
   const _origSetItem = localStorage.setItem.bind(localStorage);
 
   const log = (...a) => window.FIREBASE_OPTIONS.debug && console.log('[🔥Bridge]', ...a);
@@ -46,12 +37,11 @@
   // ══════════════════════════════════════════════════════
   // 工具函数
   // ══════════════════════════════════════════════════════
-
   function getDeviceId() {
     let id = localStorage.getItem(DEVICE_ID_KEY);
     if (!id) {
       id = 'dev_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-      _origSetItem.call(localStorage, DEVICE_ID_KEY, id);
+      _origSetItem(DEVICE_ID_KEY, id);
     }
     return id;
   }
@@ -65,19 +55,37 @@
     return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
   }
 
+  // 读取该账号是否选择了独立模式
+  function isLocalMode(accId) {
+    const mode = localStorage.getItem('jbfarm_syncmode_' + accId) || 'cloud';
+    return mode === 'local';
+  }
+
+  // 当前登录账号是否独立模式
+  function currentAccIsLocal() {
+    const S = window.S;
+    if (!S) return false;
+    // 找当前账号id
+    const accounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || '[]');
+    const acc = accounts.find(a => a.name === S.playerName);
+    if (!acc) return false;
+    return isLocalMode(acc.id);
+  }
+
   // ══════════════════════════════════════════════════════
-  // 状态指示器（右下角小气泡）
+  // 加载页同步提示（只在加载页显示）
   // ══════════════════════════════════════════════════════
-  function showStatus(msg, isErr = false) {
+  function showLoadingStatus(msg, isErr = false) {
+    // 只在加载页显示
     let el = document.getElementById('fb-sync-badge');
     if (!el) {
       el = document.createElement('div');
       el.id = 'fb-sync-badge';
       el.style.cssText = [
-        'position:fixed', 'bottom:70px', 'right:12px',
-        'font-size:.58rem', 'padding:3px 10px', 'border-radius:99px',
-        'z-index:9999', 'transition:opacity .4s', 'pointer-events:none',
-        'opacity:0', 'color:#fff', 'backdrop-filter:blur(6px)',
+        'position:fixed','bottom:70px','right:12px',
+        'font-size:.58rem','padding:3px 10px','border-radius:99px',
+        'z-index:9999','transition:opacity .4s','pointer-events:none',
+        'opacity:0','color:#fff','backdrop-filter:blur(6px)',
         'box-shadow:0 2px 8px rgba(0,0,0,.2)'
       ].join(';');
       document.body.appendChild(el);
@@ -86,13 +94,57 @@
     el.style.background = isErr ? 'rgba(200,60,60,.85)' : 'rgba(30,24,20,.80)';
     el.style.opacity = '1';
     clearTimeout(el._t);
-    el._t = setTimeout(() => { el.style.opacity = '0'; }, 2800);
+    el._t = setTimeout(() => { el.style.opacity = '0'; }, isErr ? 4000 : 2500);
+  }
+
+  // ══════════════════════════════════════════════════════
+  // 加载页「是否同步」弹窗
+  // ══════════════════════════════════════════════════════
+  function showSyncChoiceDialog(onChoice) {
+    // 如果已经有持久化选择，直接用
+    const saved = localStorage.getItem(SYNC_CHOICE_KEY);
+    if (saved === 'yes') { onChoice(true); return; }
+    if (saved === 'no')  { onChoice(false); return; }
+
+    const ov = document.createElement('div');
+    ov.style.cssText = [
+      'position:fixed','inset:0','z-index:99999',
+      'display:flex','align-items:center','justify-content:center',
+      'background:rgba(0,0,0,.45)','backdrop-filter:blur(4px)'
+    ].join(';');
+
+    ov.innerHTML = `
+      <div style="background:var(--panel,#fff);border-radius:18px;padding:24px 20px;max-width:300px;width:88%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.18)">
+        <div style="font-size:2rem;margin-bottom:8px">☁️</div>
+        <div style="font-weight:700;font-size:1rem;margin-bottom:8px;color:var(--dgreen,#2d6a2d)">是否开启云同步？</div>
+        <div style="font-size:.74rem;color:var(--muted,#888);line-height:1.7;margin-bottom:18px">
+          开启后可跨设备保存进度，<br>需要访问境外服务器（需要梯子）。<br>
+          <span style="color:#e07000">不开启则只与同设备同学比较排名。</span>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button id="_sync-no-btn" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border,#ddd);background:transparent;font-size:.82rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">不同步</button>
+          <button id="_sync-yes-btn" style="flex:1;padding:10px;border-radius:10px;border:none;background:var(--green,#5a9a5a);color:#fff;font-size:.82rem;cursor:pointer;font-weight:600;font-family:'Noto Sans SC',sans-serif">开启同步</button>
+        </div>
+        <div style="font-size:.6rem;color:var(--muted,#aaa);margin-top:10px">可在「我的」页面随时更改</div>
+      </div>`;
+
+    document.body.appendChild(ov);
+
+    ov.querySelector('#_sync-yes-btn').onclick = () => {
+      _origSetItem(SYNC_CHOICE_KEY, 'yes');
+      ov.remove();
+      onChoice(true);
+    };
+    ov.querySelector('#_sync-no-btn').onclick = () => {
+      _origSetItem(SYNC_CHOICE_KEY, 'no');
+      ov.remove();
+      onChoice(false);
+    };
   }
 
   // ══════════════════════════════════════════════════════
   // Firebase 初始化
   // ══════════════════════════════════════════════════════
-
   function loadScript(src) {
     return new Promise((res, rej) => {
       const s = document.createElement('script');
@@ -102,80 +154,86 @@
   }
 
   async function initFirebase() {
-    try {
-      log('正在加载 Firebase SDK…');
-      await loadScript(`${FB_BASE}/firebase-app-compat.js`);
-      await loadScript(`${FB_BASE}/firebase-firestore-compat.js`);
-
-      const cfg = window.FIREBASE_CONFIG;
-      const opts = window.FIREBASE_OPTIONS;
-
-      if (opts.classLeaderboard && cfg.databaseURL) {
-        await loadScript(`${FB_BASE}/firebase-database-compat.js`);
+    // 先弹出同步选择，用户决定后再初始化Firebase（避免无谓的网络请求）
+    showSyncChoiceDialog(async (wantsSync) => {
+      _userWantsSync = wantsSync;
+      if (!wantsSync) {
+        log('用户选择不同步，跳过Firebase初始化');
+        // 仍然挂钩localStorage以便后续用户改变主意时可以响应
+        hookLocalStorage();
+        return;
       }
 
-      if (!firebase.apps.length) firebase.initializeApp(cfg);
+      try {
+        log('正在加载 Firebase SDK…');
+        showLoadingStatus('☁️ 正在连接云端…');
 
-      _db = firebase.firestore();
-      _db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+        await loadScript(`${FB_BASE}/firebase-app-compat.js`);
+        await loadScript(`${FB_BASE}/firebase-firestore-compat.js`);
 
-      if (opts.classLeaderboard && cfg.databaseURL) {
-        _rtdb = firebase.database();
+        const cfg  = window.FIREBASE_CONFIG;
+        const opts = window.FIREBASE_OPTIONS;
+
+        if (opts.classLeaderboard && cfg.databaseURL) {
+          await loadScript(`${FB_BASE}/firebase-database-compat.js`);
+        }
+
+        if (!firebase.apps.length) firebase.initializeApp(cfg);
+
+        _db = firebase.firestore();
+        _db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+
+        if (opts.classLeaderboard && cfg.databaseURL) {
+          _rtdb = firebase.database();
+        }
+
+        _ready = true;
+        log('✅ Firebase 初始化成功');
+
+        // 拉取云端数据（只在加载页做一次，且只在用户选择同步时）
+        const pulled = await pullCloud();
+        if (pulled) {
+          showLoadingStatus('☁️ 云同步完成 ✅');
+        }
+
+        hookLocalStorage();
+        setTimeout(tryStartClassListener, 2000);
+
+      } catch (err) {
+        console.error('[🔥Bridge] ❌ 初始化失败:', err);
+        // 真实失败才显示错误，不误报成功
+        showLoadingStatus('☁️ 无法连接云端（需要梯子）', true);
       }
-
-      _ready = true;
-      log('✅ Firebase 初始化成功');
-
-      await onReady();
-
-    } catch (err) {
-      console.error('[🔥Bridge] ❌ 初始化失败:', err);
-      showStatus('☁️ 云同步不可用', true);
-    }
+    });
   }
 
   // ══════════════════════════════════════════════════════
-  // 就绪后的启动流程
+  // 云端读取（只在加载页调用一次）
   // ══════════════════════════════════════════════════════
-  async function onReady() {
-    if (window.FIREBASE_OPTIONS.autoSync) {
-      await pullCloud();
-    }
-    hookLocalStorage();
-    setTimeout(tryStartClassListener, 2000);
-    showStatus('☁️ 云同步已连接 ✅');
-  }
-
-  // ══════════════════════════════════════════════════════
-  // 云端读取
-  // ══════════════════════════════════════════════════════
-  //
-  // 🔑 修复：不再按 deviceId 读，改为读 accounts 集合（所有设备共享）
-  //
   async function pullCloud() {
-    if (!_db) return;
+    if (!_db || !_userWantsSync) return false;
     try {
       const lastSync = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
       if (Date.now() - lastSync < 5 * 60 * 1000) {
         log('距上次同步不足5分钟，跳过拉取');
-        return;
+        return true;
       }
 
-      showStatus('☁️ 正在检查云存档…');
+      showLoadingStatus('☁️ 正在检查云存档…');
 
-      // 拉取所有账号文档（跨设备共享的集合）
-      const snap = await _db.collection('accounts').get();
+      // 设置超时（10秒），避免无梯子时无限等待
+      const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000));
+      const snap = await Promise.race([_db.collection('accounts').get(), timeout]);
 
       if (snap.empty) {
         log('云端无存档，推送本地数据');
-        await pushCloud();
-        _origSetItem.call(localStorage, LAST_SYNC_KEY, Date.now().toString());
-        return;
+        await pushCloud(true);
+        _origSetItem(LAST_SYNC_KEY, Date.now().toString());
+        return true;
       }
 
       const cloudAccounts = [];
       const cloudSaves    = {};
-
       snap.forEach(doc => {
         const d = doc.data();
         if (d.account) {
@@ -185,41 +243,37 @@
       });
 
       const localAccounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || '[]');
-
       if (cloudAccounts.length > 0) {
         if (localAccounts.length === 0) {
           applyCloudData({ accounts: cloudAccounts, saves: cloudSaves });
-          showStatus('☁️ 已从云端恢复全部存档 ✅');
-          log('云端数据已恢复到本地');
         } else {
           mergeAccounts(cloudAccounts, cloudSaves);
-          showStatus('☁️ 云存档已同步 ✅');
-          log('云端账号已合并');
         }
-      } else {
-        log('云端无有效账号数据');
       }
 
-      _origSetItem.call(localStorage, LAST_SYNC_KEY, Date.now().toString());
-
-      // 也拉取班级数据（教师视图需要）
+      _origSetItem(LAST_SYNC_KEY, Date.now().toString());
       await pullClassData();
+      return true;
 
     } catch (err) {
-      log('拉取云存档失败（可能是无网络）:', err.message);
+      // 超时或网络错误：明确告知，不显示成功
+      const isTimeout = err.message === 'timeout';
+      showLoadingStatus(isTimeout ? '☁️ 连接超时（需要梯子）' : '☁️ 同步失败：' + err.message, true);
+      log('拉取失败:', err.message);
+      return false;
     }
   }
 
   function applyCloudData(cloud) {
     _isSyncing = true;
     try {
-      if (cloud.accounts) _origSetItem.call(localStorage, ACCOUNTS_KEY, JSON.stringify(cloud.accounts));
+      if (cloud.accounts) _origSetItem(ACCOUNTS_KEY, JSON.stringify(cloud.accounts));
       if (cloud.saves) {
         Object.entries(cloud.saves).forEach(([id, val]) => {
-          _origSetItem.call(localStorage, SAVE_PREFIX + id, JSON.stringify(val));
+          _origSetItem(SAVE_PREFIX + id, JSON.stringify(val));
         });
       }
-      if (cloud.classData) _origSetItem.call(localStorage, CLASS_KEY, JSON.stringify(cloud.classData));
+      if (cloud.classData) _origSetItem(CLASS_KEY, JSON.stringify(cloud.classData));
     } finally {
       _isSyncing = false;
     }
@@ -232,24 +286,20 @@
     cloudAccounts.forEach(ca => {
       const idx = localAccounts.findIndex(la => la.id === ca.id);
       if (idx < 0) {
-        // 本地没有这个账号 → 新增
         localAccounts.push(ca);
         changed = true;
         const save = cloudSaves[ca.id];
-        if (save) _origSetItem.call(localStorage, SAVE_PREFIX + ca.id, JSON.stringify(save));
+        if (save) _origSetItem(SAVE_PREFIX + ca.id, JSON.stringify(save));
       } else {
-        // 本地已有这个账号 → 用云端更新 pin 等字段（cloud 更新时间更新则覆盖）
         const local = localAccounts[idx];
         const cloudTs = ca.lastActive || 0;
         const localTs = local.lastActive || 0;
         if (cloudTs > localTs) {
-          // 云端版本更新：合并（保留本地 lastActive，更新 pin / name / score 等）
           localAccounts[idx] = { ...local, ...ca };
           changed = true;
           const save = cloudSaves[ca.id];
-          if (save) _origSetItem.call(localStorage, SAVE_PREFIX + ca.id, JSON.stringify(save));
+          if (save) _origSetItem(SAVE_PREFIX + ca.id, JSON.stringify(save));
         } else if (!local.pin && ca.pin) {
-          // 本地没密码但云端有：直接补上（避免密码丢失）
           localAccounts[idx] = { ...local, pin: ca.pin };
           changed = true;
         }
@@ -257,77 +307,60 @@
     });
     if (changed) {
       _isSyncing = true;
-      _origSetItem.call(localStorage, ACCOUNTS_KEY, JSON.stringify(localAccounts));
+      _origSetItem(ACCOUNTS_KEY, JSON.stringify(localAccounts));
       _isSyncing = false;
       if (typeof window.renderLoginScreen === 'function') window.renderLoginScreen();
     }
   }
 
   // ══════════════════════════════════════════════════════
-  // 云端写入
+  // 云端写入（静默，不弹提示）
   // ══════════════════════════════════════════════════════
-  //
-  // 🔑 修复：每个账号单独存到 accounts/{accountId}，不再按 deviceId 存
-  //
-  async function pushCloud() {
-    if (!_db || !_ready) return;
+  async function pushCloud(silent = false) {
+    if (!_db || !_ready || !_userWantsSync) return;
     try {
       const accounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || '[]');
       if (accounts.length === 0) return;
 
-      // 只同步选择了"共享世界"（cloud）模式的账号
-      const syncAccounts = accounts.filter(acc => {
-        const mode = localStorage.getItem('jbfarm_syncmode_' + acc.id) || 'cloud';
-        return mode !== 'local';
-      });
+      // 只同步非独立模式的账号
+      const syncAccounts = accounts.filter(acc => !isLocalMode(acc.id));
+      if (syncAccounts.length === 0) return;
 
       const batch = _db.batch();
-
       syncAccounts.forEach(acc => {
         const raw = localStorage.getItem(SAVE_PREFIX + acc.id);
         let save = {};
         if (raw) { try { save = JSON.parse(raw); } catch (e) {} }
-
         const docRef = _db.collection('accounts').doc(safeKey(String(acc.id)));
         batch.set(docRef, {
-          account:   acc,
-          save:      save,
-          deviceId:  getDeviceId(),
-          updatedAt: Date.now(),
-          version:   'v5',
+          account: acc, save, deviceId: getDeviceId(),
+          updatedAt: Date.now(), version: 'v5',
         }, { merge: true });
       });
 
       await batch.commit();
-
-      _origSetItem.call(localStorage, LAST_SYNC_KEY, Date.now().toString());
-      log(`✅ ${syncAccounts.length} 个账号已推送到云端（共享世界）`);
-
+      _origSetItem(LAST_SYNC_KEY, Date.now().toString());
+      log(`✅ ${syncAccounts.length} 个账号已推送`);
+      // 正式游戏中不弹提示，只在静默模式下记录日志
     } catch (err) {
-      log('推送云存档失败:', err.message);
-      showStatus('☁️ 同步失败，稍后重试', true);
+      log('推送失败:', err.message);
+      // 正式游戏中不打扰用户，只记录日志
     }
   }
 
-  const debouncedPush = debounce(async () => {
-    await pushCloud();
-    showStatus('☁️ 已同步 ✅');
-  }, 1500);
+  // 防抖推送：静默，不弹任何提示
+  const debouncedPush = debounce(() => pushCloud(true), 3000);
 
   // ══════════════════════════════════════════════════════
-  // 班级数据 & 教师绑定同步（shared/classrooms 文档）
+  // 班级数据同步
   // ══════════════════════════════════════════════════════
-
-  /** 将本地班级花名册 + 教师绑定推送到 Firestore 共享文档 */
   async function pushClassData() {
-    if (!_db || !_ready) return;
+    if (!_db || !_ready || !_userWantsSync) return;
     try {
       const classData   = JSON.parse(localStorage.getItem(CLASS_KEY)       || '{}');
       const classAdmins = JSON.parse(localStorage.getItem(CLASS_ADMIN_KEY) || '{}');
       await _db.collection('shared').doc('classrooms').set({
-        classData,
-        classAdmins,
-        updatedAt: Date.now(),
+        classData, classAdmins, updatedAt: Date.now(),
       }, { merge: true });
       log('✅ 班级数据已推送');
     } catch (err) {
@@ -335,21 +368,15 @@
     }
   }
 
-  /** 从 Firestore 拉取班级花名册 + 教师绑定，合并到本地 */
   async function pullClassData() {
-    if (!_db) return;
+    if (!_db || !_userWantsSync) return;
     try {
       const snap = await _db.collection('shared').doc('classrooms').get();
-      if (!snap.exists) {
-        // 云端没有 → 把本地的推上去
-        await pushClassData();
-        return;
-      }
+      if (!snap.exists) { await pushClassData(); return; }
       const data = snap.data();
       const cloudClassData   = data.classData   || {};
       const cloudClassAdmins = data.classAdmins || {};
 
-      // 合并班级花名册（云端有、本地没有的班级 → 加进来）
       const localClassData = JSON.parse(localStorage.getItem(CLASS_KEY) || '{}');
       let classChanged = false;
       Object.keys(cloudClassData).forEach(cls => {
@@ -357,79 +384,61 @@
           localClassData[cls] = cloudClassData[cls];
           classChanged = true;
         } else {
-          // 班级存在 → 把云端有而本地没有的成员补进来
           const localNames = new Set(localClassData[cls].map(m => m.name));
           cloudClassData[cls].forEach(cm => {
-            if (!localNames.has(cm.name)) {
-              localClassData[cls].push(cm);
-              classChanged = true;
-            }
+            if (!localNames.has(cm.name)) { localClassData[cls].push(cm); classChanged = true; }
           });
-          // 同步移除：本地有但云端已删除的班级成员
           const cloudNames = new Set(cloudClassData[cls].map(m => m.name));
           const before = localClassData[cls].length;
           localClassData[cls] = localClassData[cls].filter(m => cloudNames.has(m.name));
           if (localClassData[cls].length !== before) classChanged = true;
         }
       });
-      // 云端已删除的班级 → 本地也删
       Object.keys(localClassData).forEach(cls => {
-        if (!(cls in cloudClassData)) {
-          delete localClassData[cls];
-          classChanged = true;
-        }
+        if (!(cls in cloudClassData)) { delete localClassData[cls]; classChanged = true; }
       });
-
       if (classChanged) {
         _isSyncing = true;
-        _origSetItem.call(localStorage, CLASS_KEY, JSON.stringify(localClassData));
+        _origSetItem(CLASS_KEY, JSON.stringify(localClassData));
         _isSyncing = false;
-        log('班级花名册已同步');
       }
 
-      // 合并教师绑定（云端为准）
       const localAdmins = JSON.parse(localStorage.getItem(CLASS_ADMIN_KEY) || '{}');
       let adminsChanged = false;
       Object.keys(cloudClassAdmins).forEach(cls => {
         if (JSON.stringify(localAdmins[cls]) !== JSON.stringify(cloudClassAdmins[cls])) {
-          localAdmins[cls] = cloudClassAdmins[cls];
-          adminsChanged = true;
+          localAdmins[cls] = cloudClassAdmins[cls]; adminsChanged = true;
         }
       });
-      // 云端删除的教师绑定 → 本地也删
       Object.keys(localAdmins).forEach(cls => {
         if (!(cls in cloudClassAdmins)) { delete localAdmins[cls]; adminsChanged = true; }
       });
       if (adminsChanged) {
         _isSyncing = true;
-        _origSetItem.call(localStorage, CLASS_ADMIN_KEY, JSON.stringify(localAdmins));
+        _origSetItem(CLASS_ADMIN_KEY, JSON.stringify(localAdmins));
         _isSyncing = false;
-        log('教师绑定已同步');
       }
 
       if (classChanged || adminsChanged) {
         if (typeof window.renderTeacherClassView === 'function') window.renderTeacherClassView();
         if (typeof window.renderLoginScreen      === 'function') window.renderLoginScreen();
       }
-
     } catch (err) {
       log('拉取班级数据失败:', err.message);
     }
   }
 
-  const debouncedPushClass = debounce(async () => {
-    await pushClassData();
-  }, 1500);
+  // 班级数据防抖推送：延长到 5 秒，避免频繁触发
+  const debouncedPushClass = debounce(() => pushClassData(), 5000);
 
   // ══════════════════════════════════════════════════════
-  // 云端删除单个账号（注销时同步删除 Firestore 文档）
+  // 云端删除账号
   // ══════════════════════════════════════════════════════
   async function deleteCloudAccount(accountId) {
-    if (!_db || !_ready) return;
+    if (!_db || !_ready || !_userWantsSync) return;
     try {
       await _db.collection('accounts').doc(safeKey(String(accountId))).delete();
       log(`✅ 云端账号已删除：${accountId}`);
-      showStatus('☁️ 账号已云端注销 ✅');
     } catch (err) {
       log('删除云端账号失败:', err.message);
     }
@@ -440,37 +449,35 @@
   // ══════════════════════════════════════════════════════
   function hookLocalStorage() {
     localStorage.setItem = function (key, value) {
-      // 删除检测：写入前先比对账号列表，找出被删掉的账号，同步删云端
-      if (key === ACCOUNTS_KEY && !_isSyncing && _ready) {
+      // 检测账号被删除 → 同步删云端
+      if (key === ACCOUNTS_KEY && !_isSyncing && _ready && _userWantsSync) {
         const oldList = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || '[]');
-        _origSetItem.call(localStorage, key, value);
+        _origSetItem(key, value);
         const newList = JSON.parse(value || '[]');
         const deletedIds = oldList
           .filter(a => !newList.find(n => n.id === a.id))
           .map(a => a.id);
         if (deletedIds.length > 0) {
-          log(`检测到 ${deletedIds.length} 个账号被删除，同步到云端…`);
           deletedIds.forEach(id => deleteCloudAccount(id));
         }
       } else {
-        _origSetItem.call(localStorage, key, value);
+        _origSetItem(key, value);
       }
 
-      if (_isSyncing || !_ready || !window.FIREBASE_OPTIONS.cloudSave) return;
+      // 用户没有选择同步：静默跳过
+      if (!_userWantsSync || _isSyncing || !_ready) return;
+
       if (key === ACCOUNTS_KEY || key.startsWith(SAVE_PREFIX)) {
-        // 如果是存档key，检查该账号是否选择了共享世界
         if (key.startsWith(SAVE_PREFIX)) {
           const accId = key.slice(SAVE_PREFIX.length);
-          const mode = localStorage.getItem('jbfarm_syncmode_' + accId) || 'cloud';
-          if (mode === 'local') return; // 独立世界，跳过云同步
+          if (isLocalMode(accId)) return; // 独立模式账号，跳过
         }
         debouncedPush();
       }
-      // 班级花名册或教师绑定变化 → 推到 shared/classrooms
       if (key === CLASS_KEY || key === CLASS_ADMIN_KEY) {
         debouncedPushClass();
       }
-      if (key.startsWith(SAVE_PREFIX)) {
+      if (key.startsWith(SAVE_PREFIX) && !currentAccIsLocal()) {
         debouncedSyncScore();
       }
     };
@@ -478,23 +485,18 @@
   }
 
   // ══════════════════════════════════════════════════════
-  // 班级实时排行榜
+  // 排行榜实时监听
   // ══════════════════════════════════════════════════════
-
   async function syncCurrentScore() {
+    if (!_userWantsSync || currentAccIsLocal()) return;
     const S = window.S;
     if (!S || !S.classId || !S.playerName) return;
-
     const classId = safeKey(S.classId);
     const player  = safeKey(S.playerName);
     const payload = {
-      name:   S.playerName,
-      score:  S.score  || 0,
-      level:  S.level  || 1,
-      avatar: S.avatar || '🌾',
-      ts:     Date.now(),
+      name: S.playerName, score: S.score||0,
+      level: S.level||1, avatar: S.avatar||'🌾', ts: Date.now(),
     };
-
     try {
       if (_rtdb) {
         await _rtdb.ref(`leaderboard/${classId}/${player}`).set(payload);
@@ -502,17 +504,16 @@
         await _db.collection('leaderboard').doc(classId)
           .collection('members').doc(player).set(payload);
       }
-      log(`积分已同步：${S.playerName} → ${S.score}分`);
     } catch (err) {
       log('积分同步失败:', err.message);
     }
   }
 
-  const debouncedSyncScore = debounce(syncCurrentScore, 3000);
+  const debouncedSyncScore = debounce(syncCurrentScore, 5000);
 
   function tryStartClassListener() {
     const S = window.S;
-    if (S && S.classId) {
+    if (S && S.classId && _userWantsSync) {
       startClassListener(S.classId);
       syncCurrentScore();
     }
@@ -522,41 +523,33 @@
         origEnter.call(this, id);
         setTimeout(() => {
           const S2 = window.S;
-          if (S2 && S2.classId) {
+          if (S2 && S2.classId && _userWantsSync && !currentAccIsLocal()) {
             startClassListener(S2.classId);
             syncCurrentScore();
           }
         }, 800);
       };
-      log('✅ doEnterAcc 钩子已安装');
     }
   }
 
   function startClassListener(classId) {
-    if (!classId) return;
+    if (!classId || !_userWantsSync) return;
     if (_classUnsubFn) { _classUnsubFn(); _classUnsubFn = null; }
-
     const safeClass = safeKey(classId);
-    log(`开始监听班级排行榜：${classId}`);
-
     if (_rtdb) {
       const ref = _rtdb.ref(`leaderboard/${safeClass}`);
-      const handler = snap => {
-        const data = snap.val();
-        if (data) mergeCloudLeaderboard(classId, data);
-      };
+      const handler = snap => { const d = snap.val(); if (d) mergeCloudLeaderboard(classId, d); };
       ref.on('value', handler);
       _classUnsubFn = () => ref.off('value', handler);
     } else if (_db) {
-      const unsubscribe = _db
-        .collection('leaderboard').doc(safeClass)
+      const unsub = _db.collection('leaderboard').doc(safeClass)
         .collection('members')
         .onSnapshot(snap => {
-          const data = {};
-          snap.forEach(doc => { data[doc.id] = doc.data(); });
-          mergeCloudLeaderboard(classId, data);
+          const d = {};
+          snap.forEach(doc => { d[doc.id] = doc.data(); });
+          mergeCloudLeaderboard(classId, d);
         });
-      _classUnsubFn = unsubscribe;
+      _classUnsubFn = unsub;
     }
   }
 
@@ -565,12 +558,10 @@
       const cd = JSON.parse(localStorage.getItem(CLASS_KEY) || '{}');
       if (!cd[classId]) cd[classId] = [];
       let changed = false;
-
       Object.values(cloudData).forEach(cm => {
         if (!cm || !cm.name) return;
         const idx = cd[classId].findIndex(m => m.name === cm.name);
         const cloudTs = cm.ts || 0;
-
         if (idx >= 0) {
           const existing = cd[classId][idx];
           if (cloudTs > (existing._cloudTs || 0)) {
@@ -578,62 +569,60 @@
             changed = true;
           }
         } else {
-          cd[classId].push({
-            name:       cm.name,
-            score:      cm.score || 0,
-            level:      cm.level || 1,
-            isTeacher:  false,
-            _cloudTs:   cloudTs,
-            _fromCloud: true,
-          });
+          cd[classId].push({ name: cm.name, score: cm.score||0, level: cm.level||1,
+            isTeacher: false, _cloudTs: cloudTs, _fromCloud: true });
           changed = true;
-          log(`新同学加入排行榜：${cm.name}`);
         }
       });
-
       if (changed) {
         _isSyncing = true;
-        _origSetItem.call(localStorage, CLASS_KEY, JSON.stringify(cd));
+        _origSetItem(CLASS_KEY, JSON.stringify(cd));
         _isSyncing = false;
-        if (typeof window.renderClassSection === 'function') {
-          window.renderClassSection();
-          log('排行榜已刷新');
-        }
+        if (typeof window.renderClassSection === 'function') window.renderClassSection();
       }
     } catch (err) {
-      log('合并排行榜数据失败:', err);
+      log('合并排行榜失败:', err);
     }
   }
 
   // ══════════════════════════════════════════════════════
-  // 对外暴露接口
+  // 对外接口
   // ══════════════════════════════════════════════════════
   window.FBBridge = {
-    syncNow: () => {
-      pushCloud().then(() => showStatus('☁️ 手动同步完成 ✅'));
-    },
-    pullNow: () => {
-      // 清除时间戳，强制重新拉取
+    // 手动强制同步（可在「我的」页面提供按钮）
+    syncNow: async () => {
+      if (!_userWantsSync) {
+        if (typeof window.showToast === 'function') window.showToast('云同步未开启');
+        return;
+      }
       localStorage.removeItem(LAST_SYNC_KEY);
-      return pullCloud();
+      showLoadingStatus('☁️ 正在同步…');
+      const ok = await pullCloud();
+      showLoadingStatus(ok ? '☁️ 同步完成 ✅' : '☁️ 同步失败（需要梯子）', !ok);
     },
-    getDeviceId,
+    // 用户在设置里修改同步开关
+    setSyncEnabled: (enabled) => {
+      _userWantsSync = enabled;
+      _origSetItem(SYNC_CHOICE_KEY, enabled ? 'yes' : 'no');
+      if (enabled && _ready) {
+        localStorage.removeItem(LAST_SYNC_KEY);
+        pullCloud();
+      }
+    },
+    isSyncEnabled: () => _userWantsSync,
     isReady: () => _ready,
+    getDeviceId,
     refreshLeaderboard: () => {
       const S = window.S;
       if (S && S.classId) startClassListener(S.classId);
     },
   };
 
-  // ══════════════════════════════════════════════════════
-  // 启动！
-  // ══════════════════════════════════════════════════════
+  // ── 启动 ──
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initFirebase);
   } else {
     initFirebase();
   }
-
-  log('firebase-bridge.js 已加载');
 
 })();

@@ -1902,7 +1902,7 @@ function applySkinStage(stage) {
   return { ...stage, color: skin };
 }
 
-function drawPetBreed(ctx,breed,cx,cy,stage){if(breed==="cat")drawCat(ctx,cx,cy,stage);else if(breed==="rabbit")drawRabbit(ctx,cx,cy,stage);else if(breed==="bird")drawBird(ctx,cx,cy,stage);else if(breed==="dog")drawDog(ctx,cx,cy,stage);else if(breed==="panda")drawPanda(ctx,cx,cy,stage);else if(breed==="fox")drawFox(ctx,cx,cy,stage);else if(breed==="deer")drawDeer(ctx,cx,cy,stage);else if(breed==="penguin")drawPenguin(ctx,cx,cy,stage);else if(breed==="dragon")drawDragon(ctx,cx,cy,stage);else if(breed==="owl")drawOwl(ctx,cx,cy,stage);else if(breed==="bear")drawBear(ctx,cx,cy,stage);else if(breed==="unicorn")drawUnicorn(ctx,cx,cy,stage);else if(breed==="tiger")drawTiger(ctx,cx,cy,stage);else drawHamster(ctx,cx,cy,stage);}
+function drawPetBreed(ctx,breed,cx,cy,stage){if(breed==="cat")drawCat(ctx,cx,cy,stage);else if(breed==="rabbit")drawRabbit(ctx,cx,cy,stage);else if(breed==="bird")drawBird(ctx,cx,cy,stage);else if(breed==="dog")drawDog(ctx,cx,cy,stage);else if(breed==="panda")drawPanda(ctx,cx,cy,stage);else if(breed==="fox")drawFox(ctx,cx,cy,stage);else if(breed==="deer")drawDeer(ctx,cx,cy,stage);else if(breed==="penguin")drawPenguin(ctx,cx,cy,stage);else if(breed==="dragon")drawDragon(ctx,cx,cy,stage);else if(breed==="owl")drawOwl(ctx,cx,cy,stage);else if(breed==="bear")drawBear(ctx,cx,cy,stage);else if(breed==="unicorn")drawUnicorn(ctx,cx,cy,stage);else if(breed==="tiger")drawTiger(ctx,cx,cy,stage);else if(breed==="claude")drawClaudeSprite(ctx,cx,cy,stage);else drawHamster(ctx,cx,cy,stage);}
  
 
 
@@ -2022,22 +2022,28 @@ function drawPet(){
     });
   } else {
     // ── 仓鼠第2阶段：完全同步精灵图绘制，彻底消除异步时序问题 ──
-    if (breed === 'hamster' && window.HamsterAnim && HamsterAnim.isSpritedStage(breed, S.petLevel)) {
-      // 获取当前皮肤
-      const _skin = (S.petSpriteSkins&&S.petSpriteSkins[S.activePet+'_hamster_'+S.petLevel])||'orange';
-      // 获取当前动作状态
-      const _state = window.HamsterAnim ? HamsterAnim.getState() : 'idle';
+    if (window.HamsterAnim && HamsterAnim.isSpritedStage(breed, S.petLevel)) {
+      // 获取当前皮肤（兼容所有品种，默认皮肤 hamster 用 orange，其他品种用 default）
+      const _defSkin = breed==='hamster'?'orange':'default';
+      const _skin = (S.petSpriteSkins&&S.petSpriteSkins[S.activePet+'_'+breed+'_'+S.petLevel])||_defSkin;
+      // 获取当前动作状态（hamster用HamsterAnim状态机，其他品种用通用动作记录器）
+      const _state = breed==='hamster'
+        ? (window.HamsterAnim ? HamsterAnim.getState() : 'idle')
+        : (window._petActionCurrent||'idle');
       const _energy = S.petEnergy != null ? S.petEnergy : 50;
       const _food   = S.petFood   != null ? S.petFood   : 50;
+      // 动作 key 映射（cfg.key → 图片文件名）
+      const _ACTION_MAP={feed:'eating',play:'happy',bath:'bathing',sleep:'sleeping',train:'studying',
+                         eating:'eating',happy:'happy',bathing:'bathing',sleeping:'sleeping',studying:'studying'};
       // 动作优先级：显式操作 > 体力睡觉 > idle
       let _action;
-      if (_state && _state !== 'idle') { _action = _state; }
+      if (_state && _state !== 'idle') { _action = _ACTION_MAP[_state]||_state; }
       else if (_energy < 18) { _action = 'sleeping'; }
       else { _action = 'idle'; }
       // 确保当前皮肤图片在加载中
-      _spLoad('hamster',S.petLevel,_skin,_action);
+      _spLoad(breed,S.petLevel,_skin,_action);
       // 同步取图，找不到退回 idle
-      const _sImg = _spGet('hamster',S.petLevel,_skin,_action);
+      const _sImg = _spGet(breed,S.petLevel,_skin,_action);
       if (_sImg) {
         const _thin = _food < 15 ? { x:0.72+(_food/15)*0.28, y:0.90+(_food/15)*0.10 } : {x:1,y:1};
         ctx.save();
@@ -2046,7 +2052,7 @@ function drawPet(){
         ctx.translate(petX, petY+bob); ctx.scale(_thin.x, _thin.y);
         ctx.drawImage(_sImg,-51,-51,102,102);
         ctx.restore();
-        if(window.HamsterAnim) try{HamsterAnim.drawOverlay(ctx,petX,petY+bob,petT);}catch(e){}
+        if(breed==='hamster'&&window.HamsterAnim) try{HamsterAnim.drawOverlay(ctx,petX,petY+bob,petT);}catch(e){}
       } else {
         // 还未加载完：显示占位圆
         ctx.save();
@@ -2451,12 +2457,13 @@ function drawPetPreviewInCanvas(cvs,breed,level){
   const ctx=cvs.getContext('2d');
   ctx.clearRect(0,0,cvs.width,cvs.height);
   const cx=Math.round(cvs.width/2),cy=Math.round(cvs.height/2)+4;
-  // 仓鼠第2阶段：用 game.js 自建缓存
-  if(breed==='hamster'&&level===2){
-    const _lvKey='hamster_'+level;
-    const _skin=(S.petSpriteSkins&&S.petSpriteSkins[(S.activePet||'')+"_"+_lvKey])||'orange';
-    _spLoad('hamster',level,_skin,'idle');
-    const _img=_spGet('hamster',level,_skin,'idle');
+  // 精灵阶段（所有品种）：用 game.js 自建缓存
+  if(window.HamsterAnim&&HamsterAnim.isSpritedStage(breed,level)){
+    const _defSkin2=breed==='hamster'?'orange':'default';
+    const _skinKey2=(S.activePet||'')+'_'+breed+'_'+level;
+    const _skin=(S.petSpriteSkins&&S.petSpriteSkins[_skinKey2])||_defSkin2;
+    _spLoad(breed,level,_skin,'idle');
+    const _img=_spGet(breed,level,_skin,'idle');
     if(_img){
       ctx.save();
       const _r=Math.min(cx,cy)-2;
@@ -2513,19 +2520,38 @@ function drawTears(ctx,cx,cy,h){
   drop(cx-7,cy+6);drop(cx+7,cy+6);
 }
 
+// ── Claude 精灵兜底绘制（实际由 _spGet 图片系统处理，此为无图时占位）──
+function drawClaudeSprite(ctx,cx,cy,stage){
+  const col=(stage&&stage.color)||'#e8f4ff';
+  ctx.save();
+  ctx.beginPath();ctx.arc(cx,cy,40,0,Math.PI*2);
+  ctx.fillStyle=col;ctx.fill();
+  ctx.restore();
+  ctx.save();
+  ctx.font='34px serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('🤖',cx,cy-2);
+  ctx.restore();
+  if(stage&&stage.crownIco){
+    ctx.save();ctx.font='16px serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(stage.crownIco,cx+24,cy-28);ctx.restore();
+  }
+}
+
 function drawHamster(ctx, cx, cy, stage) {
-    // 【第2阶段】走 game.js 自建图片缓存，彻底绕开 hamster_anim 内部缓存
+    // 【精灵阶段】走 game.js 自建图片缓存，彻底绕开 hamster_anim 内部缓存
     if (window.HamsterAnim && HamsterAnim.isSpritedStage('hamster', S.petLevel)) {
       const _skin = (S.petSpriteSkins&&S.petSpriteSkins[S.activePet+'_hamster_'+S.petLevel])||'orange';
       const _state = window.HamsterAnim&&HamsterAnim.getState ? HamsterAnim.getState() : 'idle';
       const _energy = S.petEnergy!=null?S.petEnergy:50;
       const _food   = S.petFood!=null?S.petFood:50;
+      const _HMAP={feed:'eating',play:'happy',bath:'bathing',sleep:'sleeping',train:'studying',
+                 eating:'eating',happy:'happy',bathing:'bathing',sleeping:'sleeping',studying:'studying'};
       let _action;
-      if(_state&&_state!=='idle'){_action=_state;}
+      if(_state&&_state!=='idle'){_action=_HMAP[_state]||_state;}
       else if(_energy<18){_action='sleeping';}
       else{_action='idle';}
-      _spLoad('hamster',2,_skin,_action);
-      const _sImg=_spGet('hamster',2,_skin,_action);
+      _spLoad('hamster',S.petLevel,_skin,_action);
+      const _sImg=_spGet('hamster',S.petLevel,_skin,_action);
       if(_sImg){
         const _thin=_food<15?{x:0.72+(_food/15)*0.28,y:0.90+(_food/15)*0.10}:{x:1,y:1};
         ctx.save();
@@ -3893,7 +3919,12 @@ function petAct(type){
       if(type==='feed'){S.petFeedCount++;S.coins+=2;S.totalCoins+=2;}
       if(type==='train'){S.petLearnExp=(S.petLearnExp||0)+30;gainExp(25);S.coins+=5;S.totalCoins+=5;}
       else{gainExp(cfg.n*12);}
-      showPetTalk(cfg.key);if(window.HamsterAnim&&(S.petBreed||'hamster')==='hamster')HamsterAnim.setAction(type);saveCurPet();persistAccount();updatePetUI();checkAchs();
+      showPetTalk(cfg.key);
+      // 通用动作记录（所有品种都支持，不只是仓鼠）
+      window._petActionCurrent=type;
+      window._petActionTimer=setTimeout(()=>{window._petActionCurrent=null;},4500);
+      if(window.HamsterAnim&&(S.petBreed||'hamster')==='hamster')HamsterAnim.setAction(type);
+      saveCurPet();persistAccount();updatePetUI();checkAchs();
       const msgs={feed:`饱腹+28→${Math.round(S.petFood)}\n心情+5→${Math.round(S.petHappy)}`,play:`心情+30→${Math.round(S.petHappy)}\n体力-15→${Math.round(S.petEnergy)}`,bath:`清洁+45→${Math.round(S.petClean)}\n心情+12→${Math.round(S.petHappy)}`,train:`心情+15→${Math.round(S.petHappy)}\n学习经验+30→${S.petLearnExp||0}\n金币+5`,sleep:`体力+40→${Math.round(S.petEnergy)}\n心情+10→${Math.round(S.petHappy)}`};
       const icos={feed:'🍎',play:'🎾',bath:'🛁',train:'📖',sleep:'💤'};
       showResult(icos[type]||'✨',cfg.t+'完成！',msgs[type]||'');
@@ -7089,6 +7120,8 @@ function initGame(){petX=75;petY=76;petWalking=false;
   // 启动时预加载所有精灵皮肤图片到 game.js 自建缓存
   ['orange','white','grey','purple','black'].forEach(function(sk){_spPreload('hamster',2,sk);});
   ['orange','silver','gold'].forEach(function(sk){_spPreload('hamster',3,sk);});
+  // Claude 宠物：全部5阶段预加载
+  [1,2,3,4,5].forEach(function(lv){_spPreload('claude',lv,'default');});
   _loadProfileImgIfAny();
   const _savedTheme=localStorage.getItem('jbfarm_theme')||'default';
   // 若是自定义主题，先恢复CSS变量再应用主题

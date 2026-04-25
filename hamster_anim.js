@@ -10,7 +10,7 @@
      精灵阶段定义：哪些品种的哪些阶段使用精灵图
      格式: { breed: [lv, lv, ...] }
   ───────────────────────────────────────── */
-  var SPRITE_STAGES = { hamster: [2, 3] };
+  var SPRITE_STAGES = { hamster: [2, 3], claude: [1, 2, 3, 4, 5] };
 
   /* ─────────────────────────────────────────
      皮肤数据
@@ -33,6 +33,13 @@
         { id: 'silver', name: '银甲色',   price: 50, desc: '闪亮银色铠甲' },
         { id: 'gold',   name: '黄金骑士', price: 80, desc: '传说黄金骑士' }
       ]
+    },
+    claude: {
+      1: [{ id: 'default', name: '默认形象', price: 0, desc: '刚启动的小Claude' }],
+      2: [{ id: 'default', name: '默认形象', price: 0, desc: 'Claude助手形态' }],
+      3: [{ id: 'default', name: '默认形象', price: 0, desc: 'Claude学者形态' }],
+      4: [{ id: 'default', name: '默认形象', price: 0, desc: 'Claude大师形态' }],
+      5: [{ id: 'default', name: '默认形象', price: 0, desc: 'Claude神明形态' }]
     }
   };
 

@@ -41,11 +41,12 @@ window.SUBJECT_MODULES = {
         { id:'te_gpsy_b2', label:'情感·意志·个性（人格·能力）',      qbKey:'QB_TE_GPSY_B2' },
       ]},
       { label:'📚 教育心理学', modules:[
-        { id:'te_epsy_b1', label:'学习理论（行为·认知·建构·人本）', qbKey:'QB_TE_EPSY_B1' },
-        { id:'te_epsy_b2', label:'学习心理（动机·迁移·学习策略）',  qbKey:'QB_TE_EPSY_B2' },
-        { id:'te_epsy_b3', label:'教学与评价心理',                   qbKey:'QB_TE_EPSY_B3' },
+        { id:'te_epsy_b1', label:'教育心理学概述', qbKey:'QB_TE_EPSY_B1' },
+        { id:'te_epsy_b2', label:'学生心理',  qbKey:'QB_TE_EPSY_B2' },
+        { id:'te_epsy_b3', label:'一般学习心理',                   qbKey:'QB_TE_EPSY_B3' },
+        { id:'te_epsy_b4', label:'分类学习心理',  qbKey:'QB_TE_EPSY_B2' },
       ]},
-      { label:'📚 小三门', modules:[
+      { label:'📚 小四门', modules:[
         { id:'te_s3_b1', label:'新课程改革（课程论）', qbKey:'QB_TE_S3_B1' },
         { id:'te_s3_b2', label:'教育写作与教育方案设计',  qbKey:'QB_TE_S3_B2' },
         { id:'te_s3_b3', label:'教师职业道德（德育论）',  qbKey:'QB_TE_S3_B3' },

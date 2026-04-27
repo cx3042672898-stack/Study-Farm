@@ -1927,6 +1927,15 @@ body[data-theme="custom"]{
           <button onclick="cwResetDialog()" style="flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:inherit;color:var(--muted)">🗑️ 清除全部</button>
           <button onclick="cwApply('dialog')" class="cw-btn" style="flex:2;font-size:.76rem">✅ 保存全部对话</button>
         </div>
+        <!-- 定制宠物导出/导入 -->
+        <div style="margin-top:10px;padding:10px 12px;background:rgba(74,144,217,.06);border-radius:10px;border:1.5px solid rgba(74,144,217,.25)">
+          <div style="font-size:.7rem;font-weight:600;color:#2060a0;margin-bottom:6px">📦 定制宠物导出 / 导入</div>
+          <div style="font-size:.62rem;color:var(--muted);margin-bottom:8px;line-height:1.6">导出后可分享给其他同学，对方导入后即可使用你的定制宠物（含形象、动作图、对话）。</div>
+          <div style="display:flex;gap:6px">
+            <button onclick="exportCustomPet(_cwEditingPetId||S.activePet)" style="flex:1;padding:8px;border-radius:9px;border:1.5px solid rgba(74,144,217,.5);background:rgba(74,144,217,.08);color:#2060a0;font-size:.72rem;cursor:pointer;font-family:inherit">📤 导出该宠物</button>
+            <button onclick="importCustomPet()" style="flex:1;padding:8px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.08);color:var(--dgreen);font-size:.72rem;cursor:pointer;font-family:inherit">📥 导入宠物</button>
+          </div>
+        </div>
       </div><!-- end cwpanel-dialog -->
 
     </div><!-- end scrollable content -->
@@ -1936,7 +1945,8 @@ body[data-theme="custom"]{
 <script src="subject_history7_mod.js"></script>
 <script src="subject_geo7_mod.js"></script>
 <script src="subject_geo8_mod.js"></script>
-<script src="subject_geoh_teacher_mod.js"></script>
+<script src="subject_teacher_mod.js"></script>
+<script src="subject_geoh_mod.js"></script>
 
 <script src="hamster_anim.js"></script>
 <script src="game.js"></script>

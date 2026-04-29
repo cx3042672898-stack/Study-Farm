@@ -248,6 +248,8 @@
           applyCloudData({ accounts: cloudAccounts, saves: cloudSaves });
         } else {
           mergeAccounts(cloudAccounts, cloudSaves);
+          // 合并后立即回推本地数据，防止下次拉取时云端旧数据再次覆盖
+          setTimeout(() => pushCloud(true), 1500);
         }
       }
 
@@ -283,28 +285,51 @@
   function mergeAccounts(cloudAccounts, cloudSaves) {
     const localAccounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || '[]');
     let changed = false;
+
     cloudAccounts.forEach(ca => {
       const idx = localAccounts.findIndex(la => la.id === ca.id);
       if (idx < 0) {
+        // 云端有，本地没有 → 直接加入
         localAccounts.push(ca);
         changed = true;
         const save = cloudSaves[ca.id];
         if (save) _origSetItem(SAVE_PREFIX + ca.id, JSON.stringify(save));
       } else {
         const local = localAccounts[idx];
-        const cloudTs = ca.lastActive || 0;
-        const localTs = local.lastActive || 0;
-        if (cloudTs > localTs) {
+        const cloudSave = cloudSaves[ca.id] || {};
+        const localSaveRaw = localStorage.getItem(SAVE_PREFIX + ca.id);
+        const localSave = localSaveRaw ? JSON.parse(localSaveRaw) : {};
+
+        // ── 合并策略：高进度优先，时间戳作为最终平局裁判 ──────────
+        // 比较维度：积分 > 等级 > 时间戳
+        const cloudScore = cloudSave.score || ca.score || 0;
+        const localScore = localSave.score || local.score || 0;
+        const cloudLevel = cloudSave.level || ca.level || 1;
+        const localLevel = localSave.level || local.level || 1;
+        const cloudTs    = ca.lastActive || cloudSave.lastSaved || 0;
+        const localTs    = local.lastActive || localSave.lastSaved || 0;
+
+        // 云端数据明显落后（积分或等级更低）→ 不覆盖本地
+        const cloudAhead = cloudScore > localScore
+          || (cloudScore === localScore && cloudLevel > localLevel)
+          || (cloudScore === localScore && cloudLevel === localLevel && cloudTs > localTs);
+
+        if (cloudAhead) {
+          log(`[merge] ${ca.id} 用云端数据（云:${cloudScore}分 > 本地:${localScore}分）`);
           localAccounts[idx] = { ...local, ...ca };
           changed = true;
-          const save = cloudSaves[ca.id];
-          if (save) _origSetItem(SAVE_PREFIX + ca.id, JSON.stringify(save));
-        } else if (!local.pin && ca.pin) {
-          localAccounts[idx] = { ...local, pin: ca.pin };
-          changed = true;
+          if (cloudSaves[ca.id]) _origSetItem(SAVE_PREFIX + ca.id, JSON.stringify(cloudSave));
+        } else {
+          log(`[merge] ${ca.id} 保留本地数据（本地:${localScore}分 >= 云端:${cloudScore}分）`);
+          // 只补充 pin（如果本地没有）
+          if (!local.pin && ca.pin) {
+            localAccounts[idx] = { ...local, pin: ca.pin };
+            changed = true;
+          }
         }
       }
     });
+
     if (changed) {
       _isSyncing = true;
       _origSetItem(ACCOUNTS_KEY, JSON.stringify(localAccounts));

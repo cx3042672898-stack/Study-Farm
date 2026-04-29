@@ -31,6 +31,7 @@
 //  第五步：把下面的 YOUR_* 替换成你的实际值，保存文件
 //
 // ═══════════════════════════════════════════════════════
+
 window.FIREBASE_CONFIG = {
   apiKey: "AIzaSyBr8uA1pQufSCR9I-3q4VNzhN1LpvbO4_w",
   authDomain: "studyfarm-9f6ba.firebaseapp.com",
@@ -38,10 +39,12 @@ window.FIREBASE_CONFIG = {
   storageBucket: "studyfarm-9f6ba.firebasestorage.app",
   messagingSenderId: "113070796458",
   appId: "1:113070796458:web:a2a65729bf967be520ead3",
-  // 把databaseURL放到这里，和其他字段同级！
-  databaseURL: "https://studyfarm-9f6ba-default-rtdb.asia-southeast1.firebasedatabase.app"
+  // Firestore 选的台湾 asia-east1（存档同步）
+  // RTDB 选的新加坡 asia-southeast1（实时排行榜）
+  // ⚠️ Firebase 是 Google 服务，中国大陆无论哪个区都需要梯子
+  // 新加坡节点 + 新加坡 RTDB 是目前延迟最低的组合
+  databaseURL: "https://studyfarm-9f6ba-default-rtdb.asia-southeast1.firebasedatabase.app",
 };
-
 
 // ─── 功能开关 ─────────────────────────────────────────
 window.FIREBASE_OPTIONS = {

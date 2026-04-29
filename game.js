@@ -16,49 +16,89 @@ const _petImgCache={}; // 自定义宠物图片缓存
 // key: 'breed/lv/skin/action'  value: HTMLImageElement | 'loading' | 'failed'
 const _spCache={};
 const _SPRITE_ACTIONS=['idle','eating','bathing','happy','sleeping','studying'];
+
+// ── 动作文件名候选列表 ──────────────────────────────────
+// 支持多图随机：eating1.jpg / eating2.jpg 等自动发现
+// 支持对话触发自定义动作：文件名即动作名（如 special1.jpg → action='special1'）
 const _SPRITE_ACTION_FILES={
-  idle:['idle.jpg','idle.png'],
-  eating:['eating.jpg','eating.png'],
-  bathing:['bathing.jpg','bathing.png'],
-  happy:['happy.jpg','happy.png'],
-  sleeping:['sleeping.jpg','sleeping.png'],
-  studying:['studying.jpg','studying.png','study.jpg','study.png']
+  idle:    ['idle.jpg','idle.png'],
+  eating:  ['eating.jpg','eating.png','eating1.jpg','eating1.png','eating2.jpg','eating2.png','eating3.jpg','eating3.png'],
+  bathing: ['bathing.jpg','bathing.png','bathing1.jpg','bathing1.png','bathing2.jpg','bathing2.png'],
+  happy:   ['happy.jpg','happy.png','happy1.jpg','happy1.png','happy2.jpg','happy2.png'],
+  sleeping:['sleeping.jpg','sleeping.png','sleeping1.jpg','sleeping1.png','sleeping2.jpg','sleeping2.png'],
+  studying:['studying.jpg','studying.png','study.jpg','study.png','studying1.jpg','studying1.png','studying2.jpg','studying2.png'],
 };
 
-// 异步加载一张精灵图，成功后触发 drawPet
+// 多图缓存：action → [img1, img2, ...]（同一个动作的所有变体图）
+const _spMultiCache={};  // key: 'breed/lv/skin/action' → [HTMLImageElement, ...]
+
+// 异步加载一张精灵图（加载所有变体），成功后触发 drawPet
 function _spLoad(breed,lv,skin,action){
   const key=breed+'/'+lv+'/'+skin+'/'+action;
-  if(_spCache[key])return; // 已加载或正在加载
+  if(_spCache[key])return; // 已加载/进行中
   _spCache[key]='loading';
-  const files=_SPRITE_ACTION_FILES[action]||[action+'.jpg'];
-  let idx=0;
-  function tryNext(){
-    if(idx>=files.length){_spCache[key]='failed';return;}
+  if(!_spMultiCache[key])_spMultiCache[key]=[];
+
+  const files=_SPRITE_ACTION_FILES[action]||[action+'.jpg',action+'.png'];
+  let loaded=0,tried=0;
+  function tryFile(filename){
     const img=new Image();
-    img.onload=()=>{_spCache[key]=img;try{drawPet();}catch(e){}};
-    img.onerror=()=>{idx++;tryNext();};
-    img.src='assets/'+breed+'/stage'+lv+'/'+skin+'/'+files[idx++];
+    img.onload=()=>{
+      _spMultiCache[key].push(img);
+      _spCache[key]=_spMultiCache[key][0]; // 向后兼容：第一张作为默认
+      try{drawPet();}catch(e){}
+    };
+    img.onerror=()=>{tried++;if(tried===files.length&&_spMultiCache[key].length===0)_spCache[key]='failed';};
+    img.src='assets/'+breed+'/stage'+lv+'/'+skin+'/'+filename;
   }
-  tryNext();
+  files.forEach(tryFile);
 }
 
-// 同步取缓存图（找不到返回 null），action 找不到自动退回 idle
+// 同步取图：随机从多图变体中选一张（找不到退回 idle）
 function _spGet(breed,lv,skin,action){
   const key=breed+'/'+lv+'/'+skin+'/'+action;
-  const v=_spCache[key];
-  if(v&&v!=='loading'&&v!=='failed')return v;
+  const multi=_spMultiCache[key];
+  if(multi&&multi.length>0){
+    return multi[Math.floor(Math.random()*multi.length)];
+  }
   // 退回 idle
   if(action!=='idle'){
     const ik=breed+'/'+lv+'/'+skin+'/idle';
-    const iv=_spCache[ik];
-    if(iv&&iv!=='loading'&&iv!=='failed')return iv;
+    const im=_spMultiCache[ik];
+    if(im&&im.length>0)return im[0];
   }
   return null;
 }
 
-// 预加载某皮肤所有动作图
+// 预加载某皮肤所有动作图（含多图变体）
 function _spPreload(breed,lv,skin){
   _SPRITE_ACTIONS.forEach(function(act){_spLoad(breed,lv,skin,act);});
+}
+
+// ── 对话触发特殊动作图 ────────────────────────────────────────
+// 用法：在对话文字里加 [action:动作名] 标签，对应图片放在皮肤目录下
+// 例：'我超喜欢学习！[action:excited]' → 显示 excited.jpg 持续3秒
+// 动作名可以是任意自定义名称，也可以是内置名（eating/happy等）
+let _talkActionTimer=null;
+function _parseTalkAction(txt){
+  const m=txt.match(/\[action:([^\]]+)\]/);
+  if(!m)return{text:txt,action:null};
+  return{text:txt.replace(/\[action:[^\]]+\]/,'').trim(),action:m[1]};
+}
+function _triggerTalkAction(action){
+  if(!action)return;
+  const br=S.petBreed||'hamster';
+  const lv=S.petLevel||1;
+  const skinKey=(S.activePet||'')+'_'+br+'_'+lv;
+  const defSkin=br==='hamster'?'orange':'default';
+  const skin=(S.petSpriteSkins&&S.petSpriteSkins[skinKey])||defSkin;
+  // 预加载（如果还没加载过）
+  _spLoad(br,lv,skin,action);
+  // 临时覆盖当前动作
+  clearTimeout(_talkActionTimer);
+  window._petActionCurrent='__talk__'+action;
+  // 动作持续时间：和气泡显示时间一致（3.5秒）
+  _talkActionTimer=setTimeout(()=>{window._petActionCurrent=null;},3800);
 }
 
 // ─── 弹窗层级管理 ──────────────────────────────────
@@ -303,6 +343,43 @@ function renderLoginScreen(){
   if(SELECTED_ROLE==='teacher')renderTeacherClassView();
 }
 
+// 注销教师账号（从登录页操作）
+window._deleteTeacherAcc=function(accId){
+  const list=getAllAccounts();
+  const acc=list.find(a=>a.id===accId);
+  if(!acc){showToast('账号不存在');return;}
+  const doDelete=()=>{
+    openConfirm('⚠️',`确定注销教师账号「${acc.name}」？\n\n其管理的班级将变为无主班级。`,()=>{
+      // 标记无主班级
+      if(acc.managedClasses&&acc.managedClasses.length){
+        const meta=getClassMeta()||{};
+        acc.managedClasses.forEach(cls=>{
+          if(!meta[cls])meta[cls]={};
+          meta[cls].ownerless=true;meta[cls].prevTeacher=acc.name;
+        });
+        saveClassMeta(meta);
+      }
+      // 从班级数据中移除该教师成员条目
+      const cd=getClassData();
+      Object.keys(cd).forEach(cls=>{cd[cls]=cd[cls].filter(m=>!(m.isTeacher&&m.name===acc.name));});
+      saveClassData(cd);
+      // 删除存档和账号记录
+      localStorage.removeItem(getAccKey(accId));
+      saveAllAccounts(list.filter(a=>a.id!==accId));
+      showToast('✅ 教师账号「'+acc.name+'」已注销');
+      renderTeacherClassView();
+    },true);
+  };
+  if(acc.pin){
+    openPinPad(acc.name,entered=>{
+      if(entered===acc.pin){document.getElementById('pin-ov').classList.remove('on');doDelete();return true;}
+      showToast('密码错误！');return false;
+    });
+  } else {
+    doDelete();
+  }
+};
+
 function renderTeacherClassView(){
   const classListEl=document.getElementById('class-list');
   const classListDt=document.getElementById('class-list-dt');
@@ -323,7 +400,24 @@ function renderTeacherClassView(){
     // 班级成员全空则删除整个班级
     if(cd[className].length===0){delete cd[className];dirty=true;}
   });
-  if(dirty)saveClassData(cd);
+  // ── 教师账号列表（含注销按钮）──────────────────
+  function _renderTeacherAccList(containerId){
+    const el=document.getElementById(containerId);if(!el)return;
+    const teachers=getAllAccounts().filter(a=>a.isTeacher);
+    if(!teachers.length){el.innerHTML='<div style="font-size:.7rem;color:var(--muted)">暂无教师账号</div>';return;}
+    el.innerHTML='';
+    teachers.forEach(acc=>{
+      const div=document.createElement('div');
+      div.style.cssText='display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;border:1px solid var(--border);background:var(--panel)';
+      const cls=acc.managedClasses&&acc.managedClasses.length?acc.managedClasses.join('、'):'暂无班级';
+      div.innerHTML=`<span style="font-size:.8rem">👨‍🏫</span>`
+        +`<div style="flex:1;min-width:0"><div style="font-size:.76rem;font-weight:500">${acc.name}</div><div style="font-size:.6rem;color:var(--muted)">${cls}</div></div>`
+        +`<button onclick="_deleteTeacherAcc('${acc.id}')" style="padding:4px 10px;border-radius:7px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.65rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">注销</button>`;
+      el.appendChild(div);
+    });
+  }
+  _renderTeacherAccList('teacher-acc-list');
+  _renderTeacherAccList('teacher-acc-list-dt');
 
   const classes=Object.keys(cd);
   const emptyHtml='<div style="font-size:.78rem;color:var(--muted);text-align:center;padding:18px 0">还没有班级，点击下方创建！</div>';
@@ -392,7 +486,20 @@ function openCreateClass(){
   // 课代表名单（所有班级的课代表）
   const asstAdminNames=new Set(Object.values(admins).map(a=>a&&a.name).filter(Boolean));
   // 只显示 isTeacher=true 且不是课代表的账号
-  const existingTeachers=accounts.filter(a=>a.isTeacher&&!asstAdminNames.has(a.name));
+  // 只显示实际存在于 classData 里的教师账号（彻底过滤残留幽灵账号）
+  const _cdForFilter=getClassData();
+  const _allTeacherNamesInClass=new Set();
+  Object.values(_cdForFilter).forEach(members=>{
+    members.forEach(m=>{if(m.isTeacher)_allTeacherNamesInClass.add(m.name);});
+  });
+  const existingTeachers=accounts.filter(a=>{
+    if(!a.isTeacher||asstAdminNames.has(a.name))return false;
+    const save=loadAccSave(a.id);
+    if(!save||!save.playerName)return false; // 存档已删
+    // 必须在 classData 里有实际班级记录才显示
+    // 注意：save.managedClasses 可能仍保留已删除班级名，需校验班级确实存在
+    return _allTeacherNamesInClass.has(a.name)||(save.managedClasses&&save.managedClasses.some(cls=>!!_cdForFilter[cls]));
+  });
   const pickerWrap=document.getElementById('cc-teacher-picker-wrap');
   const inputWrap=document.getElementById('cc-teacher-input-wrap');
   const picker=document.getElementById('cc-teacher-select');
@@ -827,6 +934,16 @@ function deleteCurrentAccount(){
   if(!acc)return;
   const doDelete=()=>{
     openConfirm('⚠️',`确定注销账号「${acc.name}」？\n\n所有游戏数据将彻底清除，无法恢复！`,()=>{
+      // 教师账号注销：其班级变为无主班级
+      if(acc.isTeacher&&acc.managedClasses&&acc.managedClasses.length){
+        const meta=getClassMeta()||{};
+        acc.managedClasses.forEach(cls=>{
+          if(!meta[cls])meta[cls]={};
+          meta[cls].ownerless=true;
+          meta[cls].prevTeacher=acc.name;
+        });
+        saveClassMeta(meta);
+      }
       // 从班级排名中移除
       if(acc.classId){
         const cd=getClassData();
@@ -1412,7 +1529,7 @@ function openQuiz(cfg){
   if(_qov)_qov.setAttribute('data-layout',_quizLayoutH?'h':'v');
   const _lbtn=document.getElementById('quiz-layout-btn');
   if(_lbtn){_lbtn.textContent=_quizLayoutH?'⇅ 竖版':'⇅ 横版';_lbtn.title=_quizLayoutH?'切换为竖版':'切换为横版';}
-  _qov.classList.add('on');loadNextQ();
+  openOverlay('quiz-ov');loadNextQ(); // 用 openOverlay 注册 z-index，确保后续反馈弹窗能叠在上层
 }
 
 function loadNextQ(){
@@ -1429,6 +1546,9 @@ function loadNextQ(){
   // 多选还是单选的提示判定
   const isMulti = Array.isArray(curQ.a);
   document.getElementById('qhint').textContent=`🎯 需答对 ${QZ.needed} 题，已答对 ${QZ.correct} 题${_shieldTip}${isMulti?' 【这是一个多选题，请选完提交】':''}`; 
+  
+  // 更新收藏按钮状态
+  _updateFavBtn(); 
   
   const d=document.getElementById('qopts'); d.innerHTML=''; 
   curQ.o.forEach((o,i)=>{
@@ -1511,6 +1631,7 @@ function submitAns() {
      spawnP(['⭐','✨','🌸']);
   } else {
      if((S.streakShieldLeft||0)>0){S.streakShieldLeft--;showToast('🛡️连击护盾保住了！');}else{S.curStreak=0;}
+     _recordWrong(curQ); // 记录错题
      document.getElementById('quiz-ov').classList.add('shake'); setTimeout(()=>document.getElementById('quiz-ov').classList.remove('shake'),400);
   }
   checkAchs(); updateTop(); persistAccount(); 
@@ -1523,6 +1644,318 @@ function submitAns() {
 function quizNext(){if(QZ.correct>=QZ.needed){closeQuiz(true);return;}loadNextQ();}
 function closeQuiz(ok=false){document.getElementById('quiz-ov').classList.remove('on');const ctx=QZ;QZ=null;if(ok&&(ctx||{}).onSuccess)ctx.onSuccess();else if(!ok&&(ctx||{}).onFail)ctx.onFail();}
 // ─── QUIZ ENGINE END ─────────────────────────────
+
+// ═══════════════════════════════════════════════════
+// ── 收藏题 / 错题本 ────────────────────────────────
+// ═══════════════════════════════════════════════════
+function _getQuizFavs(){try{return JSON.parse(localStorage.getItem('jbfarm_quiz_favs')||'[]');}catch(e){return[];}}
+function _saveQuizFavs(a){localStorage.setItem('jbfarm_quiz_favs',JSON.stringify(a));}
+function _getQuizWrongs(){try{return JSON.parse(localStorage.getItem('jbfarm_quiz_wrongs')||'[]');}catch(e){return[];}}
+function _saveQuizWrongs(a){localStorage.setItem('jbfarm_quiz_wrongs',JSON.stringify(a));}
+function _qKey(q){return(q&&q.q||'').slice(0,60);}
+
+function quizToggleFav(){
+  if(!curQ)return;
+  const key=_qKey(curQ);
+  const favs=_getQuizFavs();
+  const idx=favs.findIndex(f=>f._k===key);
+  const btn=document.getElementById('quiz-fav-btn');
+  if(idx>=0){
+    favs.splice(idx,1);_saveQuizFavs(favs);
+    if(btn){btn.textContent='⭐ 收藏';btn.classList.remove('fav-active');}
+    showToast('已取消收藏');
+  } else {
+    favs.unshift({_k:key,q:curQ.q,o:curQ.o,a:curQ.a,e:curQ.e,c:curQ.c,ts:Date.now(),sub:window.ACTIVE_MODULE_LABEL||''});
+    if(favs.length>300)favs.splice(300);
+    _saveQuizFavs(favs);
+    if(btn){btn.textContent='★ 已收藏';btn.classList.add('fav-active');}
+    showToast('⭐ 已加入收藏！');
+  }
+  _updateFavCountBadge();
+}
+
+function _recordWrong(q){
+  if(!q)return;
+  const key=_qKey(q);
+  const wrongs=_getQuizWrongs();
+  const ex=wrongs.find(w=>w._k===key);
+  if(ex){ex.cnt=(ex.cnt||1)+1;ex.ts=Date.now();}
+  else{wrongs.unshift({_k:key,q:q.q,o:q.o,a:q.a,e:q.e,c:q.c,cnt:1,ts:Date.now(),sub:window.ACTIVE_MODULE_LABEL||''});}
+  if(wrongs.length>300)wrongs.splice(300);
+  _saveQuizWrongs(wrongs);
+  _updateWrongCountBadge();
+}
+function _updateFavCountBadge(){const el=document.getElementById('fav-count-badge');if(el){const n=_getQuizFavs().length;el.textContent=n>0?'('+n+')':'';}};
+function _updateWrongCountBadge(){const el=document.getElementById('wrong-count-badge');if(el){const n=_getQuizWrongs().length;el.textContent=n>0?'('+n+')':'';}};
+function _updateFavBtn(){
+  if(!curQ)return;
+  const key=_qKey(curQ);
+  const isFav=_getQuizFavs().some(f=>f._k===key);
+  const btn=document.getElementById('quiz-fav-btn');
+  if(btn){btn.textContent=isFav?'★ 已收藏':'⭐ 收藏';btn.classList.toggle('fav-active',isFav);}
+}
+
+let _quizBookTab='fav';
+let _quizBookDetailCat=null; // null = 分类列表视图, string = 当前展开的分类
+
+function openQuizBook(tab){
+  _quizBookTab=tab||'fav';
+  _quizBookDetailCat=null;
+  _renderQuizBook();
+  openOverlay('quiz-book-ov');
+}
+
+function quizBookTab(tab){
+  _quizBookTab=tab;
+  _quizBookDetailCat=null;
+  // 更新 tab 高亮
+  ['fav','wrong'].forEach(t=>{
+    const btn=document.getElementById('qbook-tab-'+t);if(!btn)return;
+    const on=t===tab;
+    btn.style.background=on?(t==='fav'?'rgba(232,160,32,.12)':'rgba(224,85,85,.1)'):'var(--panel)';
+    btn.style.borderColor=on?(t==='fav'?'var(--gold)':'var(--red)'):'var(--border)';
+    btn.style.color=on?(t==='fav'?'#a06000':'var(--red)'):'var(--muted)';
+    btn.style.fontWeight=on?'600':'400';
+  });
+  _renderQuizBook();
+}
+
+function _quizBookGoBack(){
+  _quizBookDetailCat=null;
+  _renderQuizBook();
+}
+
+// 主路由：决定渲染列表还是详情
+function _renderQuizBook(){
+  const backBtn=document.getElementById('qbook-back-btn');
+  const tabs=document.getElementById('qbook-tabs');
+  const titleEl=document.getElementById('qbook-title');
+  if(_quizBookDetailCat!==null){
+    if(backBtn)backBtn.style.display='';
+    if(tabs)tabs.style.display='none';
+    if(titleEl)titleEl.textContent=_quizBookDetailCat||'题目列表';
+    _renderQuizBookDetail(_quizBookDetailCat);
+  } else {
+    if(backBtn)backBtn.style.display='none';
+    if(tabs)tabs.style.display='';
+    if(titleEl)titleEl.textContent='📚 我的题库';
+    _renderQuizBookList();
+  }
+}
+
+// 第一层：按分类分组，显示数量和箭头（仿粉笔教师）
+function _renderQuizBookList(){
+  const body=document.getElementById('qbook-body');if(!body)return;
+  const list=_quizBookTab==='fav'?_getQuizFavs():_getQuizWrongs();
+  if(!list.length){
+    body.innerHTML='<div style="font-size:.78rem;color:var(--muted);text-align:center;padding:36px 0 24px">'
+      +(_quizBookTab==='fav'?'⭐ 还没有收藏的题目<br><span style="font-size:.68rem">答题时点击 ⭐ 收藏 按钮！</span>'
+       :'❌ 还没有错题记录<br><span style="font-size:.68rem">加油，保持全对！😊</span>')+'</div>';
+    return;
+  }
+  // 按 sub（模块名）或 c（分类）分组
+  const groups={};
+  list.forEach(item=>{
+    const key=item.sub||item.c||'其他';
+    if(!groups[key])groups[key]=[];
+    groups[key].push(item);
+  });
+  const totalColor=_quizBookTab==='fav'?'#a06000':'var(--red)';
+  const totalBg=_quizBookTab==='fav'?'rgba(232,160,32,.06)':'rgba(224,85,85,.04)';
+  let html=`<div style="font-size:.64rem;color:var(--muted);padding:4px 2px 10px">共 ${list.length} 道题，分 ${Object.keys(groups).length} 个模块</div>`;
+  Object.entries(groups).forEach(([cat,items])=>{
+    const wrongExtra=_quizBookTab==='wrong'?`<span style="font-size:.62rem;color:var(--red);margin-left:6px">（答错 ${items.reduce((s,i)=>s+(i.cnt||1),0)} 次）</span>`:'';
+    html+=`<div onclick="_quizBookOpenCat('${encodeURIComponent(cat)}')" style="display:flex;align-items:center;padding:14px 12px;border-bottom:1px solid var(--border);cursor:pointer;background:var(--bg);transition:background .15s;border-radius:10px;margin-bottom:4px" onmouseenter="this.style.background='${totalBg}'" onmouseleave="this.style.background='var(--bg)'">`
+      +`<div style="width:28px;height:28px;border-radius:50%;background:${_quizBookTab==='fav'?'var(--gold)':'var(--red)'};display:flex;align-items:center;justify-content:center;font-size:.8rem;margin-right:12px;flex-shrink:0">${_quizBookTab==='fav'?'⭐':'❌'}</div>`
+      +`<div style="flex:1"><div style="font-size:.82rem;font-weight:600;color:var(--ink)">${cat}${wrongExtra}</div></div>`
+      +`<div style="font-size:.78rem;color:${totalColor};font-weight:600;margin-right:6px">${items.length}道</div>`
+      +`<div style="font-size:.7rem;color:var(--muted)">›</div></div>`;
+  });
+  body.innerHTML=html;
+}
+
+// 第二层：分类内的题目列表，答案隐藏，点击展开
+function _quizBookOpenCat(enc){
+  _quizBookDetailCat=decodeURIComponent(enc);
+  _renderQuizBook();
+}
+
+function _renderQuizBookDetail(cat){
+  const body=document.getElementById('qbook-body');if(!body)return;
+  const allList=_quizBookTab==='fav'?_getQuizFavs():_getQuizWrongs();
+  const list=allList.filter(item=>(item.sub||item.c||'其他')===cat);
+  if(!list.length){body.innerHTML='<div style="font-size:.75rem;color:var(--muted);text-align:center;padding:24px">该分类暂无题目</div>';return;}
+  body.innerHTML='';
+  list.forEach((item,listIdx)=>{
+    const globalIdx=allList.indexOf(item);
+    const isMulti=Array.isArray(item.a);
+    const div=document.createElement('div');
+    div.style.cssText='background:var(--panel);border-radius:12px;border:1px solid var(--border);margin-bottom:10px;overflow:hidden';
+    div.innerHTML=
+      // 题目头部
+      `<div style="padding:10px 12px 8px;border-bottom:1px solid var(--border)">`
+        +`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">`
+          +`<span style="font-size:.6rem;padding:2px 7px;border-radius:5px;background:var(--bg);border:1px solid var(--border);color:var(--muted)">${item.c||cat}${isMulti?' · 多选':''}</span>`
+          +(item.cnt>1?`<span style="font-size:.62rem;color:var(--red)">❌ 答错${item.cnt}次</span>`:'')
+          +`<button onclick="_deleteQuizBookItem(${globalIdx},event)" style="padding:2px 7px;border-radius:5px;border:1px solid var(--border);background:transparent;font-size:.6rem;color:var(--muted);cursor:pointer">🗑️</button>`
+        +`</div>`
+        // 题干（可选中）
+        +`<div style="font-size:.8rem;line-height:1.75;color:var(--ink);font-weight:500;user-select:text;-webkit-user-select:text;word-break:break-all">${item.q}</div>`
+      +`</div>`
+      // 选项（可选中，不高亮答案）
+      +`<div style="padding:8px 12px;display:flex;flex-direction:column;gap:4px">`
+        +item.o.map((o,i)=>`<div style="font-size:.75rem;line-height:1.6;color:var(--ink);user-select:text;-webkit-user-select:text;word-break:break-all">${['A','B','C','D','E'][i]}. ${o}</div>`).join('')
+      +`</div>`
+    // 查看答案按钮 + 答案区
+    const answerWrap=document.createElement('div');
+    answerWrap.style.cssText='padding:0 12px 10px';
+    const revealBtn=document.createElement('button');
+    revealBtn.textContent='🔍 查看答案与解析';
+    revealBtn.style.cssText='width:100%;padding:7px;border-radius:8px;border:1.5px dashed var(--green);background:rgba(100,160,100,.05);color:var(--dgreen);font-size:.72rem;font-family:\'Noto Sans SC\',sans-serif;cursor:pointer';
+    const revealDiv=document.createElement('div');
+    revealDiv.className='qbook-answer-reveal';
+    revealDiv.style.cssText='display:none;margin-top:8px;border-radius:8px;background:rgba(100,160,100,.07);border:1px solid rgba(100,160,100,.25);padding:8px 10px;user-select:text;-webkit-user-select:text';
+    // 用 data 属性避免引号破坏 onclick
+    revealDiv.dataset.ans=JSON.stringify(item.a);
+    revealDiv.dataset.explain=item.e||'';
+    revealBtn.onclick=function(){_qbRevealAnswer(this,revealDiv);};
+    answerWrap.appendChild(revealBtn);
+    answerWrap.appendChild(revealDiv);
+    div.appendChild(answerWrap);
+    body.appendChild(div);
+  });
+}
+
+// 展开答案和解析（从 data 属性读取，避免引号问题）
+function _qbRevealAnswer(btn, revealDiv){
+  const reveal=revealDiv||btn.nextElementSibling;
+  if(!reveal)return;
+  if(reveal.style.display!=='none'){reveal.style.display='none';btn.textContent='🔍 查看答案与解析';return;}
+  let ans,explain='';
+  try{ans=JSON.parse(reveal.dataset.ans);}catch(e){ans=0;}
+  explain=reveal.dataset.explain||'暂无解析';
+  const isMulti=Array.isArray(ans);
+  const letters=['A','B','C','D','E'];
+  const correct=isMulti?ans.map(i=>letters[i]).join(' + '):letters[ans];
+  const optsHtml=isMulti
+    ?ans.map(i=>`<span style="display:inline-block;padding:1px 7px;border-radius:5px;background:rgba(61,122,61,.1);color:var(--dgreen);font-weight:700;font-size:.72rem;margin:0 2px">${letters[i]}</span>`).join('')
+    :`<span style="display:inline-block;padding:1px 7px;border-radius:5px;background:rgba(61,122,61,.1);color:var(--dgreen);font-weight:700;font-size:.72rem">${correct}</span>`;
+  reveal.innerHTML=`<div style="font-size:.72rem;margin-bottom:5px">✅ 正确答案：${optsHtml}</div>`
+    +`<div style="font-size:.7rem;color:#4a5a40;line-height:1.6;user-select:text;-webkit-user-select:text">💡 ${explain}</div>`;
+  reveal.style.display='block';
+  btn.textContent='▲ 收起答案';
+}
+
+function _deleteQuizBookItem(idx, e){
+  if(e)e.stopPropagation();
+  if(_quizBookTab==='fav'){const f=_getQuizFavs();f.splice(idx,1);_saveQuizFavs(f);}
+  else{const w=_getQuizWrongs();w.splice(idx,1);_saveQuizWrongs(w);}
+  _renderQuizBook();_updateFavCountBadge();_updateWrongCountBadge();
+}
+function quizBookClear(){
+  const label=_quizBookDetailCat?`「${_quizBookDetailCat}」模块的`:(_quizBookTab==='fav'?'全部收藏':'全部错题');
+  openConfirm('🗑️','确定清空 '+label+' 记录？',()=>{
+    if(_quizBookDetailCat){
+      // 只清空当前分类
+      if(_quizBookTab==='fav'){
+        _saveQuizFavs(_getQuizFavs().filter(i=>(i.sub||i.c||'其他')!==_quizBookDetailCat));
+      } else {
+        _saveQuizWrongs(_getQuizWrongs().filter(i=>(i.sub||i.c||'其他')!==_quizBookDetailCat));
+      }
+      _quizBookDetailCat=null;
+    } else {
+      if(_quizBookTab==='fav')_saveQuizFavs([]);else _saveQuizWrongs([]);
+    }
+    _renderQuizBook();_updateFavCountBadge();_updateWrongCountBadge();showToast('✅ 已清空！');
+  },true);
+}
+
+// ═══════════════════════════════════════════════════
+// ── 题目反馈 ────────────────────────────────────────
+// ═══════════════════════════════════════════════════
+let _reportTags=[];
+function quizOpenReport(){
+  if(!curQ){showToast('请先打开一道题！');return;}
+  _reportTags=[];
+  const preview=document.getElementById('quiz-report-q-preview');
+  if(preview)preview.textContent=curQ.q;
+  const note=document.getElementById('quiz-report-note');
+  if(note)note.value='';
+  document.querySelectorAll('.quiz-report-tag').forEach(t=>t.classList.remove('on'));
+  openOverlay('quiz-report-ov');
+}
+function quizReportToggleTag(btn,tag){
+  btn.classList.toggle('on');
+  if(_reportTags.includes(tag))_reportTags=_reportTags.filter(t=>t!==tag);
+  else _reportTags.push(tag);
+}
+function quizSubmitReport(){
+  if(!curQ){closeOverlay('quiz-report-ov');return;}
+  if(!_reportTags.length){showToast('请至少选择一个问题类型！');return;}
+  const note=(document.getElementById('quiz-report-note')||{}).value||'';
+  const payload={q:curQ.q,opts:curQ.o,ans:curQ.a,explain:curQ.e,cat:curQ.c,sub:window.ACTIVE_MODULE_LABEL||'',tags:_reportTags,note:note.trim(),player:S.playerName||'匿名',classId:S.classId||'',ts:Date.now(),type:'quiz_report'};
+  try{const local=JSON.parse(localStorage.getItem('jbfarm_reports_local')||'[]');local.unshift(payload);if(local.length>50)local.splice(50);localStorage.setItem('jbfarm_reports_local',JSON.stringify(local));}catch(e){}
+  try{if(window.firebase&&window.firebase.apps&&window.firebase.apps.length){window.firebase.firestore().collection('quiz_feedback').add(payload).catch(()=>{});}}catch(e){}
+  closeOverlay('quiz-report-ov');
+  showToast('📤 反馈已提交！感谢你的建议 🙏');
+}
+
+// ═══════════════════════════════════════════════════
+// ── 更新公告 / 建议箱 ──────────────────────────────
+// ═══════════════════════════════════════════════════
+// 开发者在此数组最前面追加新版本条目即可
+const UPDATE_LOG=[
+  {v:'v1.4',date:'2026-04-29',title:'📚 题目互动升级',items:[
+    '✅ 题目文字现在可以选中复制',
+    '⭐ 新增收藏题库，答题时点击⭐可收藏',
+    '❌ 新增错题本，自动记录答错的题',
+    '🚩 新增题目反馈功能，发现问题直接反馈给开发者',
+    '📢 新增更新公告与建议箱（就是现在这里！）',
+    '🐛 修复积分管理弹窗被确认弹窗遮挡的问题',
+    '🐛 修复积分排行tab点击高亮错误',
+    '🐛 修复新建班级下拉出现已删除教师账号的问题',
+  ]},
+];
+const _UPDATE_LOG_KEY='jbfarm_last_seen_update';
+function openUpdateLog(){
+  localStorage.setItem(_UPDATE_LOG_KEY,(UPDATE_LOG[0]&&UPDATE_LOG[0].v)||'');
+  const dot=document.getElementById('update-log-dot');if(dot)dot.style.display='none';
+  _renderUpdateLog();openOverlay('update-log-ov');
+}
+function _checkUpdateDot(){
+  const seen=localStorage.getItem(_UPDATE_LOG_KEY)||'';
+  const latest=(UPDATE_LOG[0]&&UPDATE_LOG[0].v)||'';
+  const dot=document.getElementById('update-log-dot');
+  if(dot)dot.style.display=(latest&&seen!==latest)?'block':'none';
+}
+function _renderUpdateLog(){
+  const body=document.getElementById('update-log-body');if(!body)return;
+  const html=UPDATE_LOG.map(entry=>{
+    const itemsHtml=entry.items.map(it=>'<div style="font-size:.72rem;padding:3px 0;color:var(--ink);line-height:1.55">'+it+'</div>').join('');
+    return '<div style="background:var(--panel);border-radius:11px;border:1.5px solid var(--border);padding:12px 14px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+      +'<span style="font-size:.8rem;font-weight:700;color:var(--dgreen)">'+entry.title+'</span>'
+      +'<span style="font-size:.6rem;color:var(--muted)">'+entry.v+' · '+entry.date+'</span></div>'
+      +'<div style="display:flex;flex-direction:column;gap:1px">'+itemsHtml+'</div></div>';
+  }).join('');
+  const suggestions=_getLocalSuggestions();
+  const sugHtml=suggestions.length?suggestions.map(s=>'<div style="background:rgba(160,122,208,.06);border-radius:10px;border:1px solid rgba(160,122,208,.2);padding:9px 12px">'
+    +'<div style="font-size:.62rem;color:var(--muted);margin-bottom:3px">💌 '+(s.player||'匿名')+' · '+new Date(s.ts).toLocaleDateString('zh-CN')+'</div>'
+    +'<div style="font-size:.73rem;line-height:1.55;user-select:text;-webkit-user-select:text">'+s.text+'</div></div>').join(''):'';
+  const sugSection=sugHtml?'<div style="margin-top:4px"><div style="font-size:.7rem;color:var(--muted);margin-bottom:6px;font-weight:500">💬 你提交的建议（本地记录）</div>'+sugHtml+'</div>':'';
+  body.innerHTML=html+sugSection;
+}
+function _getLocalSuggestions(){try{return JSON.parse(localStorage.getItem('jbfarm_suggestions_local')||'[]');}catch(e){return[];}}
+function submitSuggestion(){
+  const inp=document.getElementById('update-suggestion-input');
+  const text=(inp&&inp.value||'').trim();
+  if(!text){showToast('请先写点什么再提交哦！');return;}
+  const payload={text,player:S.playerName||'匿名',classId:S.classId||'',ts:Date.now(),type:'suggestion'};
+  try{const local=_getLocalSuggestions();local.unshift(payload);if(local.length>20)local.splice(20);localStorage.setItem('jbfarm_suggestions_local',JSON.stringify(local));}catch(e){}
+  try{if(window.firebase&&window.firebase.apps&&window.firebase.apps.length){window.firebase.firestore().collection('suggestions').add(payload).catch(()=>{});}}catch(e){}
+  if(inp)inp.value='';
+  showToast('💌 建议已提交！感谢 🙏');_renderUpdateLog();
+}
 
 
 // ─── EXP / LEVEL（最高100级） ──────────────────────
@@ -1941,7 +2374,15 @@ function _getClothImgDataWithScope(clothKey){
   return data;
 }
 
-function loadCustomPetImg(key, cb){
+function loadCustomPetImg(key, cb, opts){
+  const overrideData=opts&&opts._override;
+  if(overrideData){
+    if(_petImgCache[key]){cb(_petImgCache[key]);return;}
+    const img=new Image();
+    img.onload=()=>{_petImgCache[key]=img;cb(img);};
+    img.onerror=()=>cb(null);
+    img.src=overrideData;return;
+  }
   if(_petImgCache[key]){cb(_petImgCache[key]);return;}
   const data=localStorage.getItem(key);
   if(!data){cb(null);return;}
@@ -1985,7 +2426,8 @@ function drawPet(){
     try{
       const raw=localStorage.getItem(key+'_param');
       const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
-      const size=Math.round(canvasW*(p.scale!=null?p.scale:0.8));
+      // 始终用逻辑坐标（150基准），setTransform 已处理 DPR 缩放
+      const size=Math.round(150*(p.scale!=null?p.scale:0.8));
       const dx=cx+(p.offX||0);
       const dy=cy+(p.offY||0);
       const rot=(p.rotation||0)*Math.PI/180;
@@ -2001,15 +2443,37 @@ function drawPet(){
     }catch(e){}
   }
 
+  // 定制宠物动作图（预先加载到缓存，绘制时同步读取，不产生异步竞争）
+  const _ACTION_KEY_MAP={feed:'eating',play:'happy',bath:'bathing',sleep:'sleeping',train:'studying'};
+  const _curActRaw=window._petActionCurrent||'';
+  const _curActMapped=_ACTION_KEY_MAP[_curActRaw]||_curActRaw;
+  // 确保动作图已在缓存中（若缓存没有则触发加载，下次帧会自动重绘）
+  if(_curActMapped&&_curActMapped!=='idle'){
+    const _actCacheKey='__action__'+(S.activePet||'')+'_'+_curActMapped;
+    if(!_petImgCache[_actCacheKey]){
+      const _actRawData=getCustomPetActionImg(S.activePet,_curActMapped);
+      if(_actRawData){
+        const _tmpImg=new Image();
+        _tmpImg.onload=()=>{_petImgCache[_actCacheKey]=_tmpImg;try{drawPet();}catch(e){}};
+        _tmpImg.src=_actRawData;
+        _petImgCache[_actCacheKey]='loading'; // 标记加载中，避免重复创建
+      }
+    }
+  }
+
   if(petImgData){
     loadCustomPetImg(_activeImgKey,function(img){
       if(!img){
         try{drawPetBreed(ctx,breed,petX,petY+bob,stage);}catch(e){}
         return;
       }
-      ctx.setTransform(1,0,0,1,0,0);
-      ctx.clearRect(0,0,cvs.width,cvs.height);
-      _drawImgWithParam(img,_activeImgKey,petX,petY+bob);
+      // 同步检查动作图缓存（已预先加载）
+      const _actCacheKey2='__action__'+(S.activePet||'')+'_'+_curActMapped;
+      const _actImg=(_curActMapped&&_curActMapped!=='idle'&&_petImgCache[_actCacheKey2] instanceof Image)
+        ?_petImgCache[_actCacheKey2]:null;
+      // 不重置 transform，保持 DPR 缩放，clearRect 用逻辑坐标
+      ctx.clearRect(0,0,150,150);
+      _drawImgWithParam(_actImg||img,_activeImgKey,petX,petY+bob);
       // 【仓鼠特效叠加】在自定义图片上方叠加 ZZZ / 气泡 / 星星等动画
       if(breed==='hamster'&&window.HamsterAnim){try{HamsterAnim.drawOverlay(ctx,petX,petY+bob,petT);}catch(e){}}
       const clothKey=getCustomClothImgKey();
@@ -2027,17 +2491,22 @@ function drawPet(){
       const _defSkin = breed==='hamster'?'orange':'default';
       const _skin = (S.petSpriteSkins&&S.petSpriteSkins[S.activePet+'_'+breed+'_'+S.petLevel])||_defSkin;
       // 获取当前动作状态（hamster用HamsterAnim状态机，其他品种用通用动作记录器）
-      const _state = breed==='hamster'
-        ? (window.HamsterAnim ? HamsterAnim.getState() : 'idle')
+      // __talk__前缀的是对话触发的特殊动作，直接提取动作名
+      const _rawState = breed==='hamster'
+        ? (window.HamsterAnim ? HamsterAnim.getState() : (window._petActionCurrent||'idle'))
         : (window._petActionCurrent||'idle');
+      const _isTalkAction = _rawState&&_rawState.startsWith('__talk__');
+      const _state = _isTalkAction ? _rawState.slice(8) : _rawState;
       const _energy = S.petEnergy != null ? S.petEnergy : 50;
       const _food   = S.petFood   != null ? S.petFood   : 50;
       // 动作 key 映射（cfg.key → 图片文件名）
+      // 对话触发的特殊动作（_isTalkAction=true）直接用原始名，不走映射
       const _ACTION_MAP={feed:'eating',play:'happy',bath:'bathing',sleep:'sleeping',train:'studying',
                          eating:'eating',happy:'happy',bathing:'bathing',sleeping:'sleeping',studying:'studying'};
-      // 动作优先级：显式操作 > 体力睡觉 > idle
+      // 动作优先级：对话触发特殊动作 > 显式操作 > 体力睡觉 > idle
       let _action;
-      if (_state && _state !== 'idle') { _action = _ACTION_MAP[_state]||_state; }
+      if (_isTalkAction && _state) { _action = _state; } // 对话特殊动作：直接用原始名找图片
+      else if (_state && _state !== 'idle') { _action = _ACTION_MAP[_state]||_state; }
       else if (_energy < 18) { _action = 'sleeping'; }
       else { _action = 'idle'; }
       // 确保当前皮肤图片在加载中
@@ -3850,6 +4319,10 @@ function showPetTalk(key){
   if(!lines.length)return;
   let txt=lines[Math.floor(Math.random()*lines.length)];
   txt=txt.replace('{name}',S.petName||'我');
+  // 解析对话动作标签 [action:xxx]
+  const _parsed=_parseTalkAction(txt);
+  txt=_parsed.text;
+  if(_parsed.action)_triggerTalkAction(_parsed.action);
   const el=document.getElementById('pet-talk');if(!el)return;
   el.textContent=txt;el.classList.add('show');
   clearTimeout(talkTimer);talkTimer=setTimeout(()=>el.classList.remove('show'),3500);
@@ -4842,8 +5315,158 @@ function cwUploadStageImg(lv){
   inp.click();
 }
 
-function cwClearStageImg(lv){
+
+// ── 动作图片上传/清除 ────────────────────────────────────────────────
+// 图片压缩：限制最大边长 600px，JPEG 质量 0.82，防止 localStorage 溢出
+function _compressImgToDataURL(file, maxPx, quality, cb){
+  const url=URL.createObjectURL(file);
+  const img=new Image();
+  img.onload=()=>{
+    URL.revokeObjectURL(url);
+    let w=img.width,h=img.height;
+    if(w>maxPx||h>maxPx){
+      if(w>h){h=Math.round(h*maxPx/w);w=maxPx;}else{w=Math.round(w*maxPx/h);h=maxPx;}
+    }
+    const cvs=document.createElement('canvas');cvs.width=w;cvs.height=h;
+    const ctx=cvs.getContext('2d');ctx.drawImage(img,0,0,w,h);
+    const data=cvs.toDataURL('image/jpeg',quality);
+    const sizeKB=Math.round(data.length*0.75/1024);
+    cb(data,sizeKB);
+  };
+  img.onerror=()=>{URL.revokeObjectURL(url);cb(null,0);};
+  img.src=url;
+}
+
+function _cwUploadActionImg(actionKey){
   const pid=_cwEditingPetId||S.activePet||'';
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
+  inp.onchange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    if(f.size>8*1024*1024){showToast('❌ 图片过大！请选择8MB以内的图片');return;}
+    showToast('⏳ 正在压缩图片…');
+    _compressImgToDataURL(f,600,0.82,(data,sizeKB)=>{
+      if(!data){showToast('❌ 图片处理失败');return;}
+      if(sizeKB>300){showToast('⚠️ 图片压缩后约'+sizeKB+'KB，建议使用更小的图片（建议300KB以内）');}
+      try{
+        localStorage.setItem('jbfarm_actionimg_'+pid+'_'+actionKey,data);
+        // 清除动作图缓存，让下次绘制重新加载
+        const cacheKey='__action__'+pid+'_'+actionKey;
+        delete _petImgCache[cacheKey];
+        showToast('✅ 动作图片已保存！约'+sizeKB+'KB');
+        _cwRenderDialogEditor();
+      }catch(err){
+        showToast('❌ 保存失败（存储已满）：建议清理旧图片或使用更小的图片');
+      }
+    });
+  };
+  inp.click();
+}
+function _cwClearActionImg(actionKey){
+  const pid=_cwEditingPetId||S.activePet||'';
+  openConfirm('🗑️','删除「'+actionKey+'」动作图片？',()=>{
+    localStorage.removeItem('jbfarm_actionimg_'+pid+'_'+actionKey);
+    showToast('已删除');
+    _cwRenderDialogEditor();
+  });
+}
+function getCustomPetActionImg(petId,actionKey){
+  return localStorage.getItem('jbfarm_actionimg_'+(petId||'')+'_'+(actionKey||''))||null;
+}
+function exportCustomPet(petId){
+  if(!petId){showToast('未指定宠物');return;}
+  // 包含压缩图片（base64），导出文件含全部数据可直接导入
+  const bundle={_type:'jbfarm_custom_pet',_version:2,petId,
+    petBreed:S.petBreed||'hamster',
+    petName:S.petName||'',
+    breedName:localStorage.getItem('jbfarm_custombreedname_'+petId)||'',
+    stageName:{},
+    baseImg:localStorage.getItem('jbfarm_petimg_'+petId)||'',
+    stageImgs:{},actionImgs:{},
+    dialog:getCustomPetDialog(petId),
+    clothImg:localStorage.getItem('jbfarm_clothimg_custom_'+petId)||
+             localStorage.getItem('jbfarm_clothimg_'+petId)||''};
+  for(let lv=1;lv<=5;lv++){
+    const sn=localStorage.getItem('jbfarm_stagename_'+petId+'_'+lv);if(sn)bundle.stageName[lv]=sn;
+    const sk=getStageImgKey(petId,lv);
+    const si=localStorage.getItem(sk);if(si)bundle.stageImgs[lv]=si;
+  }
+  ['eating','bathing','happy','sleeping','studying'].forEach(act=>{
+    const ai=localStorage.getItem('jbfarm_actionimg_'+petId+'_'+act);if(ai)bundle.actionImgs[act]=ai;
+  });
+  try{
+    const json=JSON.stringify(bundle);
+    const sizeKB=Math.round(json.length/1024);
+    const blob=new Blob([json],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='custom_pet_'+petId+'.json';
+    document.body.appendChild(a);a.click();
+    setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},1000);
+    showToast('✅ 已导出（约'+sizeKB+'KB），可分享给他人导入！');
+  }catch(err){showToast('❌ 导出失败：'+err.message);}
+}
+function importCustomPet(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='.json';
+  inp.onchange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    showToast('⏳ 正在导入，请稍候…');
+    const r=new FileReader();
+    r.onload=ev=>{
+      try{
+        const bundle=JSON.parse(ev.target.result);
+        if(bundle._type!=='jbfarm_custom_pet'){showToast('❌ 不是有效的定制宠物文件');return;}
+        // ★ 必须用 'custom_' 前缀（不能是 'p_custom_'）才能被宠物商店识别为定制宠物
+        const newId='custom_'+Date.now();
+        // 写入图片（跳过超大图片防止 QuotaExceeded）
+        const _safeSave=(key,val)=>{
+          if(!val)return;
+          try{localStorage.setItem(key,val);}
+          catch(e){console.warn('存储失败(图片可能过大):',key,e.message);}
+        };
+        _safeSave('jbfarm_petimg_'+newId, bundle.baseImg);
+        _safeSave('jbfarm_clothimg_'+newId, bundle.clothImg);
+        if(bundle.breedName)localStorage.setItem('jbfarm_custombreedname_'+newId,bundle.breedName);
+        Object.entries(bundle.stageImgs||{}).forEach(([lv,img])=>_safeSave('jbfarm_stageimg_'+newId+'_'+lv,img));
+        Object.entries(bundle.stageName||{}).forEach(([lv,nm])=>{if(nm)localStorage.setItem('jbfarm_stagename_'+newId+'_'+lv,nm);});
+        Object.entries(bundle.actionImgs||{}).forEach(([act,img])=>_safeSave('jbfarm_actionimg_'+newId+'_'+act,img));
+        if(bundle.dialog&&Object.keys(bundle.dialog).length>0)saveCustomPetDialog(newId,bundle.dialog);
+
+        // 正确加入宠物列表：修改 S 并 persistAccount
+        if(!S.ownedPets)S.ownedPets=[];
+        if(!S.ownedPets.includes(newId))S.ownedPets.push(newId);
+        // 创建宠物存档记录
+        if(!S.petSaves)S.petSaves={};
+        if(!S.petSaves[newId]){
+          S.petSaves[newId]={
+            petBreed:bundle.petBreed||'hamster',
+            petName:bundle.petName||(bundle.breedName||'导入宠物'),
+            petLevel:1,petFood:80,petHappy:80,petClean:80,petEnergy:80,
+            petLearnExp:0,petFeedCount:0,equippedCloth:null
+          };
+        }
+        // ★ 创建 petSaves 记录（必须在 persistAccount 前完成）
+        if(!S.petSaves)S.petSaves={};
+        const _importedName=bundle.petName||(bundle.breedName?bundle.breedName+'（导入）':'导入的定制宠物');
+        S.petSaves[newId]={
+          petBreed:bundle.petBreed||'hamster',
+          petName:_importedName,
+          petLevel:bundle.petLevel||1,
+          petFood:80,petHappy:80,petClean:80,petEnergy:80,
+          petLearnExp:0,petFeedCount:0,equippedCloth:null
+        };
+        persistAccount();
+        showToast('✅ 导入成功！前往「宠物」页面，在下方定制宠物列表里可以看到「'+_importedName+'」');
+        updatePetUI();renderShop();
+      }catch(err){
+        console.error('importCustomPet error:',err);
+        showToast('❌ 导入失败：'+err.message);
+      }
+    };
+    r.onerror=()=>showToast('❌ 文件读取失败');
+    r.readAsText(f);
+  };
+  inp.click();
+}
+function cwClearStageImg(lv){
   openConfirm('🗑️','清除 Lv.'+lv+' 的自定义阶段图片？',()=>{
     localStorage.removeItem('jbfarm_stageimg_'+pid+'_'+lv);
     // 同时清除该key的缓存
@@ -4881,7 +5504,41 @@ const CW_DIALOG_KEYS=[
 function _cwRenderDialogEditor(){
   const g=document.getElementById('cw-dialog-editor');if(!g)return;
   g.innerHTML='';
+  const pid=_cwEditingPetId||S.activePet||'';
   const customData=getCustomPetDialog(S.activePet);
+
+  // ── 动作图片上传区 ──────────────────────────────────────────
+  const ACTION_IMG_DEFS=[
+    {key:'eating',  label:'🍎 喂食动作图'},
+    {key:'bathing', label:'🛁 洗澡动作图'},
+    {key:'happy',   label:'🎾 玩耍动作图'},
+    {key:'sleeping',label:'💤 休息动作图'},
+    {key:'studying',label:'📖 学习动作图'},
+  ];
+  const actionSec=document.createElement('div');
+  actionSec.style.cssText='margin-bottom:14px;padding:10px 12px;background:rgba(100,160,100,.06);border-radius:10px;border:1.5px solid var(--green)';
+  actionSec.innerHTML='<div style="font-size:.74rem;font-weight:700;color:var(--dgreen);margin-bottom:4px">📸 动作专属图片</div><div style="font-size:.62rem;color:var(--muted);margin-bottom:8px;line-height:1.6">为每个动作上传专属形象。触发该动作时自动切换，不影响基础形象。支持 JPG/PNG。</div>';
+  const actionGrid=document.createElement('div');
+  actionGrid.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:6px';
+  ACTION_IMG_DEFS.forEach(({key,label})=>{
+    const aKey='jbfarm_actionimg_'+pid+'_'+key;
+    const hasImg=!!localStorage.getItem(aKey);
+    const cell=document.createElement('div');
+    cell.style.cssText='background:var(--panel);border-radius:8px;border:1.5px solid var(--border);padding:6px;text-align:center;cursor:pointer;position:relative';
+    cell.innerHTML=`<div style="font-size:.65rem;font-weight:600;color:var(--dgreen);margin-bottom:3px">${label}</div>
+      <div id="cw-act-thumb-${key}" style="width:48px;height:48px;margin:0 auto 4px;border-radius:8px;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center">
+        ${hasImg?`<img src="${localStorage.getItem(aKey)}" style="width:100%;height:100%;object-fit:contain">`:'<span style="font-size:1.4rem;opacity:.3">🖼️</span>'}
+      </div>
+      <div style="display:flex;gap:4px;justify-content:center">
+        <button onclick="_cwUploadActionImg('${key}')" style="font-size:.6rem;padding:2px 8px;border-radius:6px;border:1px solid var(--green);background:rgba(100,160,100,.08);color:var(--dgreen);cursor:pointer">${hasImg?'更换':'上传'}</button>
+        ${hasImg?`<button onclick="_cwClearActionImg('${key}')" style="font-size:.6rem;padding:2px 8px;border-radius:6px;border:1px solid var(--red);background:transparent;color:var(--red);cursor:pointer">删除</button>`:''}
+      </div>`;
+    actionGrid.appendChild(cell);
+  });
+  actionSec.appendChild(actionGrid);
+  g.appendChild(actionSec);
+
+  // ── 对话文字编辑区 ──────────────────────────────────────────
   CW_DIALOG_KEYS.forEach(({key,label})=>{
     const customLines=customData[key]||[];
     const section=document.createElement('div');
@@ -5239,6 +5896,9 @@ if (petImgData) {
 // ─── CLASS SYSTEM ─────────────────────────────────
 function getClassData(){try{return JSON.parse(localStorage.getItem(CLASS_KEY)||'{}');}catch(e){return {};}}
 function saveClassData(d){try{localStorage.setItem(CLASS_KEY,JSON.stringify(d));}catch(e){}}
+const CLASS_META_KEY='jbfarm_class_meta';
+function getClassMeta(){try{return JSON.parse(localStorage.getItem(CLASS_META_KEY)||'{}');}catch(e){return {};}}
+function saveClassMeta(m){try{localStorage.setItem(CLASS_META_KEY,JSON.stringify(m));}catch(e){}}
 function joinClassBoard(cls,name,score){const cd=getClassData();if(!cd[cls])cd[cls]=[];const idx=cd[cls].findIndex(m=>m.name===name);if(idx>=0){const old=cd[cls][idx];cd[cls][idx]={name,score,level:S.level||1,isTeacher:old.isTeacher||false};}else cd[cls].push({name,score:score||0,level:1,isTeacher:S.isTeacher||false});saveClassData(cd);}
 function syncClassScore(){if(!S.classId||!S.playerName)return;joinClassBoard(S.classId,S.playerName,S.score);}
 
@@ -5344,11 +6004,11 @@ function randomPickMember(){
   // 弹出结果，提供切换账号选项
   const accounts=getAllAccounts();const accExist=accounts.some(a=>a.name===picked.name&&a.classId===S.classId);
   const extraBtn=accExist&&picked.name!==S.playerName?`<button onclick="onRankItemClick('${picked.name}');closeResult()" style="margin-top:8px;width:100%;padding:8px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.8rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">切换到该账号</button>`:'';
-  // Bug3 fix: 教师或辅助管理员抽人后额外显示"给学生加积分"按钮
+  // Bug3 fix: 教师或辅助管理员抽人后额外显示"给学生调整积分"按钮
   const _admins=getClassAdmins();
   const _isTeacherPick=S.isTeacher&&(S.managedClasses||[]).includes(S.classId);
   const _isAsstPick=_admins[S.classId]&&_admins[S.classId].name===S.playerName;
-  const addScoreBtn=(_isTeacherPick||_isAsstPick)?`<button onclick="closeResult();_quickAddScoreForPicked('${encodeURIComponent(picked.name)}')" style="margin-top:8px;width:100%;padding:8px;border-radius:10px;border:none;background:linear-gradient(135deg,#e8a020,#c07000);color:#fff;font-size:.8rem;font-weight:700;cursor:pointer;font-family:'Noto Sans SC',sans-serif">⭐ 给 ${picked.name} 加积分</button>`:'';
+  const addScoreBtn=(_isTeacherPick||_isAsstPick)?`<button onclick="closeResult();_quickAddScoreForPicked('${encodeURIComponent(picked.name)}')" style="margin-top:8px;width:100%;padding:8px;border-radius:10px;border:none;background:linear-gradient(135deg,#e8a020,#c07000);color:#fff;font-size:.8rem;font-weight:700;cursor:pointer;font-family:'Noto Sans SC',sans-serif">⭐ 给 ${picked.name} 调整积分</button>`:'';
   document.getElementById('res-ico').textContent='🎲';
   document.getElementById('res-ttl').textContent='随机抽取结果！';
   document.getElementById('res-body').innerHTML=`<div style="font-size:1.1rem;font-weight:700;margin:6px 0">🌟 ${picked.name} 🌟</div><div style="font-size:.8rem;color:var(--muted)">Lv.${picked.level||1} · ⭐${picked.score||0}分</div>${addScoreBtn}${extraBtn}`;
@@ -5386,63 +6046,286 @@ function saveScoreLog(classId,log){
   catch(e){}
 }
 
+// ─── 当前周期：记录重置时间戳 ──────────────────────────────
+function getPeriodStart(classId){
+  return parseInt(localStorage.getItem('jbfarm_scoreperiod_'+(classId||S.classId))||'0');
+}
+function setPeriodStart(classId,ts){
+  localStorage.setItem('jbfarm_scoreperiod_'+(classId||S.classId),String(ts||Date.now()));
+}
+
+// ─── 全局状态 ────────────────────────────────────────────
+let _esView='current';        // 'current' | 'history' | 'chart'
+let _esActiveReason='';       // 当前选中的积分来源
+let _esClassId='';            // 当前打开的班级
+
 function openExtraScoreRanking(){
   if(!S.classId){showToast('请先加入班级');return;}
-  const log=getScoreLog(S.classId);
-  const ov=document.getElementById('extra-score-ov');
-  if(!ov)return;
+  _esClassId=S.classId;
+  _esView='current';
+  const ov=document.getElementById('extra-score-ov');if(!ov)return;
+  _esRenderAll();
+  ov.classList.add('on');
+}
 
-  // 统计各原因下每人加分总和
-  const reasonMap={};
-  log.forEach(entry=>{
-    if(!entry.reason)return;
-    if(!reasonMap[entry.reason])reasonMap[entry.reason]={};
-    if(!reasonMap[entry.reason][entry.name])reasonMap[entry.reason][entry.name]=0;
-    reasonMap[entry.reason][entry.name]+=(entry.pts||0);
+// 切换视图（当前/历史）
+window._esSetView=function(view){
+  _esView=view;
+  _esActiveReason=''; // 切换视图时重置选中 tab，避免旧值导致高亮错误
+  _esRenderAll();
+};
+
+// 切换原因分类 tab
+window._esSwitchTab=function(enc){
+  _esActiveReason=decodeURIComponent(enc);
+  // 必须重渲染整个面板，否则 tab 高亮不会更新（_esRenderBody 只更新内容区域）
+  _esRenderAll();
+};
+
+// 教师/课代表重置当前周期
+window._esResetPeriod=function(){
+  openConfirm('🔄','重置当前周期？\n当前积分排行将清零重新统计，历史记录仍保留。',()=>{
+    setPeriodStart(_esClassId,Date.now());
+    showToast('✅ 当前周期已重置，积分重新积累');
+    _esRenderAll();
+  },true);
+};
+
+function _esRenderAll(){
+  // 更新视图按钮高亮
+  ['current','history'].forEach(v=>{
+    const btn=document.getElementById('es-view-'+v);
+    if(!btn)return;
+    const active=_esView===v;
+    btn.style.background=active?'var(--purple)':'var(--panel)';
+    btn.style.color=active?'#fff':'var(--ink)';
+    btn.style.borderColor=active?'var(--purple)':'var(--border)';
+    btn.style.fontWeight=active?'600':'400';
   });
 
-  const reasons=Object.keys(reasonMap);
+  // 重置按钮只对教师和课代表显示
+  const admins=getClassAdmins();
+  const isTeacher=S.isTeacher&&(S.managedClasses||[]).includes(_esClassId);
+  const isKdl=admins[_esClassId]&&admins[_esClassId].name===S.playerName;
+  const resetBtn=document.getElementById('es-reset-btn');
+  if(resetBtn)resetBtn.style.display=(_esView==='current'&&(isTeacher||isKdl))?'block':'none';
+
+  // 周期提示
+  const tipEl=document.getElementById('es-period-tip');
+  if(tipEl){
+    if(_esView==='current'){
+      const ps=getPeriodStart(_esClassId);
+      tipEl.style.display='block';
+      tipEl.textContent=ps>0?'当前周期起始：'+new Date(ps).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'当前周期：全部记录（未曾重置）';
+    } else if(_esView==='history'){
+      tipEl.style.display='block';
+      tipEl.textContent='历史：全部积分记录累计';
+    } else {
+      tipEl.style.display='none';
+    }
+  }
+
+  // 获取用于当前视图的日志
+  const allLog=getScoreLog(_esClassId);
+  const ps=getPeriodStart(_esClassId);
+  const viewLog=_esView==='history'?allLog:allLog.filter(e=>!ps||(e.time||0)>=ps);
+
+  // 构建原因分类（加分和减分分别统计）
+  const reasonMapAdd={};  // 加分
+  const reasonMapSub={};  // 减分
+  viewLog.forEach(entry=>{
+    if(!entry.reason)return;
+    const pts=entry.pts||0;
+    if(pts>=0){
+      if(!reasonMapAdd[entry.reason])reasonMapAdd[entry.reason]={};
+      if(!reasonMapAdd[entry.reason][entry.name])reasonMapAdd[entry.reason][entry.name]=0;
+      reasonMapAdd[entry.reason][entry.name]+=pts;
+    } else {
+      const absKey='📉 '+entry.reason;
+      if(!reasonMapSub[absKey])reasonMapSub[absKey]={};
+      if(!reasonMapSub[absKey][entry.name])reasonMapSub[absKey][entry.name]=0;
+      reasonMapSub[absKey][entry.name]+=Math.abs(pts);
+    }
+  });
+  const reasons=[...Object.keys(reasonMapAdd),...Object.keys(reasonMapSub)];
+
   const tabsEl=document.getElementById('extra-score-tabs');
   const bodyEl=document.getElementById('extra-score-body');
   if(!tabsEl||!bodyEl)return;
 
-  // 如果没有记录，显示提示（老数据没有log，展示总积分分类）
-  if(!reasons.length){
+  if(!allLog.length){
     tabsEl.innerHTML='';
-    bodyEl.innerHTML='<div style="font-size:.74rem;color:var(--muted);padding:12px;text-align:center">暂无积分记录。<br><span style="font-size:.66rem">新添加的积分将自动记录在此处。</span></div>';
-    ov.classList.add('on');
+    bodyEl.innerHTML='<div style="font-size:.74rem;color:var(--muted);padding:12px;text-align:center">暂无积分记录。<br><span style="font-size:.66rem">由教师或课代表添加积分后自动记录。</span></div>';
     return;
   }
 
-  let activeReason=reasons[0];
-  function render(){
-    tabsEl.innerHTML=reasons.map(r=>`<div onclick="_switchExtraTab('${encodeURIComponent(r)}')" style="padding:4px 11px;border-radius:99px;border:1.5px solid ${r===activeReason?'var(--purple)':'var(--border)'};background:${r===activeReason?'var(--purple)':'var(--panel)'};color:${r===activeReason?'#fff':'var(--ink)'};font-size:.68rem;cursor:pointer;white-space:nowrap;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">${r}</div>`).join('');
-    const data=reasonMap[activeReason]||{};
-    const sorted=Object.entries(data).sort((a,b)=>b[1]-a[1]);
-    if(!sorted.length){bodyEl.innerHTML='<div style="font-size:.74rem;color:var(--muted);padding:12px;text-align:center">该类别暂无记录</div>';return;}
-    bodyEl.innerHTML='<div style="display:flex;flex-direction:column;gap:5px">'
-      +sorted.map(([name,pts],i)=>{
-        const rankStyle=i===0?'background:#ffd700;color:#806000':i===1?'background:#c0c0c0;color:#505050':i===2?'background:#cd7f32;color:#503010':'background:rgba(160,122,208,.12);color:var(--purple)';
-        return `<div style="display:flex;align-items:center;gap:9px;padding:8px 10px;background:var(--panel);border-radius:9px;border:1px solid var(--border)">`
-          +`<div style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;${rankStyle};flex-shrink:0">${i+1}</div>`
-          +`<div style="flex:1;font-size:.78rem;font-weight:500">${name}</div>`
-          +`<div style="font-size:.75rem;color:var(--purple);font-weight:700">+${pts}</div>`
-          +'</div>';
-      }).join('')
-      +'</div>';
+  // 当前/历史视图：显示排名列表
+  if(!reasons.length){
+    tabsEl.innerHTML='';
+    bodyEl.innerHTML='<div style="font-size:.74rem;color:var(--muted);padding:12px;text-align:center">当前周期暂无记录</div>';
+    return;
   }
-  window._switchExtraTab=function(enc){activeReason=decodeURIComponent(enc);render();};
-  render();
-  ov.classList.add('on');
+  // 如果当前 _esActiveReason 不在新的 reasons 列表里，重置为第一个
+  if(!_esActiveReason||!reasons.includes(_esActiveReason))_esActiveReason=reasons[0];
+
+  tabsEl.innerHTML=reasons.map(r=>`<div onclick="_esSwitchTab('${encodeURIComponent(r)}')" style="padding:4px 11px;border-radius:99px;border:1.5px solid ${r===_esActiveReason?'var(--purple)':'var(--border)'};background:${r===_esActiveReason?'var(--purple)':'var(--panel)'};color:${r===_esActiveReason?'#fff':'var(--ink)'};font-size:.68rem;cursor:pointer;white-space:nowrap;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">${r}</div>`).join('');
+
+  window._reasonMapAdd_es=reasonMapAdd;
+  window._reasonMapSub_es=reasonMapSub;
+  _esRenderBody();
+}
+
+function _esRenderBody(){
+  const bodyEl=document.getElementById('extra-score-body');if(!bodyEl)return;
+  const isDeduct=_esActiveReason.startsWith('📉 ');
+  const map=isDeduct?(window._reasonMapSub_es||{}):(window._reasonMapAdd_es||{});
+  const data=map[_esActiveReason]||{};
+  const sorted=Object.entries(data).sort((a,b)=>b[1]-a[1]);
+  const prefix=isDeduct?'-':'+';
+  const rankColor=isDeduct?'var(--red)':'var(--purple)';
+  if(!sorted.length){bodyEl.innerHTML='<div style="font-size:.74rem;color:var(--muted);padding:12px;text-align:center">该类别暂无记录</div>';return;}
+  bodyEl.innerHTML='<div style="display:flex;flex-direction:column;gap:5px">'
+    +sorted.map(([name,pts],i)=>{
+      const rankStyle=i===0?'background:#ffd700;color:#806000':i===1?'background:#c0c0c0;color:#505050':i===2?'background:#cd7f32;color:#503010':`background:rgba(160,122,208,.12);color:${rankColor}`;
+      return `<div style="display:flex;align-items:center;gap:9px;padding:8px 10px;background:var(--panel);border-radius:9px;border:1px solid var(--border)">`
+        +`<div style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;${rankStyle};flex-shrink:0">${i+1}</div>`
+        +`<div style="flex:1;font-size:.78rem;font-weight:500">${name}</div>`
+        +`<div style="font-size:.75rem;color:${rankColor};font-weight:700">${prefix}${pts}</div>`
+        +'</div>';
+    }).join('')
+    +'</div>';
+}
+
+// ─── 变化曲线渲染 ─────────────────────────────────────────
+function _esRenderChart(allLog,reason,bodyEl){
+  // 筛选该原因的记录，按时间排序
+  const entries=allLog.filter(e=>e.reason===reason&&e.time).sort((a,b)=>a.time-b.time);
+  if(!entries.length){
+    bodyEl.innerHTML='<div style="font-size:.74rem;color:var(--muted);padding:16px;text-align:center">该类别暂无带时间的记录</div>';
+    return;
+  }
+
+  // 按人汇总累计积分（时间轴）
+  const playerOrder=[];
+  const playerSeen={};
+  const playerCumul={}; // name → [{time,cumul}]
+  entries.forEach(e=>{
+    if(!playerSeen[e.name]){playerSeen[e.name]=true;playerOrder.push(e.name);}
+    if(!playerCumul[e.name])playerCumul[e.name]=[];
+    const prev=playerCumul[e.name].length?playerCumul[e.name][playerCumul[e.name].length-1].cumul:0;
+    playerCumul[e.name].push({time:e.time,cumul:prev+(e.pts||0)});
+  });
+
+  // 最多显示前8名（按总积分排序）
+  const ranked=playerOrder.sort((a,b)=>{
+    const ta=playerCumul[a],tb=playerCumul[b];
+    return (tb[tb.length-1].cumul)-(ta[ta.length-1].cumul);
+  }).slice(0,8);
+
+  // Canvas 绘制折线图
+  const W=document.getElementById('extra-score-ov').offsetWidth-44||300;
+  const H=200;
+  const PAD={t:10,r:12,b:30,l:36};
+  const allTimes=entries.map(e=>e.time);
+  const tMin=allTimes[0],tMax=allTimes[allTimes.length-1]||tMin+1;
+  const allVals=ranked.flatMap(n=>playerCumul[n].map(p=>p.cumul));
+  const vMax=Math.max(...allVals,1);
+
+  const COLORS=['#9b59b6','#e74c3c','#2980b9','#27ae60','#f39c12','#16a085','#8e44ad','#c0392b'];
+
+  const toX=t=>PAD.l+(tMax===tMin?0.5:(t-tMin)/(tMax-tMin))*(W-PAD.l-PAD.r);
+  const toY=v=>PAD.t+(1-v/vMax)*(H-PAD.t-PAD.b);
+
+  let svg=`<svg width="${W}" height="${H}" style="display:block;overflow:visible">`;
+
+  // Y轴刻度
+  for(let i=0;i<=4;i++){
+    const v=Math.round(vMax*i/4);
+    const y=toY(v);
+    svg+=`<line x1="${PAD.l}" y1="${y}" x2="${W-PAD.r}" y2="${y}" stroke="rgba(0,0,0,.08)" stroke-dasharray="3,3"/>`;
+    svg+=`<text x="${PAD.l-3}" y="${y+4}" text-anchor="end" font-size="9" fill="var(--muted)">${v}</text>`;
+  }
+
+  // X轴时间刻度（最多4个）
+  const tLabels=4;
+  for(let i=0;i<=tLabels;i++){
+    const t=tMin+(tMax-tMin)*i/tLabels;
+    const x=toX(t);
+    const d=new Date(t);
+    const lbl=(d.getMonth()+1)+'/'+(d.getDate());
+    svg+=`<text x="${x}" y="${H-PAD.b+14}" text-anchor="middle" font-size="9" fill="var(--muted)">${lbl}</text>`;
+  }
+
+  // X轴线
+  svg+=`<line x1="${PAD.l}" y1="${H-PAD.b}" x2="${W-PAD.r}" y2="${H-PAD.b}" stroke="rgba(0,0,0,.15)"/>`;
+
+  // 每人折线
+  ranked.forEach((name,ci)=>{
+    const color=COLORS[ci%COLORS.length];
+    const pts=playerCumul[name];
+    // 从0开始
+    const allPts=[{time:tMin,cumul:0},...pts];
+    const path='M'+allPts.map(p=>`${toX(p.time).toFixed(1)},${toY(p.cumul).toFixed(1)}`).join('L');
+    svg+=`<path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>`;
+    // 最后一个点标名字
+    const last=pts[pts.length-1];
+    svg+=`<circle cx="${toX(last.time)}" cy="${toY(last.cumul)}" r="3" fill="${color}"/>`;
+    svg+=`<text x="${toX(last.time)+5}" y="${toY(last.cumul)+4}" font-size="9" fill="${color}">${name}</text>`;
+  });
+
+  svg+='</svg>';
+
+  // 图例
+  const legend=ranked.map((name,ci)=>`<span style="display:inline-flex;align-items:center;gap:3px;margin-right:8px"><span style="width:10px;height:3px;border-radius:2px;background:${COLORS[ci%COLORS.length]};display:inline-block"></span><span style="font-size:.6rem;color:var(--ink)">${name}</span></span>`).join('');
+
+  bodyEl.innerHTML=`<div style="overflow-x:auto;padding:4px 0">${svg}</div><div style="margin-top:8px;flex-wrap:wrap;display:flex">${legend}</div>`;
 }
 // ─── 班级总览浏览器（桌面默认展开，手机默认收起）─────────────────
 let _viewingClass='';
 let classBrowserExpanded = window.innerWidth >= 900; // 桌面默认展开
 
+// 认领无主班级（教师）
+function claimOwnerlessClass(enc){
+  const cls=decodeURIComponent(enc);
+  openConfirm('👑',`成为「${cls}」的新班主任？\n\n你将接管该班级的所有管理权限。`,()=>{
+    const meta=getClassMeta();
+    if(meta[cls]){meta[cls].ownerless=false;delete meta[cls].prevTeacher;}
+    saveClassMeta(meta);
+    if(!S.managedClasses)S.managedClasses=[];
+    if(!S.managedClasses.includes(cls))S.managedClasses.push(cls);
+    // 也更新账号记录
+    const list=getAllAccounts();
+    const acc=list.find(a=>a.id===CURRENT_ACC_ID);
+    if(acc){if(!acc.managedClasses)acc.managedClasses=[];if(!acc.managedClasses.includes(cls))acc.managedClasses.push(cls);}
+    saveAllAccounts(list);persistAccount();
+    updateProfile();showToast('👑 你已成为「'+cls+'」的新班主任！');
+  });
+}
+
+// 解散无主班级（任何教师均可）
+function dismissOwnerlessClass(enc){
+  const cls=decodeURIComponent(enc);
+  openConfirm('💥',`确定解散无主班级「${cls}」？\n\n班级将彻底消失，学生变为无班级状态。`,()=>{
+    const cd=getClassData();delete cd[cls];saveClassData(cd);
+    const meta=getClassMeta();delete meta[cls];saveClassMeta(meta);
+    updateProfile();showToast('✅ 班级「'+cls+'」已解散');
+  },true);
+}
+
+// 任意用户选某人为班主任（在班级管理里）
+function setNewHeadTeacher(className){
+  const list=getAllAccounts().filter(a=>a.isTeacher);
+  if(!list.length){showToast('目前没有可选的教师账号');return;}
+  const opts=list.map(a=>a.name).join('、');
+  // 简单弹窗让选，后续可扩展为选择器
+  openConfirm('👑','选择新班主任（现有教师）：\n\n'+opts+'\n\n（功能完善中，请教师自行认领无主班级）',()=>{});
+}
+
 function renderClassBrowser(){
   const el=document.getElementById('class-browser');if(!el)return;
   const cd=getClassData();const classes=Object.keys(cd);
-  
+  const meta=getClassMeta();
+
   const arrow=classBrowserExpanded?'▼':'▶';
   let html = `
   <div onclick="toggleClassBrowser()" style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;cursor:pointer;background:rgba(100,160,100,.06);border:1px solid var(--border);margin-bottom:${classBrowserExpanded?'10px':'0'};user-select:none">
@@ -5457,8 +6340,13 @@ function renderClassBrowser(){
       el.innerHTML=html;return;
     }
     if(!_viewingClass||!cd[_viewingClass])_viewingClass=S.classId||classes[0];
-    const tabsHtml=classes.map(cls=>`<div onclick="switchViewClass('${encodeURIComponent(cls)}')" style="padding:4px 11px;border-radius:99px;border:1.5px solid ${cls===_viewingClass?'var(--green)':'var(--border)'};background:${cls===_viewingClass?'var(--green)':'var(--panel)'};color:${cls===_viewingClass?'#fff':'var(--ink)'};font-size:.68rem;cursor:pointer;white-space:nowrap;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">${cls}</div>`).join('');
+    const tabsHtml=classes.map(cls=>{
+      const isOwnerless=meta[cls]&&meta[cls].ownerless;
+      return `<div onclick="switchViewClass('${encodeURIComponent(cls)}')" style="padding:4px 11px;border-radius:99px;border:1.5px solid ${cls===_viewingClass?'var(--green)':'var(--border)'};background:${cls===_viewingClass?'var(--green)':'var(--panel)'};color:${cls===_viewingClass?'#fff':'var(--ink)'};font-size:.68rem;cursor:pointer;white-space:nowrap;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">${isOwnerless?'🏚️':''} ${cls}</div>`;
+    }).join('');
     const members=sortMembers(cd[_viewingClass]||[]);
+    const isOwnerless=meta[_viewingClass]&&meta[_viewingClass].ownerless;
+    const ownerlessNotice=isOwnerless?`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;background:rgba(224,85,85,.06);border:1px solid rgba(224,85,85,.2);margin-bottom:8px;font-size:.72rem;color:var(--red)">🏚️ 无主班级（原班主任：${meta[_viewingClass].prevTeacher||'已注销'}）${S.isTeacher?'<button onclick="claimOwnerlessClass(\''+encodeURIComponent(_viewingClass)+'\')" style="margin-left:auto;padding:3px 8px;border-radius:6px;border:1px solid var(--green);background:rgba(100,160,100,.1);color:var(--dgreen);font-size:.6rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">👑 认领</button><button onclick="dismissOwnerlessClass(\''+encodeURIComponent(_viewingClass)+'\')" style="padding:3px 8px;border-radius:6px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:.6rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif;margin-left:4px">💥 解散</button>':''}</div>`:'';
     const membersHtml=members.map((m,i)=>{
       const isSelf=m.name===S.playerName&&_viewingClass===S.classId;
       const rankStyle=i===0?'#ffd700;color:#806000':i===1?'#c0c0c0;color:#505050':i===2?'#cd7f32;color:#503010':'rgba(100,160,100,.1);color:var(--dgreen)';
@@ -5468,6 +6356,7 @@ function renderClassBrowser(){
         +`<div style="font-size:.65rem;color:var(--muted)">Lv.${m.level||1} · ⭐${m.score||0}</div></div>`;
     }).join('');
     html+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${tabsHtml}</div>`
+      +ownerlessNotice
       +`<div style="font-size:.7rem;color:var(--muted);margin-bottom:7px">👥 ${_viewingClass} · 共${members.length}名学生</div>`
       +`<div style="display:flex;flex-direction:column;gap:5px;max-height:260px;overflow-y:auto">${membersHtml||'<div style="font-size:.74rem;color:var(--muted)">班级暂无成员</div>'}</div>`
       +(members.length?`<div style="margin-top:8px"><button onclick="randomPickFromBrowser()" style="padding:6px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🎲 随机抽人</button></div>`:'');
@@ -5563,12 +6452,12 @@ function openClassManage(){
     } else {
       html+=`<button onclick="openSetAsstAdmin()" style="${btnBase};border:1.5px solid #4a90d9;background:rgba(74,144,217,.06);color:#2060a0">🎖️ 更换课代表</button>`;
     }
-    html+=`<button onclick="openAddScorePanel()" style="${btnBase};border:none;background:var(--green);color:#fff">⭐ 给学生加积分</button>`;
+    html+=`<button onclick="openAddScorePanel()" style="${btnBase};border:none;background:var(--green);color:#fff">⭐ 给学生调整积分</button>`;
     html+=`<button onclick="teacherDismissClassFromManage()" style="${btnBase};border:1.5px solid var(--red);background:transparent;color:var(--red)">💥 注销班级</button>`;
     html+=`<div style="font-size:.6rem;color:var(--muted);margin-top:-4px;margin-bottom:8px;text-align:center">可选择解散班级或注销所有学生账号</div>`;
   } else if(isKeDaiLong){
     // ── 课代表视图：可以加积分，不可解散班级 ──
-    html+=`<button onclick="openAddScorePanel()" style="${btnBase};border:none;background:var(--green);color:#fff">⭐ 给学生加积分</button>`;
+    html+=`<button onclick="openAddScorePanel()" style="${btnBase};border:none;background:var(--green);color:#fff">⭐ 给学生调整积分</button>`;
     html+=`<div style="font-size:.72rem;color:var(--muted);line-height:1.7;padding:8px;background:rgba(0,0,0,.03);border-radius:9px;text-align:center">课代表无权注销班级<br>如需解散请联系教师</div>`;
   } else {
     // ── 普通学生视图 ──
@@ -5625,17 +6514,25 @@ function setScoreMode(mode){
   const addBtn=document.getElementById('score-mode-add');
   const subBtn=document.getElementById('score-mode-sub');
   const confirmBtn=document.getElementById('score-confirm-btn');
-  if(addBtn){addBtn.style.background=mode==='add'?'var(--green)':'var(--panel)';addBtn.style.color=mode==='add'?'#fff':'var(--muted)';}
-  if(subBtn){subBtn.style.background=mode==='sub'?'var(--red)':'var(--panel)';subBtn.style.color=mode==='sub'?'#fff':'var(--muted)';}
+  if(addBtn){addBtn.style.background=mode==='add'?'var(--green)':'var(--panel)';addBtn.style.color=mode==='add'?'#fff':'var(--muted)';addBtn.style.fontWeight=mode==='add'?'600':'400';}
+  if(subBtn){subBtn.style.background=mode==='sub'?'var(--red)':'var(--panel)';subBtn.style.color=mode==='sub'?'#fff':'var(--muted)';subBtn.style.fontWeight=mode==='sub'?'600':'400';}
   if(confirmBtn){confirmBtn.style.background=mode==='add'?'var(--green)':'var(--red)';confirmBtn.textContent=mode==='add'?'✅ 确认给已选学生加分':'📉 确认给已选学生减分';}
+  // 快捷分值按钮：加分显示"+"，减分显示"-"
+  const sign=mode==='add'?'+':'-';
+  document.querySelectorAll('.score-preset-btn[data-val]').forEach(btn=>{
+    const v=btn.getAttribute('data-val');
+    const activeVal=(document.getElementById('add-score-val')||{}).value;
+    btn.textContent=sign+v;
+    btn.classList.toggle('active',activeVal&&parseInt(activeVal)===parseInt(v));
+  });
 }
 
 function setScoreVal(v){
   const el=document.getElementById('add-score-val');
   if(el){el.value=v;}
-  // 高亮选中的预设按钮
-  document.querySelectorAll('.score-preset-btn').forEach(b=>{
-    b.classList.toggle('active',b.textContent==='+'+v||b.textContent===''+v);
+  const sign=_scoreMode==='sub'?'-':'+';
+  document.querySelectorAll('.score-preset-btn[data-val]').forEach(b=>{
+    b.classList.toggle('active',parseInt(b.getAttribute('data-val'))===parseInt(v));
   });
 }
 
@@ -5659,7 +6556,7 @@ function openAddScorePanel(classId){
   ['class-manage-ov','teacher-class-manage-ov'].forEach(id=>{
     const el=document.getElementById(id);if(el)el.classList.remove('on');
   });
-  document.getElementById('add-score-ov').classList.add('on');
+  openOverlay('add-score-ov'); // 用 openOverlay 确保 z-index 正确叠加，后续确认弹窗可覆盖在上层
 }
 
 function _renderScoreList(){
@@ -6051,8 +6948,35 @@ function updateProfile(){
       +'<span style="font-size:.74rem;flex:1">🏫 <b>'+c+'</b></span>'
       +'<button onclick="openTeacherClassManage(\''+encodeURIComponent(c)+'\')" style="padding:3px 10px;border-radius:7px;border:1px solid rgba(232,160,32,.4);background:rgba(232,160,32,.1);color:#a06000;font-size:.62rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">⚙️ 管理</button>'
       +'</div>').join('');
+
+    // 无主班级：原教师已注销，任何教师都可以认领或解散
+    const meta=getClassMeta();
+    const cd=getClassData();
+    const ownerlessRows=Object.entries(meta)
+      .filter(([cls,m])=>m.ownerless && cd[cls])
+      .map(([cls,m])=>'<div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid rgba(224,85,85,.1);gap:6px">'
+        +'<div style="flex:1"><div style="font-size:.74rem;color:var(--ink)">🏚️ <b>'+cls+'</b></div>'
+        +'<div style="font-size:.6rem;color:var(--muted)">原班主任：'+(m.prevTeacher||'已注销')+'（无主班级）</div></div>'
+        +'<button onclick="claimOwnerlessClass(\''+encodeURIComponent(cls)+'\')" style="padding:3px 8px;border-radius:7px;border:1px solid var(--green);background:rgba(100,160,100,.1);color:var(--dgreen);font-size:.6rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">👑 成为班主任</button>'
+        +'<button onclick="dismissOwnerlessClass(\''+encodeURIComponent(cls)+'\')" style="padding:3px 8px;border-radius:7px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.6rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">💥 解散</button>'
+        +'</div>').join('');
+
+    // 所有教师账号列表
+    const allTeachers=getAllAccounts().filter(a=>a.isTeacher);
+    const teacherRows=allTeachers.map(a=>{
+      const isMe=a.id===CURRENT_ACC_ID;
+      return '<div style="display:flex;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);gap:6px">'
+        +'<span style="font-size:.7rem;flex:1">👨‍🏫 '+a.name+(isMe?' <span style="font-size:.58rem;background:rgba(100,160,100,.15);color:var(--dgreen);border-radius:4px;padding:0 4px">你</span>':'')+'</span>'
+        +(a.managedClasses&&a.managedClasses.length
+          ?'<span style="font-size:.6rem;color:var(--muted)">管 '+a.managedClasses.length+' 个班</span>'
+          :'<span style="font-size:.6rem;color:var(--muted)">暂无班级</span>')
+        +'</div>';
+    }).join('');
+
+    // 所有教师账号列表 — 已移至登录页面管理，此处仅显示自己的班级
     tc.innerHTML='<div class="cttl">👨‍🏫 我管理的班级</div><div style="padding:4px 0">'
-      +(mc.length?clsRows:'<div style="font-size:.7rem;color:var(--muted)">暂无管理的班级</div>')+'</div>';
+      +(mc.length?clsRows:'<div style="font-size:.7rem;color:var(--muted)">暂无管理的班级</div>')+'</div>'
+      +(ownerlessRows?'<div class="cttl" style="margin-top:10px">🏚️ 无主班级（可认领）</div><div style="padding:4px 0">'+ownerlessRows+'</div>':'');
   } else if(teacherCard){
     teacherCard.remove();
   }
@@ -7117,6 +8041,7 @@ function initGame(){petX=75;petY=76;petWalking=false;
   const sbpl=document.getElementById('sb-pause-lbl');if(sbpl)sbpl.textContent='暂停游戏';
   (document.getElementById('pause-ov')||{}).classList.remove('on');
   renderFarm();updatePetUI();updateTop();renderAchs();checkAchs();renderSubjectBars();startPetAnim();updateProfile();switchTab('farm');
+  _checkUpdateDot();_updateFavCountBadge();_updateWrongCountBadge();
   // 启动时预加载所有精灵皮肤图片到 game.js 自建缓存
   ['orange','white','grey','purple','black'].forEach(function(sk){_spPreload('hamster',2,sk);});
   ['orange','silver','gold'].forEach(function(sk){_spPreload('hamster',3,sk);});
@@ -7231,10 +8156,9 @@ function saveLayoutConfig(cfg){
   try{localStorage.setItem(LAYOUT_KEY,JSON.stringify(cfg));}catch(e){}
 }
 
-// ── 卡片拖拽交换列 ────────────────────────────────────────
+// ── 卡片拖拽 ────────────────────────────────────────
 let _dragCard=null,_dragOver=null;
 function _initCardDrag(){
-  // 两个面板都支持拖拽换栏：个人面板 + 班级面板
   ['profile-personal-grid','profile-class-grid'].forEach(gridId=>{
     const grid=document.getElementById(gridId);if(!grid)return;
     grid.querySelectorAll('.card[id]').forEach(card=>{
@@ -7243,25 +8167,58 @@ function _initCardDrag(){
       card.setAttribute('draggable','true');
       card.addEventListener('dragstart',e=>{
         if(!_layoutEditMode){e.preventDefault();return;}
-        _dragCard=card;card.style.opacity='.5';e.dataTransfer.effectAllowed='move';
+        _dragCard=card;
+        setTimeout(()=>card.style.opacity='.45',0);
+        e.dataTransfer.effectAllowed='move';
       });
-      card.addEventListener('dragend',()=>{card.style.opacity='';_dragCard=null;_dragOver=null;_clearDropHints();});
+      card.addEventListener('dragend',()=>{
+        card.style.opacity='';_dragCard=null;_dragOver=null;_clearDropHints();
+      });
       card.addEventListener('dragover',e=>{
         if(!_layoutEditMode||!_dragCard||_dragCard===card)return;
-        e.preventDefault();e.dataTransfer.dropEffect='move';
-        if(_dragOver!==card){_dragOver=card;_clearDropHints();card.style.outline='2px dashed var(--green)';}
+        e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='move';
+        if(_dragOver!==card){_dragOver=card;_clearDropHints();card.style.outline='2.5px dashed var(--green)';card.style.outlineOffset='2px';}
       });
-      card.addEventListener('dragleave',()=>{card.style.outline='';_dragOver=null;});
+      card.addEventListener('dragleave',()=>{card.style.outline='';card.style.outlineOffset='';_dragOver=null;});
       card.addEventListener('drop',e=>{
-        e.preventDefault();if(!_dragCard||_dragCard===card)return;
-        const pA=_dragCard.parentElement,pB=card.parentElement;
-        const nA=_dragCard.nextSibling,nB=card.nextSibling;
-        if(nB===_dragCard){pA.insertBefore(card,_dragCard);}
-        else if(nA===card){pB.insertBefore(_dragCard,card);}
-        else{pA.insertBefore(card,nA);pB.insertBefore(_dragCard,nB);}
-        card.style.outline='';_dragCard.style.opacity='';
+        e.preventDefault();e.stopPropagation();
+        if(!_dragCard||_dragCard===card)return;
+        // 插入到目标卡片之前（同栏或跨栏都支持）
+        card.parentElement.insertBefore(_dragCard,card);
+        card.style.outline='';card.style.outlineOffset='';
+        _dragCard.style.opacity='';
         _saveCardOrder();showToast('✅ 卡片已移动');
       });
+    });
+  });
+}
+
+// 让列容器本身也可以作为拖放目标（支持拖入空列 / 拖到列末尾）
+function _initColumnDropZones(){
+  const colIds=['profile-col-left','profile-col-right','profile-class-col-left','profile-class-col-right'];
+  colIds.forEach(id=>{
+    const col=document.getElementById(id);if(!col)return;
+    if(col.dataset.dropzone==='true')return;
+    col.dataset.dropzone='true';
+    col.addEventListener('dragover',e=>{
+      if(!_layoutEditMode||!_dragCard)return;
+      // 只在直接子元素上才响应（防止卡片内部冒泡）
+      if(e.target!==col&&!col.contains(e.target))return;
+      e.preventDefault();e.dataTransfer.dropEffect='move';
+      _clearDropHints();col.style.outline='2px dashed rgba(100,160,100,.4)';col.style.borderRadius='12px';
+    });
+    col.addEventListener('dragleave',e=>{
+      if(!col.contains(e.relatedTarget)){col.style.outline='';col.style.borderRadius='';}
+    });
+    col.addEventListener('drop',e=>{
+      if(!_layoutEditMode||!_dragCard)return;
+      // 如果 drop 落在卡片上，让卡片的 drop handler 处理（不重复）
+      if(e.target.closest('.card[id]')&&e.target.closest('.card[id]')!==_dragCard)return;
+      e.preventDefault();e.stopPropagation();
+      col.appendChild(_dragCard); // 追加到列末尾
+      col.style.outline='';col.style.borderRadius='';
+      _dragCard.style.opacity='';
+      _saveCardOrder();showToast('✅ 卡片已移至此栏');
     });
   });
 }
@@ -7414,31 +8371,50 @@ function applyLayoutConfig(){
 function toggleLayoutEditMode(){
   _layoutEditMode=!_layoutEditMode;
   const btn=document.getElementById('layout-edit-btn');
+  const resetBtn=document.getElementById('layout-reset-btn');
   const pages=document.getElementById('pages');
   if(btn){
     btn.textContent=_layoutEditMode?'✅ 完成调整':'⚙️ 调整布局';
     btn.classList.toggle('active',_layoutEditMode);
-    btn.title=_layoutEditMode?'点击完成，拖动分隔线或卡片底边调整':'点击进入布局调整模式';
   }
+  if(resetBtn)resetBtn.style.display=_layoutEditMode?'':'none';
   if(pages)pages.classList.toggle('layout-edit-mode',_layoutEditMode);
   if(_layoutEditMode){
     _initResizeHandles();
+    _initColumnDropZones(); // 支持拖入空列
     document.querySelectorAll('.card-vhandle').forEach(h=>{h.style.display='block';});
     document.querySelectorAll('.resize-handle').forEach(h=>{h.style.color='var(--green)';});
-    // 显示操作提示
-    showToast('💡 拖动底部小横条调高度 · 拖卡片换栏位 · 拖中线调宽度');
+    showToast('💡 拖动卡片可自由换栏 · 拖底部横条调高度 · 完成后点击"完成调整"');
   } else {
     document.querySelectorAll('.card-vhandle').forEach(h=>h.style.display='none');
   }
 }
 
 function resetLayout(){
+  // 清除全部布局配置（含卡片顺序）
   localStorage.removeItem(LAYOUT_KEY);
+  // 重置网格列宽
   ['page-farm','page-pet'].forEach(pid=>{
     const p=document.getElementById(pid);if(!p)return;
     ['dtwo','dpet','farm-main-grid'].forEach(cls=>{const g=p.querySelector('.'+cls);if(g)g.style.gridTemplateColumns='';});
   });
-  showToast('已恢复默认布局');
+  // 重置个人面板卡片到默认顺序
+  _resetProfileCardOrder();
+  showToast('✅ 已恢复默认布局');
+}
+
+function _resetProfileCardOrder(){
+  // 个人面板默认：左栏→学习统计、我的题库、我管理的班级；右栏→账号设置、数据管理...
+  const leftCol=document.getElementById('profile-col-left');
+  const rightCol=document.getElementById('profile-col-right');
+  if(leftCol&&rightCol){
+    const defaultLeft=['pcard-stats','pcard-quizbook','pcard-teacher-mgr'];
+    defaultLeft.forEach(id=>{const el=document.getElementById(id);if(el)leftCol.appendChild(el);});
+    // 右栏：剩下所有还未归位的 card
+    rightCol.querySelectorAll('.card[id]').forEach(c=>{
+      if(!defaultLeft.includes(c.id))rightCol.appendChild(c);
+    });
+  }
 }
 
 function openLayoutEdit(){toggleLayoutEditMode();}

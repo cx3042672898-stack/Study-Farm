@@ -427,9 +427,8 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 .quiz-report-tag{padding:5px 11px;border-radius:99px;border:1.5px solid var(--border);background:var(--panel);font-size:.68rem;font-family:'Noto Sans SC',sans-serif;cursor:pointer;color:var(--muted);transition:all .15s}
 .quiz-report-tag.on{border-color:var(--red);background:rgba(224,85,85,.1);color:var(--red);font-weight:600}
-#update-log-btn{position:fixed;bottom:calc(var(--tab-h) + 10px);right:12px;width:38px;height:38px;border-radius:50%;border:none;background:var(--purple);color:#fff;font-size:1rem;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;z-index:150;transition:transform .15s}
-#update-log-btn:hover{transform:scale(1.12)}
-#update-log-dot{position:absolute;top:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:#e84444;border:2px solid #fff;display:none}
+#update-log-btn{display:none!important}
+#update-log-dot{display:none!important}
 .mbrow{display:flex;gap:7px;margin-top:9px}
 .mbtn{flex:1;padding:10px;border-radius:10px;border:none;font-family:'Noto Sans SC',sans-serif;
   font-size:.82rem;font-weight:500;cursor:pointer;transition:all .18s}
@@ -539,6 +538,13 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 .layout-edit-btn:hover{background:rgba(100,160,100,.1)}
 .layout-edit-btn.active{background:var(--green);color:#fff;border-color:var(--green)}
 @media(min-width:900px){.layout-edit-btn{display:block;left:calc(var(--sidebar-w) + 16px)}}
+/* 布局按钮组 */
+#layout-btn-group{position:fixed;bottom:16px;left:16px;z-index:100;display:none;flex-direction:row;gap:6px;align-items:center}
+@media(min-width:900px){#layout-btn-group{display:flex;left:calc(var(--sidebar-w,170px) + 16px)}}
+#layout-edit-btn,#layout-reset-btn{padding:7px 13px;border-radius:10px;font-size:.72rem;font-family:'Noto Sans SC',sans-serif;cursor:pointer;font-weight:500;white-space:nowrap;transition:all .18s}
+#layout-edit-btn{border:1.5px solid var(--green);background:var(--panel);color:var(--dgreen)}
+#layout-edit-btn.active{background:var(--green);color:#fff;border-color:var(--green)}
+#layout-reset-btn{border:1.5px solid var(--red);background:var(--panel);color:var(--red);display:none}
 .avatar-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-bottom:10px}
 .av-item{aspect-ratio:1;border-radius:10px;border:2px solid var(--border);display:flex;align-items:center;
   justify-content:center;font-size:1.4rem;cursor:pointer;transition:all .15s;background:#fff}
@@ -1013,6 +1019,11 @@ body[data-theme="custom"]{
       <div id="sb-pause-btn" onclick="togglePause()" class="sb-pause-item">
         <span id="sb-pause-ico">⏸</span><span id="sb-pause-lbl">暂停游戏</span>
       </div>
+      <!-- 侧边栏公告按钮（桌面端） -->
+      <div onclick="openUpdateLog()" class="sb-pause-item" style="position:relative" id="sb-announce-btn">
+        <span>📢</span><span>更新公告</span>
+        <span id="sb-announce-dot" style="position:absolute;top:6px;right:10px;width:8px;height:8px;border-radius:50%;background:#e84444;border:1.5px solid var(--sidebar-bg,#2a4a2a);display:none"></span>
+      </div>
     </div>
   </div>
 
@@ -1022,16 +1033,19 @@ body[data-theme="custom"]{
     <div id="pname" onclick="switchTab('profile')">-</div>
     <button id="theme-mobile-btn" onclick="openThemeModal()" style="padding:3px 10px;border-radius:99px;border:1.5px solid var(--border);background:var(--panel);font-size:.66rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--ink);white-space:nowrap;flex-shrink:0;transition:all .18s">🎨 主题</button>
     <button id="pause-btn" onclick="togglePause()">⏸ 暂停</button>
-    <div class="topchips">
-      <div class="tc">🪙<b id="dc">0</b></div>
-      <div class="tc">⭐<b id="ds">0</b></div>
-    </div>
+    <button id="announce-mobile-btn" onclick="openUpdateLog()" style="position:relative;padding:3px 10px;border-radius:99px;border:1.5px solid var(--border);background:var(--panel);font-size:.66rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--ink);white-space:nowrap;flex-shrink:0">
+      📢 公告<span id="announce-mobile-dot" style="position:absolute;top:-2px;right:-2px;width:8px;height:8px;border-radius:50%;background:#e84444;border:1.5px solid var(--panel);display:none"></span>
+    </button>
   </div>
   <div id="expbar">
     <div class="exprow">
       <div class="lvtag" id="dlv">Lv.1</div>
       <div class="exptrack"><div class="expfill" id="dexp" style="width:0%"></div></div>
       <div class="exphint" id="dexph">0/100</div>
+      <div class="topchips" style="flex-shrink:0;margin-left:6px">
+        <div class="tc">🪙<b id="dc">0</b></div>
+        <div class="tc">⭐<b id="ds">0</b></div>
+      </div>
     </div>
   </div>
   <div id="subject-bar-mobile"></div>
@@ -1294,14 +1308,10 @@ body[data-theme="custom"]{
 </button>
 
 <!-- 浮动布局编辑按钮（桌面端） -->
-<div id="layout-btn-group" style="position:fixed;bottom:16px;left:16px;z-index:100;display:none;flex-direction:row;gap:6px">
-  <button id="layout-edit-btn" onclick="toggleLayoutEditMode()" style="padding:7px 13px;border-radius:10px;border:1.5px solid var(--green);background:var(--panel);font-size:.72rem;font-family:'Noto Sans SC',sans-serif;cursor:pointer;color:var(--dgreen);font-weight:500;transition:all .18s;white-space:nowrap">⚙️ 调整布局</button>
-  <button id="layout-reset-btn" onclick="resetLayout()" style="display:none;padding:7px 13px;border-radius:10px;border:1.5px solid var(--red);background:var(--panel);font-size:.72rem;font-family:'Noto Sans SC',sans-serif;cursor:pointer;color:var(--red);font-weight:500;white-space:nowrap">🔄 恢复默认</button>
+<div id="layout-btn-group">
+  <button id="layout-edit-btn" onclick="toggleLayoutEditMode()">⚙️ 调整布局</button>
+  <button id="layout-reset-btn" onclick="resetLayout()">🔄 恢复默认</button>
 </div>
-<style>
-@media(min-width:900px){#layout-btn-group{display:flex;left:calc(var(--sidebar-w,170px) + 16px)}}
-#layout-edit-btn.active{background:var(--green);color:#fff;border-color:var(--green)}
-</style>
 
 <!-- 缩放控件（桌面显示） -->
 <div id="zoom-ctrl">
@@ -2058,7 +2068,8 @@ body[data-theme="custom"]{
 <script src="subject_history7_mod.js"></script>
 <script src="subject_geo7_mod.js"></script>
 <script src="subject_geo8_mod.js"></script>
-<script src="subject_geoh_teacher_mod.js"></script>
+<script src="subject_teacher_mod.js"></script>
+<script src="subject_geoh_mod.js"></script>
 
 <script src="hamster_anim.js"></script>
 <script src="game.js"></script>

@@ -412,6 +412,7 @@ function renderTeacherClassView(){
       const cls=acc.managedClasses&&acc.managedClasses.length?acc.managedClasses.join('、'):'暂无班级';
       div.innerHTML=`<span style="font-size:.8rem">👨‍🏫</span>`
         +`<div style="flex:1;min-width:0"><div style="font-size:.76rem;font-weight:500">${acc.name}</div><div style="font-size:.6rem;color:var(--muted)">${cls}</div></div>`
+        +`<button onclick="loginAcc(getAllAccounts().find(a=>a.id==='${acc.id}'))" style="padding:4px 9px;border-radius:7px;border:1.5px solid var(--green);background:rgba(100,160,100,.08);color:var(--dgreen);font-size:.65rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">登入</button>`
         +`<button onclick="_deleteTeacherAcc('${acc.id}')" style="padding:4px 10px;border-radius:7px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.65rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">注销</button>`;
       el.appendChild(div);
     });
@@ -1367,23 +1368,46 @@ function renderSubjectBars(){
   const sb=document.getElementById('sb-subjects');
   if(sb){
     sb.innerHTML='';
+    const _sbKey='jbfarm_sb_subj_open';
+    let _sbOpen=localStorage.getItem(_sbKey)!=='0';
+    const header=document.createElement('div');
+    header.style.cssText='display:flex;align-items:center;gap:6px;padding:5px 14px;cursor:pointer;user-select:none;color:rgba(255,255,255,.55);font-size:.65rem;transition:color .15s;margin-top:2px';
+    const arrowSpan=document.createElement('span');
+    arrowSpan.id='sb-subj-arrow';
+    arrowSpan.style.cssText='font-size:.55rem;transition:transform .2s';
+    arrowSpan.textContent=_sbOpen?'▼':'▶';
+    const labelSpan=document.createElement('span');
+    labelSpan.textContent='📚 科目选择';
+    header.appendChild(arrowSpan);header.appendChild(labelSpan);
+    header.onmouseenter=()=>{header.style.color='rgba(255,255,255,.85)';};
+    header.onmouseleave=()=>{header.style.color='rgba(255,255,255,.55)';};
+    header.onclick=()=>{
+      _sbOpen=!_sbOpen;
+      localStorage.setItem(_sbKey,_sbOpen?'1':'0');
+      arrowSpan.textContent=_sbOpen?'▼':'▶';
+      listWrap.style.display=_sbOpen?'':'none';
+    };
+    sb.appendChild(header);
+    const listWrap=document.createElement('div');
+    listWrap.style.display=_sbOpen?'':'none';
     SUBJECTS.forEach(sub=>{
       const d=document.createElement('div');
       const isActive=sub.id===ACTIVE_SUBJECT_ID;
       d.className='sb-sub-item'+(isActive?' on':'');
-      d.innerHTML=`<div class="sb-sub-dot" style="${isActive?'background:'+sub.color:''}"></div>${sub.icon} ${sub.name}${_hasMod(sub.id)?'▾':''}`;
+      d.innerHTML='<div class="sb-sub-dot" style="'+(isActive?'background:'+sub.color:'')+'"></div>'+sub.icon+' '+sub.name+(_hasMod(sub.id)?'▾':'');
       d.onclick=()=>{if(!isActive)setSubject(sub.id);if(_hasMod(sub.id))openModulePicker();};
-      sb.appendChild(d);
+      listWrap.appendChild(d);
     });
     if(window.ACTIVE_MODULE_LABEL){
       const ml=document.createElement('div');
       ml.style.cssText='padding:2px 14px 5px;font-size:.58rem;color:rgba(255,255,255,.38);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
       ml.textContent='📂 '+ACTIVE_MODULE_LABEL;
       ml.onclick=openModulePicker;
-      sb.appendChild(ml);
+      listWrap.appendChild(ml);
     }
+    sb.appendChild(listWrap);
   }
-  const badge=document.getElementById('sub-badge');
+    const badge=document.getElementById('sub-badge');
   if(badge){const sub=getActiveSubject();badge.textContent=window.ACTIVE_MODULE_LABEL?sub.icon+' '+ACTIVE_MODULE_LABEL:sub.icon+' '+sub.name;badge.style.background=sub.color||'#5a9a5a';}
 }
 
@@ -1919,14 +1943,18 @@ const UPDATE_LOG=[
 const _UPDATE_LOG_KEY='jbfarm_last_seen_update';
 function openUpdateLog(){
   localStorage.setItem(_UPDATE_LOG_KEY,(UPDATE_LOG[0]&&UPDATE_LOG[0].v)||'');
-  const dot=document.getElementById('update-log-dot');if(dot)dot.style.display='none';
+  ['update-log-dot','announce-mobile-dot','sb-announce-dot'].forEach(id=>{
+    const dot=document.getElementById(id);if(dot)dot.style.display='none';
+  });
   _renderUpdateLog();openOverlay('update-log-ov');
 }
 function _checkUpdateDot(){
   const seen=localStorage.getItem(_UPDATE_LOG_KEY)||'';
   const latest=(UPDATE_LOG[0]&&UPDATE_LOG[0].v)||'';
-  const dot=document.getElementById('update-log-dot');
-  if(dot)dot.style.display=(latest&&seen!==latest)?'block':'none';
+  const show=!!(latest&&seen!==latest);
+  ['update-log-dot','announce-mobile-dot','sb-announce-dot'].forEach(id=>{
+    const dot=document.getElementById(id);if(dot)dot.style.display=show?'block':'none';
+  });
 }
 function _renderUpdateLog(){
   const body=document.getElementById('update-log-body');if(!body)return;
@@ -5903,7 +5931,14 @@ function joinClassBoard(cls,name,score){const cd=getClassData();if(!cd[cls])cd[c
 function syncClassScore(){if(!S.classId||!S.playerName)return;joinClassBoard(S.classId,S.playerName,S.score);}
 
 // 排行榜：等级优先，同等级按积分
-function sortMembers(members){return [...members].sort((a,b)=>{if(b.level!==a.level)return (b.level||1)-(a.level||1);return b.score-a.score;});}
+function sortMembers(members){
+  return [...members].sort((a,b)=>{
+    if((b.level||1)!==(a.level||1))return (b.level||1)-(a.level||1);
+    if((b.score||0)!==(a.score||0))return (b.score||0)-(a.score||0);
+    // 同积分同等级：按姓名首字母/拼音排序
+    return (a.name||'').localeCompare(b.name||'','zh-CN',{sensitivity:'base'});
+  });
+}
 
 let _lastPickedName='';
 // 防抖版 updateClassSection，避免云端实时更新时频繁重绘导致卡顿
@@ -5915,7 +5950,18 @@ function renderClassSection() {
 
 function updateClassSection(){
   const sec=document.getElementById('class-section');if(!sec)return;
-  if(!S.classId){sec.innerHTML=`<div style="font-size:.74rem;color:var(--muted);margin-bottom:9px">加入班级后可参与排行榜！</div><div style="margin-bottom:8px"><label class="ci-label">班级名称</label><input class="ci" id="ci-class" placeholder="如：高三2班" style="user-select:text"></div><button onclick="joinClass()" style="width:100%;padding:10px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.82rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">加入/创建班级</button>`;return;}
+  if(!S.classId){
+    const cd=getClassData();
+    const existingClasses=Object.keys(cd);
+    const optionsHtml=existingClasses.length
+      ?'<select id="ci-class-pick" onchange="document.getElementById(\'ci-class\').value=this.value" style="width:100%;padding:8px 10px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.76rem;font-family:\'Noto Sans SC\',sans-serif;color:var(--ink);margin-bottom:6px"><option value="">— 选择已有班级 —</option>'+existingClasses.map(c=>`<option value="${c}">${c}</option>`).join('')+'</select>'
+      :'';
+    sec.innerHTML='<div style="font-size:.74rem;color:var(--muted);margin-bottom:9px">加入班级后可参与排行榜！</div>'
+      +optionsHtml
+      +'<div style="margin-bottom:8px"><label class="ci-label">或手动输入班级名称</label><input class="ci" id="ci-class" placeholder="如：高三2班" style="user-select:text"></div>'
+      +'<button onclick="joinClass()" style="width:100%;padding:10px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.82rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">加入/创建班级</button>';
+    return;
+  }
   const cd=getClassData();const members=sortMembers(cd[S.classId]||[]);const myRank=members.findIndex(m=>m.name===S.playerName)+1;S._classRank=myRank||99;
   const _afterRender=()=>setTimeout(attachRankListeners,0);
   sec.innerHTML=`<div style="font-size:.72rem;color:var(--muted);margin-bottom:8px">🏫 <b style="color:var(--dgreen)">${S.classId}</b> · 我的排名：<b style="color:var(--gold)">#${myRank||'-'}</b><span style="font-size:.6rem;margin-left:6px">（按等级→积分排名）</span></div>
@@ -6323,50 +6369,94 @@ function setNewHeadTeacher(className){
 
 function renderClassBrowser(){
   const el=document.getElementById('class-browser');if(!el)return;
-  const cd=getClassData();const classes=Object.keys(cd);
+  const cd=getClassData();
+  const classes=Object.keys(cd);
   const meta=getClassMeta();
+  const admins=getClassAdmins();
 
   const arrow=classBrowserExpanded?'▼':'▶';
-  let html = `
-  <div onclick="toggleClassBrowser()" style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;cursor:pointer;background:rgba(100,160,100,.06);border:1px solid var(--border);margin-bottom:${classBrowserExpanded?'10px':'0'};user-select:none">
-    <span style="font-size:.7rem;color:var(--dgreen);transition:transform .2s">${arrow}</span>
-    <span style="font-size:.76rem;font-weight:600;color:var(--dgreen)">🏫 班级总览</span>
-    <span style="font-size:.62rem;color:var(--muted);margin-left:auto">${classes.length}个班级 · ${classBrowserExpanded?'点击收起':'点击展开'}</span>
-  </div>`;
+  let html='<div onclick="toggleClassBrowser()" style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;cursor:pointer;background:rgba(100,160,100,.06);border:1px solid var(--border);margin-bottom:'+(classBrowserExpanded?'10px':'0')+';user-select:none">'
+    +'<span style="font-size:.7rem;color:var(--dgreen)">'+arrow+'</span>'
+    +'<span style="font-size:.76rem;font-weight:600;color:var(--dgreen)">🏫 班级总览</span>'
+    +'<span style="font-size:.62rem;color:var(--muted);margin-left:auto">'+classes.length+'个班级 · '+(classBrowserExpanded?'点击收起':'点击展开')+'</span></div>';
 
-  if(classBrowserExpanded){
-    if(!classes.length){
-      html += '<div style="font-size:.74rem;color:var(--muted);padding:8px">暂无班级数据。</div>';
-      el.innerHTML=html;return;
-    }
-    if(!_viewingClass||!cd[_viewingClass])_viewingClass=S.classId||classes[0];
-    const tabsHtml=classes.map(cls=>{
-      const isOwnerless=meta[cls]&&meta[cls].ownerless;
-      return `<div onclick="switchViewClass('${encodeURIComponent(cls)}')" style="padding:4px 11px;border-radius:99px;border:1.5px solid ${cls===_viewingClass?'var(--green)':'var(--border)'};background:${cls===_viewingClass?'var(--green)':'var(--panel)'};color:${cls===_viewingClass?'#fff':'var(--ink)'};font-size:.68rem;cursor:pointer;white-space:nowrap;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">${isOwnerless?'🏚️':''} ${cls}</div>`;
-    }).join('');
-    const members=sortMembers(cd[_viewingClass]||[]);
-    const isOwnerless=meta[_viewingClass]&&meta[_viewingClass].ownerless;
-    const ownerlessNotice=isOwnerless?`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;background:rgba(224,85,85,.06);border:1px solid rgba(224,85,85,.2);margin-bottom:8px;font-size:.72rem;color:var(--red)">🏚️ 无主班级（原班主任：${meta[_viewingClass].prevTeacher||'已注销'}）${S.isTeacher?'<button onclick="claimOwnerlessClass(\''+encodeURIComponent(_viewingClass)+'\')" style="margin-left:auto;padding:3px 8px;border-radius:6px;border:1px solid var(--green);background:rgba(100,160,100,.1);color:var(--dgreen);font-size:.6rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif">👑 认领</button><button onclick="dismissOwnerlessClass(\''+encodeURIComponent(_viewingClass)+'\')" style="padding:3px 8px;border-radius:6px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:.6rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif;margin-left:4px">💥 解散</button>':''}</div>`:'';
-    const membersHtml=members.map((m,i)=>{
-      const isSelf=m.name===S.playerName&&_viewingClass===S.classId;
-      const rankStyle=i===0?'#ffd700;color:#806000':i===1?'#c0c0c0;color:#505050':i===2?'#cd7f32;color:#503010':'rgba(100,160,100,.1);color:var(--dgreen)';
-      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;border:1px solid ${isSelf?'var(--green)':'var(--border)'};background:${isSelf?'rgba(100,160,100,.06)':'var(--panel)'}">`
-        +`<div style="width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;background:${rankStyle}">${i+1}</div>`
-        +`<div style="flex:1;font-size:.78rem;font-weight:500">${m.name}${isSelf?' 👈':''}</div>`
-        +`<div style="font-size:.65rem;color:var(--muted)">Lv.${m.level||1} · ⭐${m.score||0}</div></div>`;
-    }).join('');
-    html+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${tabsHtml}</div>`
-      +ownerlessNotice
-      +`<div style="font-size:.7rem;color:var(--muted);margin-bottom:7px">👥 ${_viewingClass} · 共${members.length}名学生</div>`
-      +`<div style="display:flex;flex-direction:column;gap:5px;max-height:260px;overflow-y:auto">${membersHtml||'<div style="font-size:.74rem;color:var(--muted)">班级暂无成员</div>'}</div>`
-      +(members.length?`<div style="margin-top:8px"><button onclick="randomPickFromBrowser()" style="padding:6px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🎲 随机抽人</button></div>`:'');
+  if(!classBrowserExpanded){el.innerHTML=html;return;}
+  if(!classes.length){el.innerHTML=html+'<div style="font-size:.74rem;color:var(--muted);padding:8px">暂无班级数据。</div>';return;}
+  if(!_viewingClass||!cd[_viewingClass])_viewingClass=S.classId||classes[0];
+
+  const tabsHtml=classes.map(cls=>{
+    const isOL=meta[cls]&&meta[cls].ownerless;
+    const studs=(cd[cls]||[]).filter(m=>!m.isTeacher);
+    const sel=cls===_viewingClass;
+    const bdr=sel?'var(--green)':'var(--border)';
+    const bg=sel?'var(--green)':'var(--panel)';
+    const cl=sel?'#fff':'var(--ink)';
+    const ico=isOL?'🏚️ ':studs.length===0?'🈴 ':'';
+    const oc="switchViewClass('"+encodeURIComponent(cls)+"')";
+    return '<div onclick="'+oc+'" style="padding:4px 11px;border-radius:99px;border:1.5px solid '+bdr+';background:'+bg+';color:'+cl+';font-size:.68rem;cursor:pointer;white-space:nowrap;flex-shrink:0">'+ico+cls+'</div>';
+  }).join('');
+
+  const rawMembers=cd[_viewingClass]||[];
+  const students=rawMembers.filter(m=>!m.isTeacher);
+  const members=sortMembers(students);
+  const isOL=meta[_viewingClass]&&meta[_viewingClass].ownerless;
+  // 班主任判断：classAdmins 里有 OR 有教师账号的 managedClasses 包含该班级
+  const hasAdmin=!!admins[_viewingClass]||getAllAccounts().some(a=>a.isTeacher&&a.managedClasses&&a.managedClasses.includes(_viewingClass));
+  const isEmpty=students.length===0;
+
+  let noticeHtml='';
+  if(isOL){
+    const clmBtn=S.isTeacher?'<button onclick="claimOwnerlessClass(decodeURIComponent(\'' + encodeURIComponent(_viewingClass) + '\'))" style="padding:3px 8px;border-radius:6px;border:1px solid var(--green);background:rgba(100,160,100,.1);color:var(--dgreen);font-size:.6rem;cursor:pointer">👑 我来接管</button>':'';
+    const disBtn=S.isTeacher?'<button onclick="dismissOwnerlessClass(decodeURIComponent(\'' + encodeURIComponent(_viewingClass) + '\'))" style="padding:3px 8px;border-radius:6px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:.6rem;cursor:pointer">💥 解散</button>':'';
+    noticeHtml='<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:9px;background:rgba(224,85,85,.06);border:1px solid rgba(224,85,85,.2);margin-bottom:8px;font-size:.72rem;color:var(--red);flex-wrap:wrap"><span>🏚️ 无主班级（原班主任：'+(meta[_viewingClass].prevTeacher||'已注销')+'）</span>'+clmBtn+disBtn+'</div>';
+  } else if(!hasAdmin){
+    const sadBtn='<button onclick="selfSetAsAdmin(decodeURIComponent(\'' + encodeURIComponent(_viewingClass) + '\'))" style="padding:3px 8px;border-radius:6px;border:1px solid var(--gold);background:rgba(232,160,32,.1);color:#a06000;font-size:.6rem;cursor:pointer">👑 设置我为班主任</button>';
+    noticeHtml='<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:9px;background:rgba(232,160,32,.06);border:1px solid rgba(232,160,32,.3);margin-bottom:8px;font-size:.72rem;color:#a06000;flex-wrap:wrap"><span>⚠️ 该班级暂无班主任</span>'+sadBtn+'</div>';
   }
+
+  const emptyDeleteHtml=isEmpty?'<div style="padding:6px 0"><button onclick="deleteEmptyClass(decodeURIComponent(\'' + encodeURIComponent(_viewingClass) + '\'))" style="padding:5px 14px;border-radius:8px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.7rem;cursor:pointer">🗑️ 班级无成员，点击删除</button></div>':'';
+
+  const membersHtml=members.map((m,i)=>{
+    const isSelf=m.name===S.playerName&&_viewingClass===S.classId;
+    const rnkBg=i===0?'#ffd700;color:#806000':i===1?'#c0c0c0;color:#505050':i===2?'#cd7f32;color:#503010':'rgba(100,160,100,.1);color:var(--dgreen)';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;border:1px solid '+(isSelf?'var(--green)':'var(--border)')+';background:'+(isSelf?'rgba(100,160,100,.06)':'var(--panel)')+'"><div style="width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;background:'+rnkBg+'">'+(i+1)+'</div><div style="flex:1;font-size:.78rem;font-weight:500">'+m.name+(isSelf?' 👈':'')+'</div><div style="font-size:.65rem;color:var(--muted)">Lv.'+(m.level||1)+' · ⭐'+(m.score||0)+'</div></div>';
+  }).join('');
+
+  html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+tabsHtml+'</div>'
+    +noticeHtml+emptyDeleteHtml
+    +'<div style="font-size:.7rem;color:var(--muted);margin-bottom:7px">👥 '+_viewingClass+' · 共'+members.length+'名学生</div>'
+    +'<div style="display:flex;flex-direction:column;gap:5px;max-height:260px;overflow-y:auto">'+(membersHtml||'<div style="font-size:.74rem;color:var(--muted)">班级暂无成员</div>')+'</div>'
+    +(members.length?'':'');
   el.innerHTML=html;
 }
 
-// 切换展开/收起状态
+function selfSetAsAdmin(enc){
+  const cls=decodeURIComponent(enc);
+  openConfirm('👑','将「'+S.playerName+'」设置为「'+cls+'」的班主任？',()=>{
+    const admins=getClassAdmins();
+    admins[cls]={name:S.playerName,id:CURRENT_ACC_ID};
+    saveClassAdmins(admins);
+    renderClassBrowser();
+    showToast('👑 已成为「'+cls+'」班主任！');
+  });
+}
+
+function deleteEmptyClass(enc){
+  const cls=decodeURIComponent(enc);
+  const cd=getClassData();
+  const studs=(cd[cls]||[]).filter(m=>!m.isTeacher);
+  if(studs.length>0){showToast('班级还有学生，无法删除');return;}
+  openConfirm('🗑️','班级「'+cls+'」没有学生，确定删除？',()=>{
+    delete cd[cls];saveClassData(cd);
+    const meta=getClassMeta();delete meta[cls];saveClassMeta(meta);
+    const admins=getClassAdmins();delete admins[cls];saveClassAdmins(admins);
+    _viewingClass='';renderClassBrowser();
+    showToast('✅ 班级「'+cls+'」已删除');
+  },true);
+}
+
 function toggleClassBrowser(){
-  classBrowserExpanded = !classBrowserExpanded;
+  classBrowserExpanded=!classBrowserExpanded;
   renderClassBrowser();
 }
 
@@ -6563,7 +6653,9 @@ function _renderScoreList(){
   const list=document.getElementById('add-score-list');
   if(!list)return;
   const cd=getClassData();
-  const members=sortMembers((cd[_scoreClassId]||[]).filter(function(m){return !m.isTeacher;}));
+  // 积分管理列表：默认按姓名首字母排序（不按积分，方便老师找学生）
+  const allMembers=(cd[_scoreClassId]||[]).filter(function(m){return !m.isTeacher;});
+  const members=[...allMembers].sort((a,b)=>(a.name||'').localeCompare(b.name||'','zh-CN',{sensitivity:'base'}));
   const q=(_scoreSearchQuery||'').trim();
   const visibleMembers=q?members.filter(function(m){return m.name.includes(q);}):members;
   list.innerHTML='';
@@ -8377,7 +8469,7 @@ function toggleLayoutEditMode(){
     btn.textContent=_layoutEditMode?'✅ 完成调整':'⚙️ 调整布局';
     btn.classList.toggle('active',_layoutEditMode);
   }
-  if(resetBtn)resetBtn.style.display=_layoutEditMode?'':'none';
+  if(resetBtn)resetBtn.style.display=_layoutEditMode?'inline-flex':'none';
   if(pages)pages.classList.toggle('layout-edit-mode',_layoutEditMode);
   if(_layoutEditMode){
     _initResizeHandles();

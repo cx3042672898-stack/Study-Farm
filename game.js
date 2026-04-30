@@ -1369,43 +1369,52 @@ function renderSubjectBars(){
   if(sb){
     sb.innerHTML='';
     const _sbKey='jbfarm_sb_subj_open';
-    let _sbOpen=localStorage.getItem(_sbKey)!=='0';
-    const header=document.createElement('div');
-    header.style.cssText='display:flex;align-items:center;gap:6px;padding:5px 14px;cursor:pointer;user-select:none;color:rgba(255,255,255,.55);font-size:.65rem;transition:color .15s;margin-top:2px';
-    const arrowSpan=document.createElement('span');
-    arrowSpan.id='sb-subj-arrow';
-    arrowSpan.style.cssText='font-size:.55rem;transition:transform .2s';
-    arrowSpan.textContent=_sbOpen?'▼':'▶';
-    const labelSpan=document.createElement('span');
-    labelSpan.textContent='📚 科目选择';
-    header.appendChild(arrowSpan);header.appendChild(labelSpan);
-    header.onmouseenter=()=>{header.style.color='rgba(255,255,255,.85)';};
-    header.onmouseleave=()=>{header.style.color='rgba(255,255,255,.55)';};
-    header.onclick=()=>{
-      _sbOpen=!_sbOpen;
-      localStorage.setItem(_sbKey,_sbOpen?'1':'0');
-      arrowSpan.textContent=_sbOpen?'▼':'▶';
-      listWrap.style.display=_sbOpen?'':'none';
+    const _sbOpen=localStorage.getItem(_sbKey)!=='0';
+    const TOP_N=3;
+    // 折叠标题
+    const hdr=document.createElement('div');
+    hdr.style.cssText='display:flex;align-items:center;gap:6px;padding:5px 14px;cursor:pointer;user-select:none;color:rgba(255,255,255,.55);font-size:.65rem;transition:color .15s';
+    const arr=document.createElement('span');arr.id='sb-subj-arrow';arr.style.cssText='font-size:.55rem';arr.textContent=_sbOpen?'▼':'▶';
+    const lbl=document.createElement('span');lbl.textContent='📚 科目选择';
+    hdr.appendChild(arr);hdr.appendChild(lbl);
+    hdr.onmouseenter=()=>{hdr.style.color='rgba(255,255,255,.85)';};
+    hdr.onmouseleave=()=>{hdr.style.color='rgba(255,255,255,.55)';};
+    // 常用前3个（始终显示）
+    const topWrap=document.createElement('div');topWrap.id='sb-subj-top';topWrap.style.display=_sbOpen?'':'none';
+    // 其余（点击展开）
+    const moreWrap=document.createElement('div');moreWrap.id='sb-subj-more';moreWrap.style.display='none';
+    let moreOpen=false;
+    const moreBtn=document.createElement('div');moreBtn.id='sb-subj-more-btn';
+    moreBtn.style.cssText='padding:2px 14px 4px;font-size:.6rem;color:rgba(255,255,255,.35);cursor:pointer';
+    const updateMoreBtn=()=>{moreBtn.textContent=moreOpen?'▲ 收起':'▾ 更多('+(SUBJECTS.length-TOP_N)+')';};
+    updateMoreBtn();
+    moreBtn.style.display=(_sbOpen&&SUBJECTS.length>TOP_N)?'':'none';
+    moreBtn.onclick=()=>{
+      moreOpen=!moreOpen;moreWrap.style.display=(moreOpen&&_sbOpen)?'':'none';updateMoreBtn();
     };
-    sb.appendChild(header);
-    const listWrap=document.createElement('div');
-    listWrap.style.display=_sbOpen?'':'none';
-    SUBJECTS.forEach(sub=>{
+    hdr.onclick=()=>{
+      const now=localStorage.getItem(_sbKey)!=='0';
+      const next=!now;localStorage.setItem(_sbKey,next?'1':'0');
+      arr.textContent=next?'▼':'▶';
+      topWrap.style.display=next?'':'none';
+      moreBtn.style.display=(next&&SUBJECTS.length>TOP_N)?'':'none';
+      if(!next)moreWrap.style.display='none';
+    };
+    SUBJECTS.forEach((sub,idx)=>{
       const d=document.createElement('div');
       const isActive=sub.id===ACTIVE_SUBJECT_ID;
       d.className='sb-sub-item'+(isActive?' on':'');
       d.innerHTML='<div class="sb-sub-dot" style="'+(isActive?'background:'+sub.color:'')+'"></div>'+sub.icon+' '+sub.name+(_hasMod(sub.id)?'▾':'');
       d.onclick=()=>{if(!isActive)setSubject(sub.id);if(_hasMod(sub.id))openModulePicker();};
-      listWrap.appendChild(d);
+      if(idx<TOP_N)topWrap.appendChild(d);else moreWrap.appendChild(d);
     });
     if(window.ACTIVE_MODULE_LABEL){
       const ml=document.createElement('div');
-      ml.style.cssText='padding:2px 14px 5px;font-size:.58rem;color:rgba(255,255,255,.38);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
-      ml.textContent='📂 '+ACTIVE_MODULE_LABEL;
-      ml.onclick=openModulePicker;
-      listWrap.appendChild(ml);
+      ml.style.cssText='padding:2px 14px 4px;font-size:.58rem;color:rgba(255,255,255,.38);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      ml.textContent='📂 '+ACTIVE_MODULE_LABEL;ml.onclick=openModulePicker;
+      topWrap.appendChild(ml);
     }
-    sb.appendChild(listWrap);
+    sb.appendChild(hdr);sb.appendChild(topWrap);sb.appendChild(moreBtn);sb.appendChild(moreWrap);
   }
     const badge=document.getElementById('sub-badge');
   if(badge){const sub=getActiveSubject();badge.textContent=window.ACTIVE_MODULE_LABEL?sub.icon+' '+ACTIVE_MODULE_LABEL:sub.icon+' '+sub.name;badge.style.background=sub.color||'#5a9a5a';}
@@ -5122,7 +5131,7 @@ function _cwOpenForPet(pid){
   _cwRenderStatsSliders();_cwRenderDialogEditor();_cwRenderStageNames();
   _cwSwitchTab('basic');
   // 打开工坊编辑弹窗
-  document.getElementById('custom-workshop-ov').classList.add('on');
+  openOverlay('custom-workshop-ov');
   // 更新编辑模式提示栏
   const ttl=document.getElementById('cw-edit-mode-tip');
   const ttlTxt=document.getElementById('cw-edit-mode-tip-text');
@@ -5163,7 +5172,7 @@ function openCustomWorkshop(){
   _cwRenderStageNames();
   _cwSwitchTab('basic');
 
-  document.getElementById('custom-workshop-ov').classList.add('on');
+  openOverlay('custom-workshop-ov');
 }
 
 function _cwSwitchTab(tab){
@@ -5229,25 +5238,25 @@ function _cwRenderBreedGrid(){
 // ── 衣服格子：含自定义上传入口 ──────────────────────
 function _cwRenderClothGrid(){
   const g=document.getElementById('cw-cloth-grid');if(!g)return;g.innerHTML='';
-  // 不穿
+  const pid=_cwEditingPetId||S.activePet||'';
   const none=document.createElement('div');
   none.className='cw-cloth-item'+((!_cwClothSel)?' sel':'');
   none.innerHTML='<div style="font-size:1.1rem">🚫</div><div style="font-size:.58rem">不穿</div>';
   none.onclick=()=>{_cwClothSel=null;_cwRenderClothGrid();_cwDraw();};
   g.appendChild(none);
-  // 已拥有系统衣服
   (SHOP_CLOTHES||[]).filter(c=>S.ownedClothes&&S.ownedClothes.includes(c.id)).forEach(c=>{
     const d=document.createElement('div');
     d.className='cw-cloth-item'+(c.id===_cwClothSel?' sel':'');
-    // 检查是否有自定义衣服图
-    const clothKey='jbfarm_clothimg_'+c.id;
-    const hasCustomImg=!!localStorage.getItem(clothKey);
+    const hasCustomImg=!!localStorage.getItem('jbfarm_clothimg_'+c.id);
     d.innerHTML='<div style="font-size:1.1rem">'+c.ico+(hasCustomImg?'<sup style="font-size:.45rem;color:var(--dgreen)">图</sup>':'')+'</div>'
       +'<div style="font-size:.58rem">'+c.name+'</div>';
     d.onclick=()=>{_cwClothSel=c.id;_cwRenderClothGrid();_cwDraw();};
     g.appendChild(d);
   });
+  const skinWrap=document.getElementById('cw-custom-skins');
+  if(skinWrap)_cwRenderCustomSkins(pid,skinWrap);
 }
+
 
 // ── 属性滑块：可单独调整每项属性 ──────────────────
 function _cwRenderStatsSliders(){
@@ -5283,43 +5292,65 @@ function _cwRenderStageNames(){
   for(let lv=1;lv<=5;lv++){
     const defStage=stages[Math.min(lv-1,stages.length-1)];
     const savedName=localStorage.getItem('jbfarm_stagename_'+pid+'_'+lv)||'';
+    const savedDesc=localStorage.getItem('jbfarm_stagedesc_'+pid+'_'+lv)||'';
     const hasImg=!!localStorage.getItem('jbfarm_stageimg_'+pid+'_'+lv);
     const wrap=document.createElement('div');
     wrap.style.cssText='border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:8px;background:var(--panel)';
-    // 顶部：等级标签 + 名称输入
+    // 名称行
     const topRow=document.createElement('div');
-    topRow.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:6px';
-    topRow.innerHTML=`<span style="font-size:.68rem;font-weight:700;color:var(--dgreen);flex-shrink:0;width:34px">Lv.${lv}</span>`
-      +`<input id="cw-sname-${lv}" class="ci" placeholder="${defStage.name||'阶段'+lv}" maxlength="10" value="${savedName}" style="flex:1;font-size:.7rem;user-select:text">`
-      +`<span style="font-size:.6rem;color:var(--muted);flex-shrink:0">默认:${defStage.name||'-'}</span>`;
+    topRow.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:4px';
+    topRow.innerHTML='<span style="font-size:.68rem;font-weight:700;color:var(--dgreen);flex-shrink:0;width:34px">Lv.'+lv+'</span>'
+      +'<input id="cw-sname-'+lv+'" class="ci" placeholder="'+(defStage.name||'阶段'+lv)+'" maxlength="10" value="'+savedName+'" style="flex:1;font-size:.7rem;user-select:text">'
+      +'<span id="cw-sname-saved-'+lv+'" style="font-size:.58rem;color:var(--dgreen);flex-shrink:0;display:none">✓ 已保存</span>'
+      +'<button onclick="cwSaveStageName('+lv+')" style="padding:2px 7px;border-radius:6px;border:1px solid var(--green);background:rgba(100,160,100,.08);color:var(--dgreen);font-size:.6rem;cursor:pointer;font-family:inherit;flex-shrink:0">保存</button>';
     wrap.appendChild(topRow);
-    // 底部：阶段形象图操作
+    // 描述行
+    const descRow=document.createElement('div');
+    descRow.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:5px';
+    descRow.innerHTML='<span style="font-size:.6rem;color:var(--muted);flex-shrink:0;width:34px">描述</span>'
+      +'<input id="cw-sdesc-'+lv+'" class="ci" placeholder="例如：活力满满的小幼崽..." maxlength="40" value="'+savedDesc+'" style="flex:1;font-size:.66rem;user-select:text">'
+      +'<span id="cw-sdesc-saved-'+lv+'" style="font-size:.58rem;color:var(--dgreen);flex-shrink:0;display:none">✓</span>'
+      +'<button onclick="cwSaveStageDesc('+lv+')" style="padding:2px 7px;border-radius:6px;border:1px solid #4a90d9;background:rgba(74,144,217,.07);color:#2060a0;font-size:.6rem;cursor:pointer;font-family:inherit;flex-shrink:0">保存</button>';
+    wrap.appendChild(descRow);
+    // 图片行
     const imgRow=document.createElement('div');
     imgRow.style.cssText='display:flex;align-items:center;gap:6px';
     if(hasImg){
-      imgRow.innerHTML=`<span style="font-size:.65rem;color:var(--dgreen)">🖼️ 已上传阶段图</span>`
-        +`<button onclick="cwUploadStageImg(${lv})" style="padding:3px 8px;border-radius:6px;border:1px solid #4a90d9;background:rgba(74,144,217,.07);color:#2060a0;font-size:.6rem;cursor:pointer;font-family:inherit">重新上传</button>`
-        +`<button onclick="cwClearStageImg(${lv})" style="padding:3px 8px;border-radius:6px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:.6rem;cursor:pointer;font-family:inherit">删除</button>`;
-    } else {
-      imgRow.innerHTML=`<span style="font-size:.6rem;color:var(--muted)">无自定义图（沿用前阶段或像素画）</span>`
-        +`<button onclick="cwUploadStageImg(${lv})" style="margin-left:auto;padding:3px 8px;border-radius:6px;border:1px solid var(--green);background:rgba(100,160,100,.07);color:var(--dgreen);font-size:.6rem;cursor:pointer;font-family:inherit">📤 上传</button>`;
+      imgRow.innerHTML='<span style="font-size:.65rem;color:var(--dgreen)">🖼️ 已上传阶段图</span>'
+        +'<button onclick="cwUploadStageImg('+lv+')" style="padding:3px 8px;border-radius:6px;border:1px solid #4a90d9;background:rgba(74,144,217,.07);color:#2060a0;font-size:.6rem;cursor:pointer;font-family:inherit">重新上传</button>'
+        +'<button onclick="cwClearStageImg('+lv+')" style="padding:3px 8px;border-radius:6px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:.6rem;cursor:pointer;font-family:inherit">删除</button>';
+    }else{
+      imgRow.innerHTML='<span style="font-size:.6rem;color:var(--muted)">无自定义图（沿用前阶段或像素画）</span>'
+        +'<button onclick="cwUploadStageImg('+lv+')" style="margin-left:auto;padding:3px 8px;border-radius:6px;border:1px solid var(--green);background:rgba(100,160,100,.07);color:var(--dgreen);font-size:.6rem;cursor:pointer;font-family:inherit">📤 上传</button>';
     }
     wrap.appendChild(imgRow);
     g.appendChild(wrap);
   }
 }
 
-function cwSaveStageNames(){
+
+function cwSaveStageName(lv){
   const pid=_cwEditingPetId||S.activePet||'';
-  for(let lv=1;lv<=5;lv++){
-    const inp=document.getElementById('cw-sname-'+lv);
-    if(!inp)continue;
-    const v=inp.value.trim();
-    if(v){localStorage.setItem('jbfarm_stagename_'+pid+'_'+lv,v);}
-    else{localStorage.removeItem('jbfarm_stagename_'+pid+'_'+lv);}
-  }
-  updatePetUI();drawPet();showToast('✅ 进化阶段名称已保存！');
+  const inp=document.getElementById('cw-sname-'+lv);if(!inp)return;
+  const v=inp.value.trim();
+  if(v)localStorage.setItem('jbfarm_stagename_'+pid+'_'+lv,v);
+  else localStorage.removeItem('jbfarm_stagename_'+pid+'_'+lv);
+  const badge=document.getElementById('cw-sname-saved-'+lv);
+  if(badge){badge.style.display='';setTimeout(()=>{if(badge)badge.style.display='none';},2000);}
+  updatePetUI();drawPet();
 }
+function cwSaveStageDesc(lv){
+  const pid=_cwEditingPetId||S.activePet||'';
+  const inp=document.getElementById('cw-sdesc-'+lv);if(!inp)return;
+  const v=inp.value.trim();
+  if(v)localStorage.setItem('jbfarm_stagedesc_'+pid+'_'+lv,v);
+  else localStorage.removeItem('jbfarm_stagedesc_'+pid+'_'+lv);
+  const badge=document.getElementById('cw-sdesc-saved-'+lv);
+  if(badge){badge.style.display='';setTimeout(()=>{if(badge)badge.style.display='none';},2000);}
+  showToast('✅ Lv.'+lv+' 描述已保存！');
+}
+function cwSaveStageNames(){for(let lv=1;lv<=5;lv++)cwSaveStageName(lv);showToast('✅ 全部阶段名已保存！');}
+
 
 // ── 每阶段独立形象图 ──────────────────────────────
 function cwUploadStageImg(lv){
@@ -5357,7 +5388,9 @@ function _compressImgToDataURL(file, maxPx, quality, cb){
     }
     const cvs=document.createElement('canvas');cvs.width=w;cvs.height=h;
     const ctx=cvs.getContext('2d');ctx.drawImage(img,0,0,w,h);
-    const data=cvs.toDataURL('image/jpeg',quality);
+    const imgData=ctx.getImageData(0,0,w,h).data;
+    let hasAlpha=false;for(let i=3;i<imgData.length;i+=4)if(imgData[i]<255){hasAlpha=true;break;}
+    const data=hasAlpha?cvs.toDataURL('image/png'):cvs.toDataURL('image/jpeg',quality);
     const sizeKB=Math.round(data.length*0.75/1024);
     cb(data,sizeKB);
   };
@@ -5690,7 +5723,14 @@ function cwApply(type){
   else if(type==='breed'){
     if(_cwBreedSel===(S.petBreed||'hamster')){showToast('品种没有变化');return;}
     cost=80;msg=`花费🪙80 更换宠物品种为「${_cwBreedSel}」？\n等级和经验保留。`;
-    apply=()=>{S.petBreed=_cwBreedSel;saveCurPet();persistAccount();updatePetUI();drawPet();showToast('✅ 品种已更换！');};
+    apply=()=>{
+      const _tpid=_cwEditingPetId;
+      if(_tpid&&_tpid!==S.activePet&&S.petSaves&&S.petSaves[_tpid]){
+        S.petSaves[_tpid].petBreed=_cwBreedSel;persistAccount();
+        _cwRenderBreedGrid();showToast('✅ 品种已更换！');return;
+      }
+      S.petBreed=_cwBreedSel;saveCurPet();persistAccount();updatePetUI();drawPet();showToast('✅ 品种已更换！');
+    };
   }
   else if(type==='level'){
     if(_cwLevelSel===S.petLevel){showToast('等级没有变化');return;}
@@ -5779,6 +5819,101 @@ function cwUploadClothImg(){
   openClothImageUpload();
   S.equippedCloth=_ec;
 }
+
+// ─── 自定义皮肤系统 ─────────────────────────────────────────────────────
+function _cwGetSkins(pid){try{return JSON.parse(localStorage.getItem('jbfarm_customskins_'+pid)||'[]');}catch(e){return[];}}
+function _cwSaveSkins(pid,skins){try{localStorage.setItem('jbfarm_customskins_'+pid,JSON.stringify(skins));}catch(e){showToast('存储不足');}}
+
+function _cwRenderCustomSkins(pid,wrap){
+  wrap.innerHTML='';
+  const skins=_cwGetSkins(pid);
+  const hdr=document.createElement('div');
+  hdr.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 0 6px;border-top:1px solid var(--border);margin-top:8px';
+  hdr.innerHTML='<span style="font-size:.76rem;font-weight:700;color:var(--ink)">🎨 自定义皮肤</span>'
+    +'<button onclick="_cwAddSkin()" style="margin-left:auto;padding:4px 10px;border-radius:8px;border:1.5px solid var(--green);background:rgba(100,160,100,.08);color:var(--dgreen);font-size:.68rem;cursor:pointer;font-family:inherit">+ 新增皮肤</button>';
+  wrap.appendChild(hdr);
+  if(!skins.length){
+    const empty=document.createElement('div');
+    empty.style.cssText='font-size:.72rem;color:var(--muted);padding:4px 0 8px';
+    empty.textContent='点击新增皮肤上传自定义服装形象！';
+    wrap.appendChild(empty);return;
+  }
+  skins.forEach((skin,idx)=>{
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);margin-bottom:6px';
+    const thumb=document.createElement('div');
+    thumb.style.cssText='width:36px;height:36px;border-radius:7px;overflow:hidden;background:repeating-conic-gradient(#ccc 0% 25%,#fff 0% 50%) 0 0/8px 8px;flex-shrink:0;display:flex;align-items:center;justify-content:center';
+    if(skin.img){const img=document.createElement('img');img.src=skin.img;img.style.cssText='width:100%;height:100%;object-fit:contain';thumb.appendChild(img);}
+    else{thumb.textContent='🎨';thumb.style.fontSize='1.2rem';}
+    row.appendChild(thumb);
+    const nameInp=document.createElement('input');
+    nameInp.className='ci';nameInp.value=skin.name||('皮肤'+(idx+1));
+    nameInp.style.cssText='flex:1;font-size:.72rem;user-select:text;min-width:0';
+    nameInp.placeholder='皮肤名称';
+    nameInp.onblur=function(){const s2=_cwGetSkins(pid);if(s2[idx])s2[idx].name=this.value.trim()||('皮肤'+(idx+1));_cwSaveSkins(pid,s2);};
+    row.appendChild(nameInp);
+    const btns=document.createElement('div');btns.style.cssText='display:flex;gap:4px;flex-shrink:0';
+    const upBtn=document.createElement('button');upBtn.textContent='🖼️';upBtn.title='重新上传';
+    upBtn.style.cssText='padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);font-size:.7rem;cursor:pointer';
+    upBtn.onclick=()=>_cwUploadSkinImg(pid,idx);
+    const delBtn=document.createElement('button');delBtn.textContent='🗑️';delBtn.title='删除';
+    delBtn.style.cssText='padding:4px 6px;border-radius:6px;border:1px solid var(--red);background:transparent;font-size:.7rem;cursor:pointer';
+    delBtn.onclick=()=>_cwDeleteSkin(pid,idx);
+    btns.appendChild(upBtn);btns.appendChild(delBtn);row.appendChild(btns);
+    wrap.appendChild(row);
+  });
+}
+
+function _cwAddSkin(){
+  const pid=_cwEditingPetId||S.activePet||'';
+  const skins=_cwGetSkins(pid);
+  const idx=skins.length;
+  skins.push({name:'皮肤'+(idx+1),img:''});
+  _cwSaveSkins(pid,skins);
+  const wrap=document.getElementById('cw-custom-skins');
+  if(wrap)_cwRenderCustomSkins(pid,wrap);
+  setTimeout(()=>_cwUploadSkinImg(pid,idx),50);
+}
+
+function _cwUploadSkinImg(pid,idx){
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='image/png,image/jpeg,image/gif,image/webp,image/*';
+  inp.onchange=function(e){
+    const file=e.target.files[0];if(!file)return;
+    if(file.size>3*1024*1024){showToast('图片不超过3MB');return;}
+    const reader=new FileReader();
+    reader.onload=function(ev){
+      const img2=new Image();
+      img2.onload=function(){
+        const cvs=document.createElement('canvas');
+        let w=img2.width,h=img2.height;
+        if(w>400||h>400){if(w>h){h=Math.round(h*400/w);w=400;}else{w=Math.round(w*400/h);h=400;}}
+        cvs.width=w;cvs.height=h;
+        const ctx2=cvs.getContext('2d');ctx2.clearRect(0,0,w,h);ctx2.drawImage(img2,0,0,w,h);
+        const skins=_cwGetSkins(pid);
+        if(!skins[idx])return;
+        skins[idx].img=cvs.toDataURL('image/png');
+        try{_cwSaveSkins(pid,skins);}catch(er){showToast('存储不足，请用更小的图片');return;}
+        const wrap=document.getElementById('cw-custom-skins');
+        if(wrap)_cwRenderCustomSkins(pid,wrap);
+        showToast('✅ 皮肤图已保存！');
+      };
+      img2.src=ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+  inp.click();
+}
+
+function _cwDeleteSkin(pid,idx){
+  openConfirm('🗑️','确定删除这个皮肤？',()=>{
+    const skins=_cwGetSkins(pid);skins.splice(idx,1);_cwSaveSkins(pid,skins);
+    const wrap=document.getElementById('cw-custom-skins');
+    if(wrap)_cwRenderCustomSkins(pid,wrap);
+    showToast('✅ 皮肤已删除');
+  },true);
+}
+
 
 // ── 清除自定义图 ──────────────────────────────────
 function cwClearPetImg(){

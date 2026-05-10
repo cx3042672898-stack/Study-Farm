@@ -21,12 +21,14 @@ const _SPRITE_ACTIONS=['idle','eating','bathing','happy','sleeping','studying'];
 // 支持多图随机：eating1.jpg / eating2.jpg 等自动发现
 // 支持对话触发自定义动作：文件名即动作名（如 special1.jpg → action='special1'）
 const _SPRITE_ACTION_FILES={
-  idle:    ['idle.jpg','idle.png'],
-  eating:  ['eating.jpg','eating.png','eating1.jpg','eating1.png','eating2.jpg','eating2.png','eating3.jpg','eating3.png'],
-  bathing: ['bathing.jpg','bathing.png','bathing1.jpg','bathing1.png','bathing2.jpg','bathing2.png'],
-  happy:   ['happy.jpg','happy.png','happy1.jpg','happy1.png','happy2.jpg','happy2.png'],
-  sleeping:['sleeping.jpg','sleeping.png','sleeping1.jpg','sleeping1.png','sleeping2.jpg','sleeping2.png'],
-  studying:['studying.jpg','studying.png','study.jpg','study.png','studying1.jpg','studying1.png','studying2.jpg','studying2.png'],
+  // 每个动作支持最多4张随机变体（命名：action.jpg / action2.jpg / action3.jpg / action4.jpg）
+  // 注意：变体从2开始编号（action.jpg=第1张，action2.jpg=第2张），没有action1.jpg
+  idle:    ['idle.jpg','idle.png','idle2.jpg','idle2.png','idle3.jpg','idle4.jpg'],
+  eating:  ['eating.jpg','eating.png','eating2.jpg','eating2.png','eating3.jpg','eating4.jpg'],
+  bathing: ['bathing.jpg','bathing.png','bathing2.jpg','bathing2.png','bathing3.jpg','bathing4.jpg'],
+  happy:   ['happy.jpg','happy.png','happy2.jpg','happy2.png','happy3.jpg','happy4.jpg'],
+  sleeping:['sleeping.jpg','sleeping.png','sleeping2.jpg','sleeping2.png','sleeping3.jpg','sleeping4.jpg'],
+  studying:['studying.jpg','studying.png','study.jpg','study.png','study2.jpg','study2.png','studying2.jpg','studying3.jpg'],
 };
 
 // 多图缓存：action → [img1, img2, ...]（同一个动作的所有变体图）
@@ -45,8 +47,9 @@ function _spLoad(breed,lv,skin,action){
     const img=new Image();
     img.onload=()=>{
       _spMultiCache[key].push(img);
-      _spCache[key]=_spMultiCache[key][0]; // 向后兼容：第一张作为默认
-      try{drawPet();}catch(e){}
+      _spCache[key]=_spMultiCache[key][0]; // 向后兼容
+      // ★ 不再 delete _spStableChoice 也不调用 drawPet()
+      // 加载完成时若当前正在展示该动作，下次 drawPet 帧自然会用到新变体
     };
     img.onerror=()=>{tried++;if(tried===files.length&&_spMultiCache[key].length===0)_spCache[key]='failed';};
     img.src='assets/'+breed+'/stage'+lv+'/'+skin+'/'+filename;
@@ -54,25 +57,90 @@ function _spLoad(breed,lv,skin,action){
   files.forEach(tryFile);
 }
 
-// 同步取图：随机从多图变体中选一张（找不到退回 idle）
+// 稳定选图系统：
+//   - idle 变体：10秒冷却，切换时触发随机台词
+//   - 动作变体（eating/bathing等）：每次动作开始时由 _spPickAction 一次性选定，整个动作持有该选择
+const _spStableChoice={}; // key → { idx, ts }
+const _spActionChoice={}; // actionKey(breed/lv/skin/action) → 当前持有的 Image 对象
+const IDLE_SWITCH_MS=10000;
+
+// 动作开始时调用（只选一次，持有到动作结束）
+function _spPickAction(breed,lv,skin,action){
+  const key=breed+'/'+lv+'/'+skin+'/'+action;
+  const multi=_spMultiCache[key];
+  if(!multi||multi.length===0){ delete _spActionChoice[key]; return; }
+  if(multi.length===1){ _spActionChoice[key]=multi[0]; return; }
+  const lastImg=_spActionChoice[key];
+  const lastIdx=multi.indexOf(lastImg);
+  let idx;
+  if(multi.length===2){ idx=lastIdx===0?1:0; }
+  else { do{idx=Math.floor(Math.random()*multi.length);}while(idx===lastIdx&&multi.length>1); }
+  _spActionChoice[key]=multi[idx];
+}
+
 function _spGet(breed,lv,skin,action){
   const key=breed+'/'+lv+'/'+skin+'/'+action;
   const multi=_spMultiCache[key];
-  if(multi&&multi.length>0){
+  if(!multi||multi.length===0){
+    if(action!=='idle'){
+      const ik=breed+'/'+lv+'/'+skin+'/idle';
+      if(_spMultiCache[ik]&&_spMultiCache[ik].length>0) return _spGet(breed,lv,skin,'idle');
+    }
+    return null;
+  }
+  if(multi.length===1) return multi[0];
+
+  if(action==='idle'){
+    // idle：10秒冷却切换一次变体，切换时触发台词
+    const now=Date.now();
+    const cur=_spStableChoice[key];
+    if(cur&&(now-cur.ts)<IDLE_SWITCH_MS) return multi[cur.idx]||multi[0];
+    const lastIdx=cur?cur.idx:-1;
+    let idx;
+    if(multi.length===2){ idx=lastIdx===0?1:0; }
+    else { do{idx=Math.floor(Math.random()*multi.length);}while(idx===lastIdx&&multi.length>1); }
+    _spStableChoice[key]={idx,ts:now};
+    // 如果不是首次选（lastIdx!==-1），触发随机台词引起玩家注意
+    if(lastIdx!==-1&&typeof showPetTalk==='function'){
+      setTimeout(()=>showPetTalk('idle'),200);
+    }
+    return multi[idx];
+  } else {
+    // 非idle：返回 _spPickAction 持有的选择（若未选则临时随机）
+    if(_spActionChoice[key]) return _spActionChoice[key];
     return multi[Math.floor(Math.random()*multi.length)];
   }
-  // 退回 idle
-  if(action!=='idle'){
-    const ik=breed+'/'+lv+'/'+skin+'/idle';
-    const im=_spMultiCache[ik];
-    if(im&&im.length>0)return im[0];
-  }
-  return null;
+}
+// 动作结束时清除持有（让下次该动作重新随机选一张）
+function _spResetAction(breed,lv,skin,action){
+  const key=breed+'/'+lv+'/'+skin+'/'+action;
+  delete _spActionChoice[key];
+  delete _spStableChoice[key];
 }
 
 // 预加载某皮肤所有动作图（含多图变体）
 function _spPreload(breed,lv,skin){
   _SPRITE_ACTIONS.forEach(function(act){_spLoad(breed,lv,skin,act);});
+}
+// ★ 游戏启动时预加载当前宠物所有精灵图（消除首次显示延迟）
+function _spPreloadCurrentPet(){
+  if(!window.HamsterAnim||!window.S)return;
+  const breed=S.petBreed||'hamster';
+  const skins=HamsterAnim.SPRITE_SKINS[breed]||{};
+  // 只预加载当前等级（idle最重要）+ 相邻等级
+  const lvs=[S.petLevel||1];
+  if((S.petLevel||1)>1)lvs.push((S.petLevel||1)-1);
+  if((S.petLevel||1)<5)lvs.push((S.petLevel||1)+1);
+  lvs.forEach(lv=>{
+    if(!HamsterAnim.isSpritedStage(breed,lv))return;
+    const defs=(skins[lv]||[]);
+    const defId=defs.length?defs[0].id:(breed==='hamster'?'orange':'default');
+    const skinKey=(S.activePet||'')+'_'+breed+'_'+lv;
+    const skin=(S.petSpriteSkins&&S.petSpriteSkins[skinKey])||defId;
+    // 先加载 idle，再异步加载其他动作
+    _spLoad(breed,lv,skin,'idle');
+    setTimeout(()=>_spPreload(breed,lv,skin),300);
+  });
 }
 
 // ── 对话触发特殊动作图 ────────────────────────────────────────
@@ -106,10 +174,10 @@ let _modalZBase=200;
 function openOverlay(id){
   const el=document.getElementById(id);
   if(!el)return;
-  // 计算当前最高z-index
-  let maxZ=200;
+  // ★ 用 getComputedStyle 获取实际渲染 z-index（CSS class / inline style 均包含）
+  let maxZ=1000;
   document.querySelectorAll('.overlay.on').forEach(ov=>{
-    const z=parseInt(ov.style.zIndex||ov.style.getPropertyValue('z-index'))||200;
+    const z=parseInt(window.getComputedStyle(ov).zIndex)||parseInt(ov.style.zIndex)||1000;
     if(z>maxZ)maxZ=z;
   });
   el.style.zIndex=maxZ+10;
@@ -196,7 +264,14 @@ function loadAccSave(id){
 function persistAccount(){
   if(!CURRENT_ACC_ID)return;
   S.lastSaveTime=Date.now();
-  try{localStorage.setItem(getAccKey(CURRENT_ACC_ID),JSON.stringify(S));}catch(e){}
+  try{
+    localStorage.setItem(getAccKey(CURRENT_ACC_ID),JSON.stringify(S));
+  }catch(e){
+    // 存储空间不足（QuotaExceededError）：给出明确提示，防止用户以为操作成功
+    if(e&&(e.name==='QuotaExceededError'||e.name==='NS_ERROR_DOM_QUOTA_REACHED'||e.code===22)){
+      showToast('⚠️ 浏览器存储空间已满！数据未能保存。\n请在「我的」→「设置」清理图片缓存后重试。');
+    }
+  }
   updateAccountMeta();syncClassScore();
 }
 function updateAccountMeta(){
@@ -390,16 +465,18 @@ function renderTeacherClassView(){
   Object.keys(cd).forEach(className=>{
     // 班级名包含百分号（URL编码残留）→ 删除
     if(/%[0-9A-Fa-f]{2}/.test(className)){delete cd[className];dirty=true;return;}
-    // 过滤掉账号不存在的学生成员
+    // 过滤掉账号不存在的成员（学生和教师都检查）
     const before=cd[className].length;
     cd[className]=cd[className].filter(m=>{
-      if(m.isTeacher)return true; // 教师条目保留
+      if(m.isTeacher)return allAccounts.some(a=>a.name===m.name&&a.isTeacher); // 教师也验证账号存在
       return allAccounts.some(a=>a.name===m.name);
     });
     if(cd[className].length!==before)dirty=true;
     // 班级成员全空则删除整个班级
     if(cd[className].length===0){delete cd[className];dirty=true;}
   });
+  // 清理结果写回本地存储（否则下次打开仍显示已注销的账号）
+  if(dirty)saveClassData(cd);
   // ── 教师账号列表（含注销按钮）──────────────────
   function _renderTeacherAccList(containerId){
     const el=document.getElementById(containerId);if(!el)return;
@@ -604,13 +681,18 @@ if(isMgr){
     <button onclick="openBatchImport('${safeClassName}')" style="width:100%;padding:9px;border-radius:10px;border:1.5px solid var(--green);background:rgba(100,160,100,.06);color:var(--dgreen);font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;margin-bottom:8px">📋 批量导入学生名单</button>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button onclick="exportClassList('${safeClassName}')" style="flex:1;min-width:80px;padding:7px 6px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--ink);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📤 导出名单</button>
+      <button onclick="exportClassFull('${safeClassName}')" style="flex:1;min-width:80px;padding:7px 6px;border-radius:8px;border:1.5px solid var(--dgreen);background:rgba(90,154,90,.08);color:var(--dgreen);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📊 完整导出</button>
       <button onclick="batchResetStudentPin('${safeClassName}')" style="flex:1;min-width:80px;padding:7px 6px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--ink);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🔓 重置密码</button>
       <button onclick="teacherDeleteClassFromDetail('${safeClassName}')" style="flex:1;min-width:80px;padding:7px 6px;border-radius:8px;border:1.5px solid var(--red);background:rgba(224,85,85,.05);color:var(--red);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">💥 注销班级</button>
     </div>
   </div>`;
 }
 html+='</div>';
-openConfirm('🏫',className,()=>{},false,html);
+// ★ 用 extraHtml 参数渲染，隐藏确定按钮（纯展示弹窗）
+openConfirm('🏫',className,null,false,null,html);
+// 隐藏确定按钮，只保留关闭
+const yb=document.getElementById('confirm-yes-btn');
+if(yb)yb.style.display='none';
 }
 
 function teacherDeleteClassFromDetail(encodedClass){
@@ -1935,20 +2017,8 @@ function quizSubmitReport(){
 
 // ═══════════════════════════════════════════════════
 // ── 更新公告 / 建议箱 ──────────────────────────────
-// ═══════════════════════════════════════════════════
-// 开发者在此数组最前面追加新版本条目即可
-const UPDATE_LOG=[
-  {v:'v1.4',date:'2026-04-29',title:'📚 题目互动升级',items:[
-    '✅ 题目文字现在可以选中复制',
-    '⭐ 新增收藏题库，答题时点击⭐可收藏',
-    '❌ 新增错题本，自动记录答错的题',
-    '🚩 新增题目反馈功能，发现问题直接反馈给开发者',
-    '📢 新增更新公告与建议箱（就是现在这里！）',
-    '🐛 修复积分管理弹窗被确认弹窗遮挡的问题',
-    '🐛 修复积分排行tab点击高亮错误',
-    '🐛 修复新建班级下拉出现已删除教师账号的问题',
-  ]},
-];
+// ★ UPDATE_LOG 已迁移到 update_log.js，在那里修改即可，无需动 game.js
+// window.UPDATE_LOG 由 update_log.js 注入
 const _UPDATE_LOG_KEY='jbfarm_last_seen_update';
 function openUpdateLog(){
   localStorage.setItem(_UPDATE_LOG_KEY,(UPDATE_LOG[0]&&UPDATE_LOG[0].v)||'');
@@ -2372,7 +2442,55 @@ function applySkinStage(stage) {
   return { ...stage, color: skin };
 }
 
-function drawPetBreed(ctx,breed,cx,cy,stage){if(breed==="cat")drawCat(ctx,cx,cy,stage);else if(breed==="rabbit")drawRabbit(ctx,cx,cy,stage);else if(breed==="bird")drawBird(ctx,cx,cy,stage);else if(breed==="dog")drawDog(ctx,cx,cy,stage);else if(breed==="panda")drawPanda(ctx,cx,cy,stage);else if(breed==="fox")drawFox(ctx,cx,cy,stage);else if(breed==="deer")drawDeer(ctx,cx,cy,stage);else if(breed==="penguin")drawPenguin(ctx,cx,cy,stage);else if(breed==="dragon")drawDragon(ctx,cx,cy,stage);else if(breed==="owl")drawOwl(ctx,cx,cy,stage);else if(breed==="bear")drawBear(ctx,cx,cy,stage);else if(breed==="unicorn")drawUnicorn(ctx,cx,cy,stage);else if(breed==="tiger")drawTiger(ctx,cx,cy,stage);else if(breed==="claude")drawClaudeSprite(ctx,cx,cy,stage);else drawHamster(ctx,cx,cy,stage);}
+// ── 品种 → 占位 emoji（当精灵图尚未加载时显示）
+var _BREED_EMOJI={cat:'🐱',hamster:'🐹',rabbit:'🐰',dog:'🐶',panda:'🐼',
+  fox:'🦊',bird:'🐦',deer:'🦌',penguin:'🐧',dragon:'🐲',owl:'🦉',bear:'🐻',
+  unicorn:'🦄',tiger:'🐯',claude:'🤖'};
+
+function drawPetBreed(ctx,breed,cx,cy,stage){
+  // ★ 精灵图阶段：完全不走代码绘制，避免任何"闪回代码图"的情况
+  //   若图片未加载完，显示占位 emoji，待图片就绪后 drawPet 自动刷新
+  if(window.HamsterAnim && stage){
+    const lv=(stage&&stage.lv)||S.petLevel||1;
+    if(HamsterAnim.isSpritedStage(breed,lv)){
+      // 触发加载（已加载则无操作）
+      const _defs=(HamsterAnim.SPRITE_SKINS[breed]||{})[lv]||[];
+      const _defId=_defs.length?_defs[0].id:(breed==='hamster'?'orange':'default');
+      const _skinKey=(window.S&&S.activePet?S.activePet:'')+'_'+breed+'_'+lv;
+      const _skin=(window.S&&S.petSpriteSkins&&S.petSpriteSkins[_skinKey])||_defId;
+      _spLoad(breed,lv,_skin,'idle');
+      const _img=_spGet(breed,lv,_skin,'idle');
+      if(_img instanceof Image){
+        const _sz=80, _ar=(_img.naturalWidth||1)/(_img.naturalHeight||1);
+        const _dw=_ar>=1?_sz:_sz*_ar, _dh=_ar>=1?_sz/_ar:_sz;
+        ctx.save();ctx.drawImage(_img,cx-_dw/2,cy-_dh/2,_dw,_dh);ctx.restore();
+        return;
+      }
+      // 图片加载中：显示 emoji 占位
+      ctx.save();
+      ctx.font='38px serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.globalAlpha=0.5;ctx.fillText(_BREED_EMOJI[breed]||'🐾',cx,cy);
+      ctx.globalAlpha=1;ctx.restore();
+      return;
+    }
+  }
+  // 非精灵阶段 → 代码绘制
+  if(breed==="cat")drawCat(ctx,cx,cy,stage);
+  else if(breed==="rabbit")drawRabbit(ctx,cx,cy,stage);
+  else if(breed==="bird")drawBird(ctx,cx,cy,stage);
+  else if(breed==="dog")drawDog(ctx,cx,cy,stage);
+  else if(breed==="panda")drawPanda(ctx,cx,cy,stage);
+  else if(breed==="fox")drawFox(ctx,cx,cy,stage);
+  else if(breed==="deer")drawDeer(ctx,cx,cy,stage);
+  else if(breed==="penguin")drawPenguin(ctx,cx,cy,stage);
+  else if(breed==="dragon")drawDragon(ctx,cx,cy,stage);
+  else if(breed==="owl")drawOwl(ctx,cx,cy,stage);
+  else if(breed==="bear")drawBear(ctx,cx,cy,stage);
+  else if(breed==="unicorn")drawUnicorn(ctx,cx,cy,stage);
+  else if(breed==="tiger")drawTiger(ctx,cx,cy,stage);
+  else if(breed==="claude")drawClaudeSprite(ctx,cx,cy,stage);
+  else drawHamster(ctx,cx,cy,stage);
+}
  
 
 
@@ -2420,13 +2538,19 @@ function loadCustomPetImg(key, cb, opts){
     img.onerror=()=>cb(null);
     img.src=overrideData;return;
   }
-  if(_petImgCache[key]){cb(_petImgCache[key]);return;}
-  const data=localStorage.getItem(key);
-  if(!data){cb(null);return;}
-  const img=new Image();
-  img.onload=()=>{_petImgCache[key]=img;cb(img);};
-  img.onerror=()=>cb(null);
-  img.src=data;
+  if(_petImgCache[key] instanceof Image){cb(_petImgCache[key]);return;}
+  // ★ 从 IDB（支持10MB）读取，自动回退 localStorage 旧数据
+  loadImg(key,function(data){
+    if(!data){
+      // IDB 未命中时回退到 localStorage（兼容直接写入 localStorage 的旧数据）
+      data=localStorage.getItem(key);
+    }
+    if(!data){cb(null);return;}
+    const img=new Image();
+    img.onload=()=>{_petImgCache[key]=img;cb(img);};
+    img.onerror=()=>cb(null);
+    img.src=data;
+  });
 }
 
 function drawPet(){
@@ -2463,19 +2587,22 @@ function drawPet(){
     try{
       const raw=localStorage.getItem(key+'_param');
       const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
-      // 始终用逻辑坐标（150基准），setTransform 已处理 DPR 缩放
       const size=Math.round(150*(p.scale!=null?p.scale:0.8));
       const dx=cx+(p.offX||0);
       const dy=cy+(p.offY||0);
       const rot=(p.rotation||0)*Math.PI/180;
+      // ★ 保持原始比例（contain），不拉伸变形
+      const iw=img.naturalWidth||img.width||1;
+      const ih=img.naturalHeight||img.height||1;
+      const ar=iw/ih;
+      const dw=ar>=1?size:size*ar;
+      const dh=ar>=1?size/ar:size;
       if(rot!==0){
-        ctx.save();
-        ctx.translate(dx,dy);
-        ctx.rotate(rot);
-        ctx.drawImage(img,-size/2,-size/2,size,size);
+        ctx.save();ctx.translate(dx,dy);ctx.rotate(rot);
+        ctx.drawImage(img,-dw/2,-dh/2,dw,dh);
         ctx.restore();
       } else {
-        ctx.drawImage(img,dx-size/2,dy-size/2,size,size);
+        ctx.drawImage(img,dx-dw/2,dy-dh/2,dw,dh);
       }
     }catch(e){}
   }
@@ -2511,8 +2638,8 @@ function drawPet(){
       // 不重置 transform，保持 DPR 缩放，clearRect 用逻辑坐标
       ctx.clearRect(0,0,150,150);
       _drawImgWithParam(_actImg||img,_activeImgKey,petX,petY+bob);
-      // 【仓鼠特效叠加】在自定义图片上方叠加 ZZZ / 气泡 / 星星等动画
-      if(breed==='hamster'&&window.HamsterAnim){try{HamsterAnim.drawOverlay(ctx,petX,petY+bob,petT);}catch(e){}}
+      // 【特效叠加】在自定义图片上方叠加 ZZZ / 气泡 / 星星等动画（所有品种）
+      if(window.HamsterAnim){try{HamsterAnim.drawOverlay(ctx,petX,petY+bob,petT);}catch(e){}}
       const clothKey=getCustomClothImgKey();
       const clothData=S.equippedCloth?_getClothImgDataWithScope(clothKey):null;
       if(clothData){
@@ -2542,31 +2669,44 @@ function drawPet(){
                          eating:'eating',happy:'happy',bathing:'bathing',sleeping:'sleeping',studying:'studying'};
       // 动作优先级：对话触发特殊动作 > 显式操作 > 体力睡觉 > idle
       let _action;
-      if (_isTalkAction && _state) { _action = _state; } // 对话特殊动作：直接用原始名找图片
+      if (_isTalkAction && _state) { _action = _state; }
       else if (_state && _state !== 'idle') { _action = _ACTION_MAP[_state]||_state; }
       else if (_energy < 18) { _action = 'sleeping'; }
       else { _action = 'idle'; }
+      // ★ 动作切换时：为新动作随机选一张变体图，整个动作持有该选择
+      if(_action!==window._dpLastAction){
+        if(_action!=='idle') _spPickAction(breed,S.petLevel,_skin,_action);
+        window._dpLastAction=_action; // 只记录动作名，不记录 breed/lv/skin
+      }
       // 确保当前皮肤图片在加载中
       _spLoad(breed,S.petLevel,_skin,_action);
       // 同步取图，找不到退回 idle
       const _sImg = _spGet(breed,S.petLevel,_skin,_action);
+      // ★ 记录 idle 变体索引，供 _drawClothWithSysParam 选对应衣服参数
+      if(_action==='idle'){
+        const _idleKey=breed+'/'+S.petLevel+'/'+_skin+'/idle';
+        const _isc=_spStableChoice[_idleKey];
+        const _multi=_spMultiCache[_idleKey]||[];
+        window._spIdleVariantIdx=(_isc&&_multi.length>1)?_isc.idx:0;
+      }
       if (_sImg) {
         const _thin = _food < 15 ? { x:0.72+(_food/15)*0.28, y:0.90+(_food/15)*0.10 } : {x:1,y:1};
         ctx.save();
-        // 圆形裁剪：对 PNG 透明底和 JPG 白底都正确
-        ctx.beginPath(); ctx.arc(petX, petY+bob, 52*_thin.x, 0, Math.PI*2); ctx.clip();
-        ctx.translate(petX, petY+bob); ctx.scale(_thin.x, _thin.y);
-        ctx.drawImage(_sImg,-51,-51,102,102);
+        // ★ 不裁剪圆形：透明底图片需要完整显示，contain 缩放保持比例
+        const _ar=(_sImg.naturalWidth||1)/(_sImg.naturalHeight||1);
+        const _sz=(S.petDisplaySize||150)*0.68*_thin.x;
+        const _dw=_ar>=1?_sz:_sz*_ar, _dh=_ar>=1?_sz/_ar:_sz;
+        ctx.translate(petX, petY+bob); ctx.scale(1, _thin.y);
+        ctx.drawImage(_sImg,-_dw/2,-_dh/2,_dw,_dh);
         ctx.restore();
-        if(breed==='hamster'&&window.HamsterAnim) try{HamsterAnim.drawOverlay(ctx,petX,petY+bob,petT);}catch(e){}
+        if(window.HamsterAnim) try{HamsterAnim.drawOverlay(ctx,petX,petY+bob,petT);}catch(e){}
       } else {
-        // 还未加载完：显示占位圆
+        // 还未加载完：显示品种 emoji 占位（下一帧图片就绪后自动刷新）
         ctx.save();
-        ctx.beginPath(); ctx.arc(petX,petY+bob,44,0,Math.PI*2);
-        ctx.fillStyle='rgba(240,185,120,0.25)'; ctx.fill();
         ctx.font='44px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText('🐹',petX,petY+bob);
-        ctx.restore();
+        ctx.globalAlpha=0.5;
+        ctx.fillText((_BREED_EMOJI&&_BREED_EMOJI[breed])||'🐾',petX,petY+bob);
+        ctx.globalAlpha=1; ctx.restore();
       }
     } else {
       // 其他品种 / 其他阶段：代码绘制 + 特效叠加
@@ -2591,8 +2731,21 @@ function drawPet(){
 // 应用 jbfarm_clothsys_* 参数绘制系统衣服（保证预览和实际一致）
 function _drawClothWithSysParam(ctx,cx,cy){
   const cid=S.equippedCloth;if(!cid)return;
+  // ★ 优先用当前动作专属key，没有则回退到通用key
+  const _curAct=window._petActionCurrent||'idle';
+  const _ACTION_MAP2={feed:'eating',play:'happy',bath:'bathing',sleep:'sleeping',train:'studying'};
+  const _mappedAct=_ACTION_MAP2[_curAct]||_curAct||'idle';
+  // ★ idle 时加入变体索引（idle_v0 / idle_v1）
+  let _clothActKey=_mappedAct;
+  if(!_mappedAct||_mappedAct==='idle'){
+    const _vi=window._spIdleVariantIdx||0;
+    _clothActKey=_vi>0?'idle_v'+_vi:'idle';
+  }
   const key='jbfarm_clothsys_'+cid;
-  const raw=localStorage.getItem(key);
+  // 先找动作专属，再找 idle 专属，最后回退通用
+  const raw=localStorage.getItem(key+'_'+_clothActKey)
+         ||((_clothActKey!=='idle')?localStorage.getItem(key+'_idle'):null)
+         ||localStorage.getItem(key);
   const p=raw?JSON.parse(raw):{scale:100,offsetX:0,offsetY:0,rotation:0};
   const sc=(p.scale||100)/100;
   const ox=p.offsetX||0,oy=p.offsetY||0;
@@ -4311,6 +4464,8 @@ function updatePetUI(){
   // 恢复宠物显示大小
   // 初始化时按 DPR 设置 Canvas 分辨率（有存档用存档值，无存档用默认150）
   setPetDisplaySize(S.petDisplaySize||150);
+  // ★ 预加载精灵图（消除首次显示白屏/emoji占位）
+  setTimeout(_spPreloadCurrentPet,50);
   // 数值显示整数
   ['food','happy','clean','energy'].forEach(k=>{const v=Math.round(S['pet'+k.charAt(0).toUpperCase()+k.slice(1)]);const bar=document.getElementById('sf-'+k),val=document.getElementById('sv-'+k);if(bar)bar.style.width=v+'%';if(val)val.textContent=v;});
   const evoReq=EVO_EXP_REQUIRED[Math.min(S.petLevel,EVO_EXP_REQUIRED.length-1)]||0;
@@ -4812,9 +4967,10 @@ function renderSkinsShop(g){
   // ── 精灵阶段：显示图片皮肤选择器 ──
   if(window.HamsterAnim && HamsterAnim.isSpritedStage(breed, lv)){
     const skins = (HamsterAnim.SPRITE_SKINS[breed]||{})[lv]||[];
-    // Bug fix: 直接从 S.petSpriteSkins 读取，避免 getActiveSkin 因 activePet 为空返回错误值
+    // 默认皮肤取列表第一个（price:0），避免 hamster 之外的品种误用 'orange'
+    const _defSkinId = skins.length ? skins[0].id : (breed==='hamster'?'orange':'default');
     const _skinKey = (S.activePet||'')+'_'+breed+'_'+lv;
-    const activeSkin = (S.petSpriteSkins&&S.petSpriteSkins[_skinKey]) || 'orange';
+    const activeSkin = (S.petSpriteSkins&&S.petSpriteSkins[_skinKey]) || _defSkinId;
     const hdr = document.createElement('div');
     hdr.style.cssText='font-size:.7rem;color:var(--muted);margin:0 4px 8px;';
     hdr.textContent='当前为第'+lv+'阶段精灵形象，每种皮肤有独立图片';
@@ -5041,7 +5197,10 @@ function saveCustomPetDialog(petId,data){
 // ── 工坊状态 ──────────────────────────────────────
 let _cwBreedSel=null,_cwClothSel=null,_cwLevelSel=1;
 let _cwTab='basic'; // 当前子标签：basic | stats | cloth | dialog
-let _cwEditingPetId=null; // 当前正在编辑的宠物ID（null=当前宠物）
+let _cwEditingPetId=null; // 当前正在编辑的宠物ID（null=草稿/当前宠物）
+let _cwIsDraftMode=true;
+let _cwDraftTargetPetId=null;
+let _cwIdbRefreshTimer=null; // IDB图片预热 debounce 定时器
 
 // ── 渲染已领养的定制宠物列表 ──────────────────────
 function _cwRenderAdoptedList(){
@@ -5116,63 +5275,79 @@ function _cwOpenForPet(pid){
   if(!pid||!(S.petSaves&&S.petSaves[pid]))return;
   const save=S.petSaves[pid];
   _cwEditingPetId=pid;
-  _cwDraw._imgCache=null;_cwDraw._imgCacheSrc=null; // 清除画布缓存
+  _cwIsDraftMode=false; // 直接编辑指定宠物，变更立即生效
   _cwBreedSel=save.petBreed||'hamster';
   _cwClothSel=save.equippedCloth||null;
   _cwLevelSel=save.petLevel||1;
-  const ni=document.getElementById('cw-name-input');
-  if(ni)ni.value=save.petName||'';
-  const cbn=document.getElementById('cw-custom-breed-name');
-  if(cbn)cbn.value=localStorage.getItem('jbfarm_custombreedname_'+pid)||'';
-  const lr=document.getElementById('cw-level-range');
-  if(lr)lr.value=_cwLevelSel;
-  cwLvPreview(_cwLevelSel);
-  _cwUpdateCoin();_cwDraw();_cwRenderBreedGrid();_cwRenderClothGrid();
-  _cwRenderStatsSliders();_cwRenderDialogEditor();_cwRenderStageNames();
+  // ★★★ 先开弹窗，所有可能报错的代码在后面 ★★★
+  _cwDraw._imgCache=null;_cwDraw._imgCacheSrc=null;
   _cwSwitchTab('basic');
-  // 打开工坊编辑弹窗
   openOverlay('custom-workshop-ov');
   // 更新编辑模式提示栏
-  const ttl=document.getElementById('cw-edit-mode-tip');
-  const ttlTxt=document.getElementById('cw-edit-mode-tip-text');
-  if(ttl){ttl.style.display='block';}
-  if(ttlTxt){ttlTxt.textContent='正在编辑定制宠物：'+(save.petName||pid);}
+  try{const ttl=document.getElementById('cw-edit-mode-tip');if(ttl)ttl.style.display='block';}catch(e){}
+  try{const ttlTxt=document.getElementById('cw-edit-mode-tip-text');if(ttlTxt)ttlTxt.textContent='正在编辑定制宠物：'+(save.petName||pid);}catch(e){}
+  // 渲染全部用 try/catch，不影响弹窗
+  try{const ni=document.getElementById('cw-name-input');if(ni)ni.value=save.petName||'';}catch(e){}
+  try{const cbn=document.getElementById('cw-custom-breed-name');if(cbn)cbn.value=localStorage.getItem('jbfarm_custombreedname_'+pid)||'';}catch(e){}
+  try{const lr=document.getElementById('cw-level-range');if(lr)lr.value=_cwLevelSel;}catch(e){}
+  try{cwLvPreview(_cwLevelSel);}catch(e){console.warn('cwOpenForPet lvpreview',e);}
+  try{_cwUpdateCoin();}catch(e){}
+  try{_cwDraw();}catch(e){console.warn('cwOpenForPet draw',e);}
+  try{_cwRenderBreedGrid();}catch(e){}
+  try{_cwRenderClothGrid();}catch(e){}
+  try{_cwRenderStatsSliders();}catch(e){}
+  try{_cwRenderDialogEditor();}catch(e){}
+  try{_cwRenderStageNames();}catch(e){}
 }
 
 function openCustomWorkshop(){
-  _cwEditingPetId=null; // 重置：默认编辑当前宠物
-  _cwDraw._imgCache=null;_cwDraw._imgCacheSrc=null; // 清除图片缓存
+  _cwEditingPetId=null;
+  _cwIsDraftMode=true;
+  _cwDraftTargetPetId=S.activePet||'p_hamster';
   _cwBreedSel=S.petBreed||'hamster';
   _cwClothSel=S.equippedCloth||null;
   _cwLevelSel=S.petLevel||1;
 
-  // 名字
-  const ni=document.getElementById('cw-name-input');
-  if(ni)ni.value=S.petName||'';
-
-  // 自定义品种名
-  const cbn=document.getElementById('cw-custom-breed-name');
-  if(cbn)cbn.value=localStorage.getItem('jbfarm_custombreedname_'+(S.activePet||''))||'';
-
-  // 等级滑块
-  const lr=document.getElementById('cw-level-range');
-  if(lr)lr.value=_cwLevelSel;
-  cwLvPreview(_cwLevelSel);
-
-  // 隐藏编辑模式提示
-  const ttl=document.getElementById('cw-edit-mode-tip');
-  if(ttl)ttl.style.display='none';
-
-  _cwUpdateCoin();
-  _cwDraw();
-  _cwRenderBreedGrid();
-  _cwRenderClothGrid();
-  _cwRenderStatsSliders();
-  _cwRenderDialogEditor();
-  _cwRenderStageNames();
+  // ★★★ 先开弹窗，再执行任何可能失败的代码 ★★★
   _cwSwitchTab('basic');
-
   openOverlay('custom-workshop-ov');
+
+  // 以下全部 try/catch，任何错误不影响弹窗已打开
+  try{
+    _cwDraw._imgCache=null;_cwDraw._imgCacheSrc=null;
+    // IDB 预热（仅在 loadImg 存在时执行，否则跳过）
+    if(typeof loadImg==='function'){
+      const _cwPrePid=S.activePet||'';
+      [1,2,3,4,5].forEach(function(_pvLv){
+        const _pvKey='jbfarm_stageimg_'+_cwPrePid+'_'+_pvLv;
+        if(!(_petImgCache[_pvKey] instanceof Image)){
+          loadImg(_pvKey,function(d){
+            if(!d)return;
+            const _pvImg=new Image();
+            _pvImg.onload=function(){
+              _petImgCache[_pvKey]=_pvImg;
+              clearTimeout(_cwIdbRefreshTimer);
+              _cwIdbRefreshTimer=setTimeout(function(){try{_cwRenderStageNames();}catch(e){}try{_cwDraw();}catch(e){}},80);
+            };
+            _pvImg.src=d;
+          });
+        }
+      });
+    }
+  }catch(e){console.warn('cw idb warmup err',e);}
+
+  try{const ni=document.getElementById('cw-name-input');if(ni)ni.value=S.petName||'';}catch(e){}
+  try{const cbn=document.getElementById('cw-custom-breed-name');if(cbn)cbn.value=localStorage.getItem('jbfarm_custombreedname_'+(S.activePet||''))||'';}catch(e){}
+  try{const lr=document.getElementById('cw-level-range');if(lr)lr.value=_cwLevelSel;}catch(e){}
+  try{const ttl=document.getElementById('cw-edit-mode-tip');if(ttl)ttl.style.display='none';}catch(e){}
+  try{cwLvPreview(_cwLevelSel);}catch(e){console.warn('cw lvpreview err',e);}
+  try{_cwUpdateCoin();}catch(e){console.warn('cw coin err',e);}
+  try{_cwRenderBreedGrid();}catch(e){console.warn('cw breed err',e);}
+  try{_cwRenderClothGrid();}catch(e){console.warn('cw cloth err',e);}
+  try{_cwRenderStatsSliders();}catch(e){console.warn('cw stats err',e);}
+  try{_cwRenderDialogEditor();}catch(e){console.warn('cw dialog err',e);}
+  try{_cwRenderStageNames();}catch(e){console.warn('cw stage err',e);}
+  try{_cwDraw();}catch(e){console.warn('cw draw err',e);}
 }
 
 function _cwSwitchTab(tab){
@@ -5209,9 +5384,19 @@ function cwRandomName(){
 // ── 品种格子：显示全部品种（含已拥有标记） ──────────
 function _cwRenderBreedGrid(){
   const g=document.getElementById('cw-breed-grid');if(!g)return;g.innerHTML='';
-  const breeds=['hamster','cat','rabbit','bird','dog','panda','fox','bear','deer','penguin','owl','dragon','tiger','unicorn','original'];
-  const icons={hamster:'🐹',cat:'🐱',rabbit:'🐰',bird:'🐦',dog:'🐶',panda:'🐼',fox:'🦊',bear:'🐻',deer:'🦌',penguin:'🐧',owl:'🦉',dragon:'🐲',tiger:'🐯',unicorn:'🦄',original:'✨'};
-  const names={hamster:'仓鼠',cat:'猫咪',rabbit:'兔子',bird:'小鸟',dog:'小狗',panda:'熊猫',fox:'狐狸',bear:'小熊',deer:'小鹿',penguin:'企鹅',owl:'猫头鹰',dragon:'火龙',tiger:'小虎',unicorn:'独角兽',original:'全新品种'};
+  // ★ 品种列表从 PET_BREEDS 动态读取，新增品种只需改 pet_config.js
+  const breeds=Object.keys(window.PET_BREEDS||{}).filter(b=>b!=='claude');
+  breeds.push('original'); // 末尾保留「全新品种」选项
+  const icons=Object.fromEntries(breeds.map(b=>{
+    const emoji={hamster:'🐹',cat:'🐱',rabbit:'🐰',bird:'🐦',dog:'🐶',panda:'🐼',
+                 fox:'🦊',bear:'🐻',deer:'🦌',penguin:'🐧',owl:'🦉',dragon:'🐲',
+                 tiger:'🐯',unicorn:'🦄',original:'✨'};
+    return [b,emoji[b]||'🐾'];
+  }));
+  const names=Object.fromEntries(breeds.map(b=>{
+    const pb=window.PET_BREEDS&&window.PET_BREEDS[b];
+    return [b,pb?pb.name:(b==='original'?'全新品种':b)];
+  }));
   const ownedBreeds=new Set((S.ownedPets||[]).map(pid=>{const p=SHOP_PETS.find(x=>x.id===pid);return p?p.breed:null;}).filter(Boolean));
   // 品种对话提示
   const hint=document.createElement('div');
@@ -5283,6 +5468,56 @@ function _cwRenderStatsSliders(){
   });
 }
 
+// ── 存储占用显示 ─────────────────────────────────
+function _cwRenderStorageBar(){
+  const el=document.getElementById('cw-storage-bar');if(!el)return;
+  // 只统计真正的「图片」key：stageimg / actionimg / clothimg / petimg
+  // 不计入游戏存档、题库等数据，避免误报「存储已满」
+  const IMG_PREFIXES=['jbfarm_stageimg_','jbfarm_actionimg_',
+                      'jbfarm_petimg_','jbfarm_clothimg_'];
+  let usedBytes=0;
+  let imgCount=0;
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(!k)continue;
+      const isImg=IMG_PREFIXES.some(p=>k.startsWith(p))
+        && !k.endsWith('_param') && !k.endsWith('_scope')
+        && !k.endsWith('_scope_pet') && !k.endsWith('_scope_stage');
+      if(isImg){
+        const v=localStorage.getItem(k)||'';
+        if(v.startsWith('data:image')){usedBytes+=v.length*0.75;imgCount++;}
+      }
+    }
+  }catch(e){}
+  // IDB 图片不占 localStorage，单独提示
+  const usedKB=Math.round(usedBytes/1024);
+  if(usedKB===0&&imgCount===0){el.innerHTML='';return;} // 没有图片则不显示
+  const totalKB=5*1024;
+  const pct=Math.min(100,Math.round(usedKB/totalKB*100));
+  const color=pct>80?'#e05050':pct>55?'#e09050':'var(--dgreen)';
+  el.innerHTML=
+    '<div style="display:flex;align-items:center;gap:6px;font-size:.62rem;color:var(--muted);margin-bottom:6px">'
+    +'<span>💾 图片缓存</span>'
+    +'<div style="flex:1;height:5px;border-radius:3px;background:var(--border);overflow:hidden">'
+    +'<div style="height:100%;border-radius:3px;background:'+color+';width:'+pct+'%;transition:width .3s"></div>'
+    +'</div>'
+    +'<span style="color:'+color+';font-weight:500">'+imgCount+'张·'+usedKB+'KB</span>'
+    +'</div>';
+}
+// 清理当前宠物所有阶段图（给用户一键腾空间）
+function _cwClearUnusedImgs(){
+  const pid=_cwEditingPetId||S.activePet||'';
+  openConfirm('🗑️','清理「'+pid+'」所有阶段图片和动作图片？\n（基础形象图保留，阶段图和动作图会删除）',()=>{
+    [1,2,3,4,5].forEach(lv=>localStorage.removeItem('jbfarm_stageimg_'+pid+'_'+lv));
+    ['eating','bathing','happy','sleeping','studying'].forEach(act=>localStorage.removeItem('jbfarm_actionimg_'+pid+'_'+act));
+    delete _petImgCache[getCustomPetImgKey()];
+    _cwRenderStageNames();_cwRenderStorageBar();drawPet();
+    showToast('✅ 已清理图片缓存！');
+  });
+}
+
+
 // ── 进化阶段名称设置 ─────────────────────────────
 function _cwRenderStageNames(){
   const g=document.getElementById('cw-stage-names');if(!g)return;
@@ -5293,7 +5528,11 @@ function _cwRenderStageNames(){
     const defStage=stages[Math.min(lv-1,stages.length-1)];
     const savedName=localStorage.getItem('jbfarm_stagename_'+pid+'_'+lv)||'';
     const savedDesc=localStorage.getItem('jbfarm_stagedesc_'+pid+'_'+lv)||'';
-    const hasImg=!!localStorage.getItem('jbfarm_stageimg_'+pid+'_'+lv);
+    // IDB 存储：hasImg = 内存缓存(Image对象) 或 localStorage(DataURL)
+    const _imgKey='jbfarm_stageimg_'+pid+'_'+lv;
+    const hasImg=!!(_petImgCache[_imgKey] instanceof Image || localStorage.getItem(_imgKey));
+    // 注意：不在循环里发起异步 IDB 加载（会导致无限递归刷新），
+    // IDB 预热在 openCustomWorkshop 时统一做一次
     const wrap=document.createElement('div');
     wrap.style.cssText='border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:8px;background:var(--panel)';
     // 名称行
@@ -5359,17 +5598,35 @@ function cwUploadStageImg(lv){
   inp.type='file';inp.accept='image/*';
   inp.onchange=function(e){
     const file=e.target.files[0];if(!file)return;
-    if(file.size>2*1024*1024){showToast('图片不能超过2MB');return;}
-    const reader=new FileReader();
-    reader.onload=function(ev){
-      try{
-        localStorage.setItem('jbfarm_stageimg_'+pid+'_'+lv,ev.target.result);
-      }catch(err){showToast('❌ 存储空间不足，无法保存图片');return;}
-      _cwRenderStageNames();
-      drawPet();
-      showToast('✅ Lv.'+lv+' 阶段图片已保存！');
-    };
-    reader.readAsDataURL(file);
+    const MB=file.size/1024/1024;
+    if(MB>10){
+      // ★ 图片过大：弹窗提示，不静默失败
+      openConfirm('⚠️ 图片过大',
+        '所选图片约 '+MB.toFixed(1)+'MB，超过10MB上限。\n\n建议：\n• 使用图片编辑工具压缩后再上传\n• 推荐1MB以内，最大不超过10MB',
+        null,null,true /* 只显示确认按钮 */);
+      return;
+    }
+    showToast('⏳ 正在处理图片…');
+    _compressImgToDataURL(file, 800, 0.85, function(data, sizeKB){
+      if(!data){showToast('❌ 图片处理失败，请换一张试试');return;}
+      const key='jbfarm_stageimg_'+pid+'_'+lv;
+      // ★ 存入 IDB（最大10MB），不再受 localStorage 5MB 限制
+      saveImg(key, data, function(){
+        // 同时把图片对象放入内存缓存，让 _cwDraw 立即看见
+        const _preImg=new Image();
+        _preImg.onload=function(){
+          _petImgCache[key]=_preImg;
+          _cwDraw._imgCache=null; // 清除工坊预览缓存，强制重绘
+          _cwRenderStageNames(); drawPet(); _cwDraw();
+          showToast('✅ Lv.'+lv+' 阶段图已保存！约'+sizeKB+'KB');
+        };
+        _preImg.onerror=function(){
+          _cwRenderStageNames(); drawPet(); _cwDraw();
+          showToast('✅ Lv.'+lv+' 阶段图已保存！约'+sizeKB+'KB');
+        };
+        _preImg.src=data;
+      });
+    });
   };
   inp.click();
 }
@@ -5387,9 +5644,17 @@ function _compressImgToDataURL(file, maxPx, quality, cb){
       if(w>h){h=Math.round(h*maxPx/w);w=maxPx;}else{w=Math.round(w*maxPx/h);h=maxPx;}
     }
     const cvs=document.createElement('canvas');cvs.width=w;cvs.height=h;
-    const ctx=cvs.getContext('2d');ctx.drawImage(img,0,0,w,h);
-    const imgData=ctx.getImageData(0,0,w,h).data;
-    let hasAlpha=false;for(let i=3;i<imgData.length;i+=4)if(imgData[i]<255){hasAlpha=true;break;}
+    // ★ 不预填黑色背景，让透明区域保持透明
+    const ctx=cvs.getContext('2d');
+    ctx.clearRect(0,0,w,h);
+    ctx.drawImage(img,0,0,w,h);
+    // ★ 检测透明度：有透明像素→保留为PNG，否则→JPEG节省空间
+    const forceFormat=file.type==='image/png'||file.type==='image/gif'||file.type==='image/webp';
+    let hasAlpha=false;
+    if(forceFormat){
+      const d=ctx.getImageData(0,0,w,h).data;
+      for(let i=3;i<d.length;i+=4){if(d[i]<250){hasAlpha=true;break;}}
+    }
     const data=hasAlpha?cvs.toDataURL('image/png'):cvs.toDataURL('image/jpeg',quality);
     const sizeKB=Math.round(data.length*0.75/1024);
     cb(data,sizeKB);
@@ -5403,21 +5668,24 @@ function _cwUploadActionImg(actionKey){
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
   inp.onchange=e=>{
     const f=e.target.files[0];if(!f)return;
-    if(f.size>8*1024*1024){showToast('❌ 图片过大！请选择8MB以内的图片');return;}
-    showToast('⏳ 正在压缩图片…');
-    _compressImgToDataURL(f,600,0.82,(data,sizeKB)=>{
+    const MB=f.size/1024/1024;
+    if(MB>10){
+      openConfirm('⚠️ 图片过大',
+        '所选图片约 '+MB.toFixed(1)+'MB，超过10MB上限。\n建议：使用图片编辑工具压缩后再上传，推荐1MB以内。',
+        null,null,true);
+      return;
+    }
+    showToast('⏳ 正在处理图片…');
+    _compressImgToDataURL(f, 640, 0.80, (data, sizeKB)=>{
       if(!data){showToast('❌ 图片处理失败');return;}
-      if(sizeKB>300){showToast('⚠️ 图片压缩后约'+sizeKB+'KB，建议使用更小的图片（建议300KB以内）');}
-      try{
-        localStorage.setItem('jbfarm_actionimg_'+pid+'_'+actionKey,data);
-        // 清除动作图缓存，让下次绘制重新加载
+      const key='jbfarm_actionimg_'+pid+'_'+actionKey;
+      saveImg(key, data, ()=>{
+        // 清除动作图缓存
         const cacheKey='__action__'+pid+'_'+actionKey;
         delete _petImgCache[cacheKey];
         showToast('✅ 动作图片已保存！约'+sizeKB+'KB');
         _cwRenderDialogEditor();
-      }catch(err){
-        showToast('❌ 保存失败（存储已满）：建议清理旧图片或使用更小的图片');
-      }
+      });
     });
   };
   inp.click();
@@ -5431,7 +5699,18 @@ function _cwClearActionImg(actionKey){
   });
 }
 function getCustomPetActionImg(petId,actionKey){
-  return localStorage.getItem('jbfarm_actionimg_'+(petId||'')+'_'+(actionKey||''))||null;
+  // ★ 优先从 IDB 内存缓存读（saveImg/loadImg 会同步写入 _memCache）
+  const key='jbfarm_actionimg_'+(petId||'')+'_'+(actionKey||'');
+  // IDB memCache 通过 loadImg 的内部缓存（window._imgMemCache 在 IDB helper 里是局部变量）
+  // 所以这里触发一次 loadImg 预热（异步，不阻塞），下次帧会自动用上
+  if(window.loadImg){
+    loadImg(key,function(d){
+      if(d&&!localStorage.getItem(key)){
+        // 已在 IDB 中，预热内存缓存即可
+      }
+    });
+  }
+  return localStorage.getItem(key)||null;
 }
 function exportCustomPet(petId){
   if(!petId){showToast('未指定宠物');return;}
@@ -5621,6 +5900,9 @@ function _cwRenderDialogEditor(){
 }
 
 // ── 预览画布 ─────────────────────────────────────
+// 检测工坊图片是否存在（内存缓存或 localStorage）
+function _cwGetImgData(key){ return (_petImgCache[key] instanceof Image ? true : null) || localStorage.getItem(key) || null; }
+
 function _cwDraw(){
   const cvs=document.getElementById('cw-preview-canvas');if(!cvs)return;
   const ctx=cvs.getContext('2d');
@@ -5637,64 +5919,91 @@ function _cwDraw(){
   if(skinInfo&&skinInfo.color&&skinInfo.color!=='rainbow')previewStage.color=skinInfo.color;
   else if(skinInfo&&skinInfo.color==='rainbow'){const rc=['#ff9090','#ffcc60','#a0e880','#60c8ff','#d080ff'];previewStage.color=rc[Math.floor(Date.now()/1200)%rc.length];}
   const _br=S.petBreed,_lv=S.petLevel,_hp=S.petHappy,_en=S.petEnergy,_ec=S.equippedCloth;
-  S.petBreed=_cwBreedSel;S.petLevel=_cwLevelSel;S.petHappy=80;S.petEnergy=80;S.equippedCloth=_cwClothSel;
-
-  // 检查是否有自定义图片：阶段图 > 全局宠物图 > 像素画
+  // ★ try/finally 保证即使出错也恢复 S，防止 S.petBreed 被永久改坏
+  try{
   const _cwPid=petIdForDraw||'';
+  const _isDiffBreed=_cwIsDraftMode && !_cwEditingPetId && _cwBreedSel!==(_br||'hamster');
+  S.petBreed=_cwBreedSel;S.petLevel=_cwLevelSel;S.petHappy=80;S.petEnergy=80;S.equippedCloth=_cwClothSel;
   const _cwStageKey=getStageImgKey(_cwPid,_cwLevelSel);
-  const _cwStageData=localStorage.getItem(_cwStageKey);
-  // 向前回退找最近有图的阶段
+  const _cwStageData=_isDiffBreed?null:_cwGetImgData(_cwStageKey);
+  // 向前回退找最近有图的阶段（仅同品种）
   let _cwFallbackKey=null,_cwFallbackData=null;
-  if(!_cwStageData){
+  if(!_cwStageData&&!_isDiffBreed){
     for(let _bl=_cwLevelSel-1;_bl>=1;_bl--){
       const _bk=getStageImgKey(_cwPid,_bl);
-      const _bd=localStorage.getItem(_bk);
+      const _bd=_cwGetImgData(_bk);
       if(_bd){_cwFallbackKey=_bk;_cwFallbackData=_bd;break;}
     }
   }
   const petImgKey='jbfarm_petimg_'+_cwPid;
-  const petImgData=_cwStageData||_cwFallbackData||localStorage.getItem(petImgKey);
+  const petImgData=_cwStageData||_cwFallbackData||(_isDiffBreed?null:_cwGetImgData(petImgKey));
   const _cwActiveImgKey=_cwStageData?_cwStageKey:(_cwFallbackKey||petImgKey);
 
   ctx.clearRect(0,0,cvs.width,cvs.height);
 
   if(petImgData){
     // 有自定义图：加载后绘制（用缓存避免闪烁）
-    if(_cwDraw._imgCache&&_cwDraw._imgCacheSrc===petImgData){
-      const img=_cwDraw._imgCache;
+    // ★ 保持宽高比（contain），防止图片变瘦变扁
+    function _cwDrawImgContain(img){
       const raw=localStorage.getItem(_cwActiveImgKey+'_param');
       const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
       const size=Math.round(cvs.width*(p.scale!=null?p.scale:0.8));
-      const cx=cvs.width/2+(p.offX||0),cy=cvs.height/2+(p.offY||0);
+      const dx=cvs.width/2+(p.offX||0),dy=cvs.height/2+(p.offY||0);
       const rot=(p.rotation||0)*Math.PI/180;
-      ctx.save();ctx.translate(cx,cy);if(rot)ctx.rotate(rot);
-      ctx.drawImage(img,-size/2,-size/2,size,size);ctx.restore();
+      const ar=(img.naturalWidth||1)/(img.naturalHeight||1);
+      const dw=ar>=1?size:size*ar, dh=ar>=1?size/ar:size;
+      ctx.clearRect(0,0,cvs.width,cvs.height);
+      ctx.save();ctx.translate(dx,dy);if(rot)ctx.rotate(rot);
+      ctx.drawImage(img,-dw/2,-dh/2,dw,dh);ctx.restore();
       if(_cwClothSel){ctx.save();try{drawCloth(ctx,55,58,_cwClothSel);}catch(e){}ctx.restore();}
+    }
+    // ★ petImgData===true 意味着 Image 对象已在 _petImgCache 里，直接取用
+    if(petImgData===true && _petImgCache[_cwActiveImgKey] instanceof Image){
+      const _cachedImg=_petImgCache[_cwActiveImgKey];
+      _cwDraw._imgCache=_cachedImg; _cwDraw._imgCacheSrc=_cwActiveImgKey;
+      _cwDrawImgContain(_cachedImg);
+    } else if(_cwDraw._imgCache&&(_cwDraw._imgCacheSrc===petImgData||_cwDraw._imgCacheSrc===_cwActiveImgKey)){
+      _cwDrawImgContain(_cwDraw._imgCache);
     } else {
-      const img=new Image();
-      img.onload=function(){
-        _cwDraw._imgCache=img;_cwDraw._imgCacheSrc=petImgData;
-        ctx.clearRect(0,0,cvs.width,cvs.height);
-        const raw=localStorage.getItem(_cwActiveImgKey+'_param');
-        const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
-        const size=Math.round(cvs.width*(p.scale!=null?p.scale:0.8));
-        const cx=cvs.width/2+(p.offX||0),cy=cvs.height/2+(p.offY||0);
-        const rot=(p.rotation||0)*Math.PI/180;
-        ctx.save();ctx.translate(cx,cy);if(rot)ctx.rotate(rot);
-        ctx.drawImage(img,-size/2,-size/2,size,size);ctx.restore();
-        if(_cwClothSel){ctx.save();try{drawCloth(ctx,55,58,_cwClothSel);}catch(e){}ctx.restore();}
-      };
-      img.src=petImgData;
+      // DataURL 字符串或 IDB 异步加载
+      loadCustomPetImg(_cwActiveImgKey,function(img){
+        if(img){_cwDraw._imgCache=img;_cwDraw._imgCacheSrc=_cwActiveImgKey;_cwDrawImgContain(img);}
+      }, typeof petImgData==='string'?{_override:petImgData}:undefined);
     }
   } else {
-    // 无自定义图：画像素宠物
+    // 无自定义图 → 精灵图优先，没精灵图才代码绘制
     ctx.save();
-    try{drawPetBreed(ctx,_cwBreedSel,55,58,previewStage);}catch(e){}
+    if(window.HamsterAnim && HamsterAnim.isSpritedStage(_cwBreedSel, _cwLevelSel)){
+      const _defs2=((HamsterAnim.SPRITE_SKINS[_cwBreedSel]||{})[_cwLevelSel]||[]);
+      const _defId2=_defs2.length?_defs2[0].id:(_cwBreedSel==='hamster'?'orange':'default');
+      const _skinKey2=(S.activePet||'')+'_'+_cwBreedSel+'_'+_cwLevelSel;
+      const _skin2=(S.petSpriteSkins&&S.petSpriteSkins[_skinKey2])||_defId2;
+      _spLoad(_cwBreedSel,_cwLevelSel,_skin2,'idle');
+      const _img2=_spGet(_cwBreedSel,_cwLevelSel,_skin2,'idle');
+      if(_img2 instanceof Image){
+        const _r2=Math.min(cvs.width,cvs.height)*0.46;
+        const _ar2=(_img2.naturalWidth||1)/(_img2.naturalHeight||1);
+        const _sz2w=_ar2>=1?_r2*2:_r2*2*_ar2, _sz2h=_ar2>=1?_r2*2/_ar2:_r2*2;
+        ctx.drawImage(_img2,55-_sz2w/2,58-_sz2h/2,_sz2w,_sz2h);
+      } else {
+        // 精灵图加载中 → 显示 emoji 占位，不走代码绘制
+        ctx.font='52px serif';ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.globalAlpha=0.45;
+        ctx.fillText((_BREED_EMOJI&&_BREED_EMOJI[_cwBreedSel])||'🐾',55,58);
+        ctx.globalAlpha=1;
+        // 触发加载，稍后自动刷新
+        setTimeout(_cwDraw,200);
+      }
+    } else {
+      try{drawPetBreed(ctx,_cwBreedSel,55,58,previewStage);}catch(e){}
+    }
     if(_cwClothSel){try{drawCloth(ctx,55,58,_cwClothSel);}catch(e){}}
     ctx.restore();
   }
 
   S.petBreed=_br;S.petLevel=_lv;S.petHappy=_hp;S.petEnergy=_en;S.equippedCloth=_ec;
+  }catch(e){console.warn('_cwDraw error:',e);}
+  finally{S.petBreed=_br;S.petLevel=_lv;S.petHappy=_hp;S.petEnergy=_en;S.equippedCloth=_ec;}
 }
 
 // ── 应用各项修改 ──────────────────────────────────
@@ -5721,7 +6030,13 @@ function cwApply(type){
     return;
   }
   else if(type==='breed'){
-    if(_cwBreedSel===(S.petBreed||'hamster')){showToast('品种没有变化');return;}
+    // ★ 草稿模式（工坊直接打开）：只预览品种外观，不修改当前宠物
+    if(_cwIsDraftMode && !_cwEditingPetId){
+      showToast('💡 已预览「'+_cwBreedSel+'」品种外观，预览模式不影响当前宠物。如需换品种请在宠物医院操作。');
+      _cwRenderBreedGrid();_cwDraw();
+      return;
+    }
+    if(_cwBreedSel===(S.petBreed||'hamster')&&!_cwEditingPetId){showToast('品种没有变化');return;}
     cost=80;msg=`花费🪙80 更换宠物品种为「${_cwBreedSel}」？\n等级和经验保留。`;
     apply=()=>{
       const _tpid=_cwEditingPetId;
@@ -5750,6 +6065,11 @@ function cwApply(type){
     const happy=parseInt((document.getElementById('cw-stat-happy')||{}).value||100);
     const clean=parseInt((document.getElementById('cw-stat-clean')||{}).value||100);
     const energy=parseInt((document.getElementById('cw-stat-energy')||{}).value||100);
+    // ★ 草稿模式：属性调整只用于预览，不影响当前宠物
+    if(_cwIsDraftMode && !_cwEditingPetId){
+      showToast('💡 属性预览已更新。预览模式不影响当前宠物属性。如需调整当前宠物请在宠物医院操作。');
+      return;
+    }
     cost=20;msg=`花费🪙20 将属性设置为：饱食${food} 心情${happy} 清洁${clean} 体力${energy}？`;
     apply=()=>{
       S.petFood=food;S.petHappy=happy;S.petClean=clean;S.petEnergy=energy;
@@ -6213,6 +6533,12 @@ function leaveClass(){openConfirm('🏫','确定退出班级？\n退出后将从
   const cls=S.classId;
   const cd=getClassData();
   if(cd[cls]){cd[cls]=cd[cls].filter(m=>m.name!==S.playerName);saveClassData(cd);}
+  // 如果离开的人正好是该班级的课代表，清除课代表记录
+  const admins=getClassAdmins();
+  if(admins[cls]&&admins[cls].name===S.playerName){
+    delete admins[cls];
+    saveClassAdmins(admins);
+  }
   S.classId='';persistAccount();updateClassSection();showToast('已退出班级');
 });}
 
@@ -6244,9 +6570,8 @@ function openExtraScoreRanking(){
   if(!S.classId){showToast('请先加入班级');return;}
   _esClassId=S.classId;
   _esView='current';
-  const ov=document.getElementById('extra-score-ov');if(!ov)return;
   _esRenderAll();
-  ov.classList.add('on');
+  openOverlay('extra-score-ov');
 }
 
 // 切换视图（当前/历史）
@@ -6263,7 +6588,19 @@ window._esSwitchTab=function(enc){
   _esRenderAll();
 };
 
-// 教师/课代表重置当前周期
+// 教师/课代表清空全部历史记录
+function _esClearAllHistory(){
+  openConfirm('🗑️','清空全部历史记录？\n当前周期和历史积分记录将全部删除，且无法恢复。\n（不影响学生当前积分）',()=>{
+    const classId=_esClassId||S.classId;
+    saveScoreLog(classId,[]);
+    // 同时清空调整记录
+    _saveScoreAdjMap(classId,{});
+    // 重置周期起始
+    localStorage.removeItem('jbfarm_period_start_'+classId);
+    _esRenderAll();
+    showToast('🗑️ 历史记录已全部清空');
+  });
+}
 window._esResetPeriod=function(){
   openConfirm('🔄','重置当前周期？\n当前积分排行将清零重新统计，历史记录仍保留。',()=>{
     setPeriodStart(_esClassId,Date.now());
@@ -6290,6 +6627,8 @@ function _esRenderAll(){
   const isKdl=admins[_esClassId]&&admins[_esClassId].name===S.playerName;
   const resetBtn=document.getElementById('es-reset-btn');
   if(resetBtn)resetBtn.style.display=(_esView==='current'&&(isTeacher||isKdl))?'block':'none';
+  const clearHistBtn=document.getElementById('es-clear-history-btn');
+  if(clearHistBtn)clearHistBtn.style.display=(_esView==='history'&&(isTeacher||isKdl))?'block':'none';
 
   // 周期提示
   const tipEl=document.getElementById('es-period-tip');
@@ -6311,11 +6650,12 @@ function _esRenderAll(){
   const ps=getPeriodStart(_esClassId);
   const viewLog=_esView==='history'?allLog:allLog.filter(e=>!ps||(e.time||0)>=ps);
 
-  // 构建原因分类（加分和减分分别统计）
+  // 构建原因分类（加分和减分分别统计；op:'adjust' 的调整日志只计分，不单独建分类标签）
   const reasonMapAdd={};  // 加分
   const reasonMapSub={};  // 减分
   viewLog.forEach(entry=>{
     if(!entry.reason)return;
+    if(entry.op==='adjust')return; // 调整记录不单独建tab，合并到原条目里展示
     const pts=entry.pts||0;
     if(pts>=0){
       if(!reasonMapAdd[entry.reason])reasonMapAdd[entry.reason]={};
@@ -6349,7 +6689,14 @@ function _esRenderAll(){
   // 如果当前 _esActiveReason 不在新的 reasons 列表里，重置为第一个
   if(!_esActiveReason||!reasons.includes(_esActiveReason))_esActiveReason=reasons[0];
 
-  tabsEl.innerHTML=reasons.map(r=>`<div onclick="_esSwitchTab('${encodeURIComponent(r)}')" style="padding:4px 11px;border-radius:99px;border:1.5px solid ${r===_esActiveReason?'var(--purple)':'var(--border)'};background:${r===_esActiveReason?'var(--purple)':'var(--panel)'};color:${r===_esActiveReason?'#fff':'var(--ink)'};font-size:.68rem;cursor:pointer;white-space:nowrap;font-family:'Noto Sans SC',sans-serif;flex-shrink:0">${r}</div>`).join('');
+  tabsEl.innerHTML=reasons.map(r=>{
+    const aliases=_getReasonAliases(_esClassId);
+    const displayName=aliases[r]||r;
+    const canRename=isTeacher||isKdl;
+    const dblTitle=canRename?' title="双击重命名此标签"':'';
+    const dblClick=canRename?`ondblclick="event.stopPropagation();openReasonRename('${encodeURIComponent(r)}')" `:'';
+    return `<div onclick="_esSwitchTab('${encodeURIComponent(r)}')" ${dblClick}style="display:inline-flex;align-items:center;padding:4px 11px;border-radius:99px;border:1.5px solid ${r===_esActiveReason?'var(--purple)':'var(--border)'};background:${r===_esActiveReason?'var(--purple)':'var(--panel)'};color:${r===_esActiveReason?'#fff':'var(--ink)'};font-size:.68rem;cursor:pointer;white-space:nowrap;font-family:'Noto Sans SC',sans-serif;flex-shrink:0;user-select:none"${dblTitle}>${displayName}</div>`;
+  }).join('');
 
   window._reasonMapAdd_es=reasonMapAdd;
   window._reasonMapSub_es=reasonMapSub;
@@ -6358,23 +6705,48 @@ function _esRenderAll(){
 
 function _esRenderBody(){
   const bodyEl=document.getElementById('extra-score-body');if(!bodyEl)return;
-  const isDeduct=_esActiveReason.startsWith('📉 ');
+  const isDeduct=_esActiveReason.startsWith('\ud83d\udcc9 ');
   const map=isDeduct?(window._reasonMapSub_es||{}):(window._reasonMapAdd_es||{});
   const data=map[_esActiveReason]||{};
   const sorted=Object.entries(data).sort((a,b)=>b[1]-a[1]);
   const prefix=isDeduct?'-':'+';
   const rankColor=isDeduct?'var(--red)':'var(--purple)';
+  const admins=getClassAdmins();
+  const isTeacher=S.isTeacher&&(S.managedClasses||[]).includes(_esClassId);
+  const isKdl=admins[_esClassId]&&admins[_esClassId].name===S.playerName;
+  const canEdit=isTeacher||isKdl;
+  // 读取手动调整记录
+  const adjMap=_getScoreAdjMap(_esClassId);
   if(!sorted.length){bodyEl.innerHTML='<div style="font-size:.74rem;color:var(--muted);padding:12px;text-align:center">该类别暂无记录</div>';return;}
   bodyEl.innerHTML='<div style="display:flex;flex-direction:column;gap:5px">'
     +sorted.map(([name,pts],i)=>{
       const rankStyle=i===0?'background:#ffd700;color:#806000':i===1?'background:#c0c0c0;color:#505050':i===2?'background:#cd7f32;color:#503010':`background:rgba(160,122,208,.12);color:${rankColor}`;
+      // 读取该学生在该原因下的调整列表
+      const adjKey=name+'||'+_esActiveReason;
+      const _adjPs=getPeriodStart(_esClassId);
+      const adjs=(adjMap[adjKey]||[]).filter(a=>_esView!=='current'||!_adjPs||(a.time||0)>=_adjPs);
+      const adjTotal=adjs.reduce((s,a)=>s+(a.delta||0),0);
+      // 分值显示：原始 + 调整标注
+      const baseDisplay=`<span style="color:${rankColor};font-weight:700">${prefix}${pts}</span>`;
+      const adjDisplayParts=adjs.map(a=>{const c=(a.delta||0)>0?'var(--dgreen)':'var(--red)';return `<span style="color:${c};font-size:.68rem">${a.delta>0?'+':''}${a.delta}</span>`;}).join('');
+      const dblAttr=canEdit?`ondblclick="openScoreEntryEdit('${encodeURIComponent(name)}','${encodeURIComponent(_esActiveReason)}')" title="双击调整"`:'';
+      const scoreCell='<div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px;cursor:'+(canEdit?'pointer':'default')+';user-select:none" '+dblAttr+'>'
+        +'<div style="font-size:.75rem">'+baseDisplay+(adjDisplayParts?'<span style="font-size:.62rem;color:var(--muted);margin-left:2px">'+adjDisplayParts+'</span>':'')+('</div>')
+        +(adjTotal!==0?('<div style="font-size:.6rem;color:var(--muted)">实际：'+(pts+adjTotal>=0?prefix:'-')+Math.abs(pts+adjTotal)+'</div>'):'')
+        +'</div>';
       return `<div style="display:flex;align-items:center;gap:9px;padding:8px 10px;background:var(--panel);border-radius:9px;border:1px solid var(--border)">`
         +`<div style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;${rankStyle};flex-shrink:0">${i+1}</div>`
         +`<div style="flex:1;font-size:.78rem;font-weight:500">${name}</div>`
-        +`<div style="font-size:.75rem;color:${rankColor};font-weight:700">${prefix}${pts}</div>`
+        +scoreCell
         +'</div>';
     }).join('')
     +'</div>';
+  if(canEdit){
+    const tip=document.createElement('div');
+    tip.style.cssText='font-size:.62rem;color:var(--muted);text-align:center;padding:6px 0';
+    tip.textContent='💡 双击分值可调整';
+    bodyEl.appendChild(tip);
+  }
 }
 
 // ─── 变化曲线渲染 ─────────────────────────────────────────
@@ -6567,12 +6939,39 @@ function renderClassBrowser(){
 
 function selfSetAsAdmin(enc){
   const cls=decodeURIComponent(enc);
-  openConfirm('👑','将「'+S.playerName+'」设置为「'+cls+'」的班主任？',()=>{
-    const admins=getClassAdmins();
-    admins[cls]={name:S.playerName,id:CURRENT_ACC_ID};
-    saveClassAdmins(admins);
+  openConfirm('👑','将「'+S.playerName+'」设置为「'+cls+'」的班主任？\n\n你将拥有该班级的管理权限（加减积分、设置课代表等）。',()=>{
+    // 1. 升级当前 S（内存状态）
+    S.isTeacher=true;
+    if(!S.managedClasses)S.managedClasses=[];
+    if(!S.managedClasses.includes(cls))S.managedClasses.push(cls);
+    // 2. 把 classData 里已有的该学生记录升级为 isTeacher:true（不新建）
+    const cd=getClassData();
+    if(cd[cls]){
+      const existing=cd[cls].find(m=>m.name===S.playerName);
+      if(existing){
+        existing.isTeacher=true;
+      } else {
+        cd[cls].push({name:S.playerName,score:S.score||0,level:S.level||1,isTeacher:true});
+      }
+      saveClassData(cd);
+    }
+    // 3. 更新 accounts 列表里当前账号
+    const accounts=getAllAccounts();
+    const acc=accounts.find(a=>a.id===CURRENT_ACC_ID);
+    if(acc){
+      acc.isTeacher=true;
+      if(!acc.managedClasses)acc.managedClasses=[];
+      if(!acc.managedClasses.includes(cls))acc.managedClasses.push(cls);
+      saveAllAccounts(accounts);
+    }
+    // 4. 清除班级"无主"状态
+    const meta=getClassMeta();
+    if(meta[cls]){meta[cls].ownerless=false;delete meta[cls].prevTeacher;saveClassMeta(meta);}
+    // 5. 持久化当前 S
+    persistAccount();
     renderClassBrowser();
-    showToast('👑 已成为「'+cls+'」班主任！');
+    updateProfile();
+    showToast('👑 你已成为「'+cls+'」的班主任！');
   });
 }
 
@@ -6678,6 +7077,11 @@ function openClassManage(){
       html+=`<button onclick="openSetAsstAdmin()" style="${btnBase};border:1.5px solid #4a90d9;background:rgba(74,144,217,.06);color:#2060a0">🎖️ 更换课代表</button>`;
     }
     html+=`<button onclick="openAddScorePanel()" style="${btnBase};border:none;background:var(--green);color:#fff">⭐ 给学生调整积分</button>`;
+    const safeC=encodeURIComponent(S.classId).replace(/'/g,"\\'");
+    html+=`<div style="display:flex;gap:6px;margin-bottom:8px">
+      <button onclick="exportClassList('${safeC}')" style="flex:1;padding:7px 6px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--ink);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📤 导出名单</button>
+      <button onclick="exportClassFull('${safeC}')" style="flex:1;padding:7px 6px;border-radius:8px;border:1.5px solid var(--dgreen);background:rgba(90,154,90,.08);color:var(--dgreen);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">📊 完整导出</button>
+    </div>`;
     html+=`<button onclick="teacherDismissClassFromManage()" style="${btnBase};border:1.5px solid var(--red);background:transparent;color:var(--red)">💥 注销班级</button>`;
     html+=`<div style="font-size:.6rem;color:var(--muted);margin-top:-4px;margin-bottom:8px;text-align:center">可选择解散班级或注销所有学生账号</div>`;
   } else if(isKeDaiLong){
@@ -6739,8 +7143,20 @@ function setScoreMode(mode){
   const addBtn=document.getElementById('score-mode-add');
   const subBtn=document.getElementById('score-mode-sub');
   const confirmBtn=document.getElementById('score-confirm-btn');
-  if(addBtn){addBtn.style.background=mode==='add'?'var(--green)':'var(--panel)';addBtn.style.color=mode==='add'?'#fff':'var(--muted)';addBtn.style.fontWeight=mode==='add'?'600':'400';}
-  if(subBtn){subBtn.style.background=mode==='sub'?'var(--red)':'var(--panel)';subBtn.style.color=mode==='sub'?'#fff':'var(--muted)';subBtn.style.fontWeight=mode==='sub'?'600':'400';}
+  if(addBtn){
+    addBtn.style.background=mode==='add'?'var(--green)':'var(--panel)';
+    addBtn.style.color=mode==='add'?'#fff':'var(--muted)';
+    addBtn.style.fontWeight=mode==='add'?'700':'600';
+    addBtn.style.borderColor=mode==='add'?'var(--green)':'var(--border)';
+    addBtn.style.boxShadow=mode==='add'?'0 2px 8px rgba(100,160,100,.25)':'none';
+  }
+  if(subBtn){
+    subBtn.style.background=mode==='sub'?'var(--red)':'var(--panel)';
+    subBtn.style.color=mode==='sub'?'#fff':'var(--muted)';
+    subBtn.style.fontWeight=mode==='sub'?'700':'600';
+    subBtn.style.borderColor=mode==='sub'?'var(--red)':'var(--border)';
+    subBtn.style.boxShadow=mode==='sub'?'0 2px 8px rgba(224,85,85,.25)':'none';
+  }
   if(confirmBtn){confirmBtn.style.background=mode==='add'?'var(--green)':'var(--red)';confirmBtn.textContent=mode==='add'?'✅ 确认给已选学生加分':'📉 确认给已选学生减分';}
   // 快捷分值按钮：加分显示"+"，减分显示"-"
   const sign=mode==='add'?'+':'-';
@@ -7357,9 +7773,25 @@ function saveName(){const v=((document.getElementById('name-input')||{}).value||
 
 // ─── CONFIRM（支持取消回调）────────────────────────
 let confirmCb=null,confirmCancelCb=null;
-function openConfirm(ico,msg,cb,danger=false,cancelCb=null){confirmCb=cb;confirmCancelCb=cancelCb;document.getElementById('confirm-ico').textContent=ico;document.getElementById('confirm-msg').textContent=msg;const yb=document.getElementById('confirm-yes-btn');yb.className='mbtn '+(danger?'mb-danger on':'mb-ok on');openOverlay('confirm-ov');}
-function confirmYes(){closeOverlay('confirm-ov');const c=confirmCb;confirmCb=null;confirmCancelCb=null;if(c)c();}
-function confirmNo(){closeOverlay('confirm-ov');const c=confirmCancelCb;confirmCb=null;confirmCancelCb=null;if(c)c();}
+function openConfirm(ico,msg,cb,danger=false,cancelCb=null,extraHtml=''){
+  confirmCb=cb;
+  confirmCancelCb=(typeof cancelCb==='function')?cancelCb:null;
+  document.getElementById('confirm-ico').textContent=ico;
+  document.getElementById('confirm-msg').textContent=msg;
+  const yb=document.getElementById('confirm-yes-btn');
+  yb.className='mbtn '+(danger?'mb-danger on':'mb-ok on');
+  // ★ 支持 HTML 富内容区域
+  const extra=document.getElementById('confirm-extra-html');
+  if(extra){
+    // cancelCb 可能是 html 字符串（旧调用方式兼容）
+    const html=extraHtml||(typeof cancelCb==='string'?cancelCb:'');
+    extra.innerHTML=html;
+    extra.style.display=html?'block':'none';
+  }
+  openOverlay('confirm-ov');
+}
+function confirmYes(){closeOverlay('confirm-ov');const yb=document.getElementById('confirm-yes-btn');if(yb)yb.style.display='';const c=confirmCb;confirmCb=null;confirmCancelCb=null;if(c)c();}
+function confirmNo(){closeOverlay('confirm-ov');const yb=document.getElementById('confirm-yes-btn');if(yb)yb.style.display='';const c=confirmCancelCb;confirmCb=null;confirmCancelCb=null;if(c)c();}
 
 // ─── RESULT / TOAST ───────────────────────────────
 function showResult(ico,ttl,body){document.getElementById('res-ico').textContent=ico;document.getElementById('res-ttl').textContent=ttl;document.getElementById('res-body').innerHTML=typeof body==='string'?body.replace(/\n/g,'<br>'):body;document.getElementById('res-ov').classList.add('on');}
@@ -8025,34 +8457,90 @@ let _adjCid=null; // 当前正在调整的衣服ID（全局，供reClothAdjPrevi
 let _adjPetImgCache=null;
 let _adjPetImgCacheSrc=null;
 
-function openSystemClothAdjust(overrideCid){
-  const cid=overrideCid||S.equippedCloth||((S.ownedClothes&&S.ownedClothes.length)?S.ownedClothes[0]:null);
-  if(!cid){showToast('请先在衣柜购买并装备一件衣服，再点击调整');return;}
-  _adjCid=cid; // 记录当前正在调整的衣服
+let _adjPreviewAction='idle';
 
+// 构建衣服调整预览的动作选择按钮
+// 根据当前精灵图配置动态生成（有多少变体就显示多少按钮）
+function _buildClothAdjActionBtns(){
+  const container=document.getElementById('cloth-adj-action-btns');
+  if(!container)return;
+  container.innerHTML='';
+  const breed=S.petBreed||'hamster';
+  const lv=S.petLevel||1;
+  if(!window.HamsterAnim||!HamsterAnim.isSpritedStage(breed,lv)){
+    container.style.display='none';return;
+  }
+  container.style.display='flex';
+  const defs=((HamsterAnim.SPRITE_SKINS[breed]||{})[lv]||[]);
+  const defId=defs.length?defs[0].id:(breed==='hamster'?'orange':'default');
+  const skinKey=(S.activePet||'')+'_'+breed+'_'+lv;
+  const skin=(S.petSpriteSkins&&S.petSpriteSkins[skinKey])||defId;
+
+  const ACTION_LABELS={idle:'🐾 待机',eating:'🍎 喂食',bathing:'🛁 洗澡',happy:'🎾 玩耍',sleeping:'💤 休息',studying:'📖 学习'};
+  const allActions=Object.keys(ACTION_LABELS);
+
+  allActions.forEach(function(act){
+    const multi=(_spMultiCache&&_spMultiCache[breed+'/'+lv+'/'+skin+'/'+act])||[];
+    // 主动作按钮
+    _makeClothAdjBtn(container, ACTION_LABELS[act], act, skin, multi.length);
+    // 变体按钮（idle2, eating2 等）
+    for(let vi=1;vi<multi.length;vi++){
+      _makeClothAdjBtn(container, ACTION_LABELS[act].replace(/^../,'')+'·'+( vi+1), act+'_v'+vi, skin, 0, vi, act);
+    }
+  });
+}
+
+function _makeClothAdjBtn(container, label, actionKey, skin, variantCount, variantIdx, baseAction){
+  const btn=document.createElement('button');
+  const isActive=_adjPreviewAction===actionKey;
+  // 有多个变体时：主动作按钮显示「待机·1」，变体按钮显示「待机·2」等，避免混淆
+  btn.textContent=label+(variantCount>1&&!variantIdx?'·1':'');
+  btn.style.cssText='padding:3px 9px;border-radius:14px;border:1.5px solid '
+    +(isActive?'var(--dgreen)':'var(--border)')
+    +';background:'+(isActive?'rgba(80,160,80,.15)':'var(--panel)')
+    +';color:'+(isActive?'var(--dgreen)':'var(--muted)')
+    +';font-size:.6rem;cursor:pointer;font-family:inherit;transition:all .15s';
+  btn.onclick=function(){
+    _adjPreviewAction=actionKey;
+    _adjPreviewVariantIdx=variantIdx||0;
+    _adjPreviewBaseAction=baseAction||actionKey;
+    _buildClothAdjActionBtns(); // 刷新高亮
+    _loadClothAdjForAction(actionKey); // ★ 加载该动作已保存的位置参数
+    reClothAdjPreview();
+  };
+  container.appendChild(btn);
+}
+
+let _adjPreviewVariantIdx=0;
+let _adjPreviewBaseAction='idle';
+
+// ★ 根据当前选中的动作，从存储中加载对应的位置参数到滑块
+// key格式：jbfarm_clothsys_{cid}_{action} 或 jbfarm_clothimg_{cid}_param_{action}
+function _loadClothAdjForAction(actionKey){
+  const cid=_adjCid||S.equippedCloth;
+  if(!cid)return;
   const clothKey='jbfarm_clothimg_'+cid;
-  // 判断是否有自定义衣服图片
   const hasCustomImg=!!_getClothImgDataWithScope(clothKey);
-
-  let sc_val=100, ox_val=0, oy_val=0, rot_val=0;
+  let sc_val=100,ox_val=0,oy_val=0,rot_val=0;
   if(hasCustomImg){
-    // 自定义图：从 _param key 加载（scale已是0-2.0浮点，转成百分比）
-    const raw=localStorage.getItem(clothKey+'_param');
+    // 先找动作专属参数，没有则回退到通用参数
+    const raw=localStorage.getItem(clothKey+'_param_'+actionKey)
+           || localStorage.getItem(clothKey+'_param');
     const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
     sc_val=Math.round((p.scale||0.8)*100);
     ox_val=Math.max(-60,Math.min(60,Math.round(p.offX||0)));
     oy_val=Math.max(-60,Math.min(60,Math.round(p.offY||0)));
     rot_val=Math.round(p.rotation||0);
   } else {
-    // 系统衣服：从 jbfarm_clothsys_ key 加载
-    const raw=localStorage.getItem('jbfarm_clothsys_'+cid);
+    // 先找动作专属参数，没有则回退到通用参数
+    const raw=localStorage.getItem('jbfarm_clothsys_'+cid+'_'+actionKey)
+           || localStorage.getItem('jbfarm_clothsys_'+cid);
     const p=raw?JSON.parse(raw):{offsetX:0,offsetY:0,scale:100,rotation:0};
     sc_val=Math.max(10,Math.min(200,p.scale||100));
     ox_val=Math.max(-60,Math.min(60,p.offsetX||0));
     oy_val=Math.max(-60,Math.min(60,p.offsetY||0));
     rot_val=p.rotation||0;
   }
-
   const sc=document.getElementById('cloth-adj-scale');
   const ox=document.getElementById('cloth-adj-ox');
   const oy=document.getElementById('cloth-adj-oy');
@@ -8061,6 +8549,17 @@ function openSystemClothAdjust(overrideCid){
   if(ox)ox.value=ox_val;
   if(oy)oy.value=oy_val;
   if(rot){rot.value=rot_val;const rv=document.getElementById('cloth-adj-rot-val');if(rv)rv.textContent=rot_val+'°';}
+}
+
+
+function openSystemClothAdjust(overrideCid){
+  const cid=overrideCid||S.equippedCloth||((S.ownedClothes&&S.ownedClothes.length)?S.ownedClothes[0]:null);
+  if(!cid){showToast('请先在衣柜购买并装备一件衣服，再点击调整');return;}
+  _adjCid=cid; // 记录当前正在调整的衣服
+
+  const clothKey='jbfarm_clothimg_'+cid;
+  // 判断是否有自定义衣服图片
+  const hasCustomImg=!!_getClothImgDataWithScope(clothKey);
 
   const cl=window.SHOP_CLOTHES&&SHOP_CLOTHES.find(c=>c.id===cid);
   const adjTtl=document.querySelector('#cloth-adj-ov .mttl');
@@ -8071,7 +8570,14 @@ function openSystemClothAdjust(overrideCid){
   // 清除宠物底图缓存（换了宠物或重新打开时需要重新加载）
   _adjPetImgCache=null;_adjPetImgCacheSrc=null;
   // 修复：先打开弹窗，再刷新预览，防止预览报错导致弹窗永远不弹出
+  _adjPreviewAction='idle'; // 每次打开重置为待机
+  _adjPreviewVariantIdx=0;
+  _adjPreviewBaseAction='idle';
   openOverlay('cloth-adj-ov');
+  // ★ 构建动作预览按钮
+  _buildClothAdjActionBtns();
+  // ★ 加载idle动作的参数（使用统一的加载函数，保证与切换动作行为一致）
+  _loadClothAdjForAction('idle');
   try{reClothAdjPreview();}catch(e){console.warn('cloth adj preview err',e);}
   setTimeout(()=>_initClothAdjDrag(),100);
 }
@@ -8093,9 +8599,10 @@ function _initClothAdjDrag(){
     const t=e.touches?e.touches[0]:e;
     const dx=t.clientX-startX,dy=t.clientY-startY;
     const r=cvs.getBoundingClientRect();
-    // 用CSS显示尺寸换算，避免DPR导致的偏移放大
-    const nox=Math.max(-60,Math.min(60,baseOx+dx*(cvs.offsetWidth/r.width)));
-    const noy=Math.max(-60,Math.min(60,baseOy+dy*(cvs.offsetHeight/r.height)));
+    // ★ 用CSS显示尺寸换算，再除以 _CSCALE（150/180）对齐坐标系
+    const _pixToUnit=(150/cvs.width)*(cvs.offsetWidth/r.width);
+    const nox=Math.max(-60,Math.min(60,baseOx+dx*_pixToUnit));
+    const noy=Math.max(-60,Math.min(60,baseOy+dy*_pixToUnit));
     const oxEl=document.getElementById('cloth-adj-ox'),oyEl=document.getElementById('cloth-adj-oy');
     if(oxEl)oxEl.value=Math.round(nox);
     if(oyEl)oyEl.value=Math.round(noy);
@@ -8124,10 +8631,13 @@ function reClothAdjPreview(){
   const ctx=cvs.getContext('2d');
   const cid=_adjCid||S.equippedCloth||(S.ownedClothes&&S.ownedClothes[0]);
   if(!cid)return;
-  const cx=cvs.width/2, cy=cvs.height/2;
-  // 强制重置变换矩阵，防止异常导致残影
-  ctx.setTransform(1,0,0,1,0,0);
-  ctx.clearRect(0,0,cvs.width,cvs.height);
+  // ★ 关键修复：使用与主画布完全相同的 150px 坐标系 + 比例缩放填满画布
+  // 主画布 petX=75, petY=76，衣服锚点在 (75,75)
+  // 预览画布 180x180，缩放 1.2 倍后，150 单位 = 180 像素，坐标完全对齐
+  const _CSCALE=cvs.width/150; // 180/150=1.2
+  const cx=75, cy=75; // ★ 与主画布 petX/petY 对齐
+  ctx.setTransform(_CSCALE,0,0,_CSCALE,0,0);
+  ctx.clearRect(0,0,150,150);
 
   const sc_pct=parseInt((document.getElementById('cloth-adj-scale')||{}).value||100);
   const ox=parseInt((document.getElementById('cloth-adj-ox')||{}).value||0);
@@ -8143,45 +8653,63 @@ function reClothAdjPreview(){
 
   // 宠物底图绘制
   function _drawPetBase(){
-    if(petImgData){
-      // 修复闪烁：复用已缓存的图片对象，避免每次拖动都触发图片重新decode导致画布闪白
-      if(_adjPetImgCache&&_adjPetImgCacheSrc===petImgData){
-        ctx.setTransform(1,0,0,1,0,0);
-        ctx.clearRect(0,0,cvs.width,cvs.height);
-        const raw=localStorage.getItem(petImgKey+'_param');
-        const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
-        const size=Math.round(150*(p.scale||0.8));
-        const dx=cx+(p.offX||0), dy=cy+(p.offY||0);
-        const rv=(p.rotation||0)*Math.PI/180;
-        if(rv!==0){ctx.save();ctx.translate(dx,dy);ctx.rotate(rv);ctx.drawImage(_adjPetImgCache,-size/2,-size/2,size,size);ctx.restore();}
-        else ctx.drawImage(_adjPetImgCache,dx-size/2,dy-size/2,size,size);
-        _drawClothLayer();
-      } else {
-        const pi=new Image();
-        pi.onload=function(){
-          _adjPetImgCache=pi;
-          _adjPetImgCacheSrc=petImgData;
-          ctx.setTransform(1,0,0,1,0,0);
-          ctx.clearRect(0,0,cvs.width,cvs.height);
-          const raw=localStorage.getItem(petImgKey+'_param');
-          const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
-          // 用150px基准（与主canvas一致）
-          const size=Math.round(150*(p.scale||0.8));
-          const dx=cx+(p.offX||0), dy=cy+(p.offY||0);
-          const rv=(p.rotation||0)*Math.PI/180;
-          if(rv!==0){ctx.save();ctx.translate(dx,dy);ctx.rotate(rv);ctx.drawImage(pi,-size/2,-size/2,size,size);ctx.restore();}
-          else ctx.drawImage(pi,dx-size/2,dy-size/2,size,size);
-          _drawClothLayer();
-        };
-        pi.onerror=function(){if(stage){try{drawPetBreed(ctx,breed,cx,cy,stage);}catch(e){}}_drawClothLayer();};
-        pi.src=petImgData;
-      }
-    } else {
-      if(stage){try{drawPetBreed(ctx,breed,cx,cy,stage);}catch(e){}}
+    function _drawPetImgContain(img){
+      ctx.setTransform(_CSCALE,0,0,_CSCALE,0,0);ctx.clearRect(0,0,150,150);
+      const raw=localStorage.getItem(petImgKey+'_param');
+      const p=raw?JSON.parse(raw):{scale:0.8,offX:0,offY:0,rotation:0};
+      const size=Math.round(150*(p.scale||0.8));
+      const dx=cx+(p.offX||0), dy=cy+(p.offY||0);
+      const rv=(p.rotation||0)*Math.PI/180;
+      // ★ 保持宽高比（contain），防止变瘦变扁
+      const iw=img.naturalWidth||1, ih=img.naturalHeight||1, ar=iw/ih;
+      const dw=ar>=1?size:size*ar, dh=ar>=1?size/ar:size;
+      if(rv!==0){ctx.save();ctx.translate(dx,dy);ctx.rotate(rv);ctx.drawImage(img,-dw/2,-dh/2,dw,dh);ctx.restore();}
+      else ctx.drawImage(img,dx-dw/2,dy-dh/2,dw,dh);
       _drawClothLayer();
     }
+    function _doDrawPetBase(img){
+      ctx.setTransform(_CSCALE,0,0,_CSCALE,0,0);ctx.clearRect(0,0,150,150);
+      if(img){ _drawPetImgContain(img); return; }
+      // 无自定义图 → 尝试精灵图（与主游戏画布保持一致）
+      const _adjLv=(stage&&stage.lv)||S.petLevel||1;
+      if(window.HamsterAnim&&HamsterAnim.isSpritedStage(breed,_adjLv)){
+        const _defs=((HamsterAnim.SPRITE_SKINS[breed]||{})[_adjLv]||[]);
+        const _defId=_defs.length?_defs[0].id:(breed==='hamster'?'orange':'default');
+        const _sk=(S.activePet||'')+'_'+breed+'_'+_adjLv;
+        const _skin=(S.petSpriteSkins&&S.petSpriteSkins[_sk])||_defId;
+        _spLoad(breed,_adjLv,_skin,'idle');
+        const _sImg=_spGet(breed,_adjLv,_skin,'idle');
+        // 根据选中的动作/变体取对应图片
+      const _adjAction=(_adjPreviewBaseAction&&_adjPreviewBaseAction!==_adjPreviewAction)
+        ?_adjPreviewBaseAction:(_adjPreviewAction||'idle');
+      const _adjActClean=_adjAction.replace(/_v\d+$/,''); // 去掉 _v1 _v2 后缀
+      _spLoad(breed,_adjLv,_skin,_adjActClean);
+      const _multiKey=breed+'/'+_adjLv+'/'+_skin+'/'+_adjActClean;
+      const _multi=(_spMultiCache&&_spMultiCache[_multiKey])||[];
+      const _vi=typeof _adjPreviewVariantIdx==='number'?_adjPreviewVariantIdx:0;
+      const _sImgFinal=_multi.length>_vi?_multi[_vi]:(_sImg instanceof Image?_sImg:null);
+      if(_sImgFinal instanceof Image){
+        // ★ 用 cx/cy=75,75 与主画布 petX/petY 对齐
+        const _sz=(S.petDisplaySize||150)*0.68;
+        const _ar=(_sImgFinal.naturalWidth||1)/(_sImgFinal.naturalHeight||1);
+        const _dw=_ar>=1?_sz:_sz*_ar,_dh=_ar>=1?_sz/_ar:_sz;
+        ctx.drawImage(_sImgFinal,cx-_dw/2,cy-_dh/2,_dw,_dh);
+        _drawClothLayer(); return;
+      }
+        // 精灵图加载中 → 等待后重绘
+        setTimeout(function(){ if(window.reClothAdjPreview)reClothAdjPreview(); },150);
+        _drawClothLayer(); return;
+      }
+      // 代码绘制回退
+      if(stage)try{drawPetBreed(ctx,breed,cx,cy,stage);}catch(e){}
+      _drawClothLayer();
+    }
+    if(petImgData){
+      loadCustomPetImg(petImgKey,function(img){ _doDrawPetBase(img); });
+    } else {
+      _doDrawPetBase(null);
+    }
   }
-
   function _drawClothLayer(){
     const clothKey='jbfarm_clothimg_'+cid;
     // 用 _adjCid 对应的衣服key，不要用S.equippedCloth（可能未换上）
@@ -8225,6 +8753,7 @@ function reClothAdjPreview(){
 function confirmClothAdj(){
   const cid=_adjCid||S.equippedCloth||(S.ownedClothes&&S.ownedClothes[0]);
   if(!cid)return;
+  const action=_adjPreviewAction||'idle'; // ★ 当前选中的动作
   const sc_pct=parseInt((document.getElementById('cloth-adj-scale')||{}).value||100);
   const ox=parseInt((document.getElementById('cloth-adj-ox')||{}).value||0);
   const oy=parseInt((document.getElementById('cloth-adj-oy')||{}).value||0);
@@ -8232,22 +8761,25 @@ function confirmClothAdj(){
   const clothKey='jbfarm_clothimg_'+cid;
   const clothData=localStorage.getItem(clothKey)?_getClothImgDataWithScope(clothKey):null;
   if(clothData){
-    // 自定义衣服图：直接以当前滑块值为准（绝对值，不累加）
-    // scale以150px为基准存储（与主canvas一致）
-    localStorage.setItem(clothKey+'_param',JSON.stringify({
-      scale:sc_pct/100,
-      offX:ox,
-      offY:oy,
-      rotation:rot
-    }));
+    const paramObj={scale:sc_pct/100,offX:ox,offY:oy,rotation:rot};
+    // ★ 按动作分别存储，互不干扰
+    localStorage.setItem(clothKey+'_param_'+action,JSON.stringify(paramObj));
+    // 同时更新通用key，供不支持per-action读取的地方（主游戏画布idle）回退使用
+    if(action==='idle'||action==='idle_v0')localStorage.setItem(clothKey+'_param',JSON.stringify(paramObj));
     delete _petImgCache[clothKey];
   } else {
-    // 系统衣服
-    localStorage.setItem('jbfarm_clothsys_'+cid,JSON.stringify({scale:sc_pct,offsetX:ox,offsetY:oy,rotation:rot}));
+    const paramObj={scale:sc_pct,offsetX:ox,offsetY:oy,rotation:rot};
+    // ★ 按动作分别存储
+    localStorage.setItem('jbfarm_clothsys_'+cid+'_'+action,JSON.stringify(paramObj));
+    // idle动作同步更新通用key（供主游戏画布回退）
+    if(action==='idle'||action==='idle_v0')localStorage.setItem('jbfarm_clothsys_'+cid,JSON.stringify(paramObj));
   }
+  // 显示保存了哪个动作
+  const ACTION_LABELS_SAVE={idle:'待机',idle_v0:'待机·1','idle_v1':'待机·2',eating:'喂食',bathing:'洗澡',happy:'玩耍',sleeping:'休息',studying:'学习'};
+  const actionLabel=ACTION_LABELS_SAVE[action]||action;
   closeOverlay('cloth-adj-ov');
   drawPet();
-  showToast('✅ 衣服位置已保存！');
+  showToast('✅ 【'+actionLabel+'】动作的衣服位置已保存！');
 }
 
 function togglePetModelPreview(){
@@ -8648,3 +9180,586 @@ function openLayoutEdit(){toggleLayoutEditMode();}
 function saveLayoutEdit(){}
 
 (function(){setTimeout(()=>{applyLayoutConfig();_initResizeHandles();},300);})();
+
+// ══════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════
+// ★ 功能A：扣分条目编辑 & 撤销（在额外积分排行的扣分tab里）
+// 每个扣分学生旁边显示「✏️」，可改成更少扣分或完全撤销
+// ══════════════════════════════════════════════════════════════
+
+// 打开扣分编辑弹窗
+function openDeductEdit(studentName, rawReason){
+  // rawReason 格式: "📉 背书" 或 "📉 违纪" 等
+  const actualReason=rawReason.replace(/^📉\s*/,'');
+  const classId=_esClassId||S.classId;
+  const log=getScoreLog(classId);
+  // 取该学生在该原因的全部扣分记录（pts < 0）
+  const entries=log.filter(e=>e.name===studentName&&e.reason===actualReason&&(e.pts||0)<0)
+    .sort((a,b)=>(b.time||0)-(a.time||0));
+  if(!entries.length){showToast('未找到该扣分记录');return;}
+  // 计算当前总扣分
+  const totalDeduct=entries.reduce((s,e)=>s+Math.abs(e.pts||0),0);
+
+  let ov=document.getElementById('deduct-edit-ov');
+  if(!ov){
+    ov=document.createElement('div');
+    ov.id='deduct-edit-ov';
+    ov.className='overlay';
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML=`<div class="modal" style="max-height:85vh;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="mttl" style="margin-bottom:0">✏️ 编辑扣分</div>
+      <span onclick="closeOverlay('deduct-edit-ov')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);padding:2px 6px">✕</span>
+    </div>
+    <div style="background:rgba(224,85,85,.07);border-radius:9px;padding:10px 12px;margin-bottom:12px">
+      <div style="font-size:.78rem;font-weight:700;margin-bottom:3px">🎓 ${studentName}</div>
+      <div style="font-size:.7rem;color:var(--muted)">原因：${actualReason} · 累计扣分：-${totalDeduct}分</div>
+    </div>
+    <div style="font-size:.68rem;color:var(--muted);margin-bottom:6px">📋 扣分记录（可逐条操作）</div>
+    <div id="deduct-entry-list" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
+      ${entries.map((e,i)=>{
+        const t=e.time?new Date(e.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+        return `<div style="padding:9px 11px;border-radius:9px;border:1px solid var(--border);background:var(--panel)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:.7rem;color:var(--muted)">${t}</span>
+            <span style="font-size:.76rem;color:var(--red);font-weight:700">${e.pts}分</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span style="font-size:.68rem;color:var(--muted);flex-shrink:0">改为：</span>
+            <input type="number" id="deduct-inp-${i}" value="${Math.abs(e.pts)}" min="0" max="9999"
+              style="width:60px;padding:4px 6px;border-radius:6px;border:1.5px solid var(--border);background:var(--panel);font-size:.8rem;text-align:center;font-family:'Noto Sans SC',sans-serif">
+            <span style="font-size:.68rem;color:var(--muted)">分（0=完全撤销）</span>
+            <button onclick="_applyDeductEdit(${i},'${encodeURIComponent(studentName)}','${encodeURIComponent(actualReason)}','${encodeURIComponent(e.time||'')}',${e.pts})"
+              style="margin-left:auto;padding:4px 11px;border-radius:7px;border:none;background:var(--dgreen);color:#fff;font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;white-space:nowrap">确认</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <button onclick="_undoAllDeductForStudent('${encodeURIComponent(studentName)}','${encodeURIComponent(actualReason)}')"
+      style="width:100%;padding:9px;border-radius:10px;border:1.5px solid var(--red);background:rgba(224,85,85,.06);color:var(--red);font-size:.76rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">
+      ↩️ 将功补过：完全撤销「${studentName}」全部「${actualReason}」扣分
+    </button>
+  </div>`;
+  openOverlay('deduct-edit-ov');
+}
+
+// 确认单条扣分编辑
+window._applyDeductEdit=function(idx,encName,encReason,encTime,originalPts){
+  const studentName=decodeURIComponent(encName);
+  const actualReason=decodeURIComponent(encReason);
+  const origTime=parseInt(decodeURIComponent(encTime))||0;
+  const inp=document.getElementById('deduct-inp-'+idx);
+  if(!inp)return;
+  const newAbs=Math.max(0,parseInt(inp.value)||0);
+  const newPts=-newAbs; // 仍然是负数
+  const diff=newPts-originalPts; // 差值（正数=给学生还分）
+  if(newPts===originalPts){showToast('分值未改变');return;}
+  const classId=_esClassId||S.classId;
+  const log=getScoreLog(classId);
+  // 找到对应的那条记录
+  const entryIdx=log.findIndex(e=>e.name===studentName&&e.reason===actualReason&&e.time===origTime&&e.pts===originalPts);
+  if(entryIdx<0){showToast('记录已不存在，请刷新');return;}
+  const isFullRevoke=(newAbs===0);
+  openConfirm('✏️',
+    isFullRevoke
+      ? `撤销这条扣分记录？\n学生：${studentName} · 原扣 ${Math.abs(originalPts)} 分\n将还给学生 ${Math.abs(originalPts)} 分`
+      : `修改扣分？\n学生：${studentName}\n${Math.abs(originalPts)}分 → ${newAbs}分（还分 ${Math.abs(diff)} 分）`,
+    function(){
+      // 修改日志
+      if(isFullRevoke){
+        log.splice(entryIdx,1); // 删除这条
+      } else {
+        log[entryIdx]={...log[entryIdx],pts:newPts};
+      }
+      saveScoreLog(classId,log);
+      // 同步学生积分（diff > 0 = 归还积分）
+      if(diff!==0){
+        const cd=getClassData();
+        const mem=cd[classId]&&cd[classId].find(m=>m.name===studentName);
+        if(mem){mem.score=(mem.score||0)+(-diff);saveClassData(cd);}
+        const accounts=getAllAccounts();
+        const acc=accounts.find(a=>a.name===studentName&&a.classId===classId);
+        if(acc){
+          acc.score=(acc.score||0)+(-diff);
+          saveAllAccounts(accounts);
+          try{const sv=loadAccSave(acc.id);sv.score=(sv.score||0)+(-diff);localStorage.setItem(getAccKey(acc.id),JSON.stringify(sv));}catch(e){}
+        }
+        updateClassSection();
+      }
+      closeOverlay('deduct-edit-ov');
+      _esRenderAll();
+      showToast(isFullRevoke?`↩️ 已撤销！${studentName} 恢复 ${Math.abs(originalPts)} 分`:`✅ 已修改！${studentName} 归还 ${Math.abs(diff)} 分`);
+    }
+  );
+};
+
+// 将功补过：完全撤销某学生某原因的所有扣分
+window._undoAllDeductForStudent=function(encName,encReason){
+  const studentName=decodeURIComponent(encName);
+  const actualReason=decodeURIComponent(encReason);
+  const classId=_esClassId||S.classId;
+  const log=getScoreLog(classId);
+  const toRemove=log.filter(e=>e.name===studentName&&e.reason===actualReason&&(e.pts||0)<0);
+  const totalRestore=toRemove.reduce((s,e)=>s+Math.abs(e.pts||0),0);
+  if(!totalRestore){showToast('无可撤销的扣分');return;}
+  openConfirm('🌟','将功补过：完全撤销？\n学生：'+studentName+'\n原因：'+actualReason+'\n共还分：+'+totalRestore+'分',function(){
+    const newLog=log.filter(e=>!(e.name===studentName&&e.reason===actualReason&&(e.pts||0)<0));
+    saveScoreLog(classId,newLog);
+    const cd=getClassData();
+    const mem=cd[classId]&&cd[classId].find(m=>m.name===studentName);
+    if(mem){mem.score=(mem.score||0)+totalRestore;saveClassData(cd);}
+    const accounts=getAllAccounts();
+    const acc=accounts.find(a=>a.name===studentName&&a.classId===classId);
+    if(acc){
+      acc.score=(acc.score||0)+totalRestore;
+      saveAllAccounts(accounts);
+      try{const sv=loadAccSave(acc.id);sv.score=(sv.score||0)+totalRestore;localStorage.setItem(getAccKey(acc.id),JSON.stringify(sv));}catch(e){}
+    }
+    closeOverlay('deduct-edit-ov');
+    updateClassSection();
+    _esRenderAll();
+    showToast('🌟 将功补过！'+studentName+' 恢复 '+totalRestore+' 分');
+  },false);
+};
+
+// ══════════════════════════════════════════════════════════════
+// ★ 功能B：额外积分排行 tab 名称自定义（重命名原因标签）
+// 教师/课代表长按 tab 弹出编辑框
+// ══════════════════════════════════════════════════════════════
+
+function _getReasonAliases(classId){
+  try{return JSON.parse(localStorage.getItem('jbfarm_reason_alias_'+(classId||S.classId||''))||'{}');}catch(e){return {};}
+}
+function _saveReasonAliases(classId,aliases){
+  try{localStorage.setItem('jbfarm_reason_alias_'+(classId||S.classId||''),JSON.stringify(aliases));}catch(e){}
+}
+
+function openReasonRename(encReason){
+  const rawReason=decodeURIComponent(encReason);
+  const classId=_esClassId||S.classId;
+  const aliases=_getReasonAliases(classId);
+  const current=aliases[rawReason]||rawReason;
+  let ov=document.getElementById('reason-rename-ov');
+  if(!ov){
+    ov=document.createElement('div');
+    ov.id='reason-rename-ov';
+    ov.className='overlay';
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML=`<div class="modal">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="mttl" style="margin-bottom:0">✏️ 自定义标签名称</div>
+      <span onclick="closeOverlay('reason-rename-ov')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);padding:2px 6px">✕</span>
+    </div>
+    <div style="font-size:.7rem;color:var(--muted);margin-bottom:10px">原始记录名称：<b style="color:var(--ink)">${rawReason}</b><br>自定义名称只影响显示，不改变历史记录。</div>
+    <input class="ci" id="reason-rename-inp" value="${current}" maxlength="20" placeholder="输入显示名称"
+      style="width:100%;margin-bottom:10px;user-select:text">
+    <div style="display:flex;gap:8px">
+      <button onclick="_saveReasonRename('${encReason}')"
+        style="flex:1;padding:9px;border-radius:9px;border:none;background:var(--dgreen);color:#fff;font-size:.8rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">✅ 保存</button>
+      <button onclick="_resetReasonRename('${encReason}')"
+        style="padding:9px 14px;border-radius:9px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:.76rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">↩ 恢复默认</button>
+    </div>
+  </div>`;
+  openOverlay('reason-rename-ov');
+  setTimeout(()=>{const inp=document.getElementById('reason-rename-inp');if(inp)inp.focus();},200);
+}
+window._saveReasonRename=function(encReason){
+  const rawReason=decodeURIComponent(encReason);
+  const inp=document.getElementById('reason-rename-inp');
+  if(!inp)return;
+  const newName=inp.value.trim();
+  if(!newName){showToast('名称不能为空');return;}
+  const classId=_esClassId||S.classId;
+  const aliases=_getReasonAliases(classId);
+  aliases[rawReason]=newName;
+  _saveReasonAliases(classId,aliases);
+  closeOverlay('reason-rename-ov');
+  _esRenderAll();
+  showToast('✅ 标签已改为：'+newName);
+};
+window._resetReasonRename=function(encReason){
+  const rawReason=decodeURIComponent(encReason);
+  const classId=_esClassId||S.classId;
+  const aliases=_getReasonAliases(classId);
+  delete aliases[rawReason];
+  _saveReasonAliases(classId,aliases);
+  closeOverlay('reason-rename-ov');
+  _esRenderAll();
+  showToast('已恢复默认名称');
+};
+
+// ══════════════════════════════════════════════════════════════
+// ★ 功能C：班级完整导出（含积分流水 + 按原因的排行）
+// ══════════════════════════════════════════════════════════════
+function exportClassFull(encodedClassName){
+  const targetClass=decodeURIComponent(encodedClassName||'');
+  if(!targetClass){showToast('未指定班级');return;}
+  const cd=getClassData();
+  const members=cd[targetClass]||[];
+  const students=members.filter(m=>!m.isTeacher);
+  const teachers=members.filter(m=>m.isTeacher);
+  const accounts=getAllAccounts();
+  const log=getScoreLog(targetClass);
+  const admins=getClassAdmins();
+
+  let csv='\ufeff';
+  csv+='学习农场 · '+targetClass+' · 班级完整导出\n';
+  csv+='导出时间,'+new Date().toLocaleString('zh-CN')+'\n\n';
+  csv+='== 学生名单 ==\n';
+  csv+='姓名,等级,积分,密码,是否课代表\n';
+  students.forEach(s=>{
+    const acc=accounts.find(a=>a.name===s.name&&a.classId===targetClass);
+    const isAdm=admins[targetClass]&&admins[targetClass].name===s.name;
+    csv+=`${s.name},${s.level||1},${s.score||0},${(acc||{}).pin||'未设置'},${isAdm?'是':''}\n`;
+  });
+  if(teachers.length){
+    csv+='\n== 教师 ==\n';
+    teachers.forEach(t=>{csv+=t.name+'\n';});
+  }
+
+  // 按原因分类汇总
+  const reasonMapAdd={},reasonMapSub={};
+  log.forEach(e=>{
+    if(!e.reason)return;
+    if((e.pts||0)>=0){
+      if(!reasonMapAdd[e.reason])reasonMapAdd[e.reason]={};
+      reasonMapAdd[e.reason][e.name]=(reasonMapAdd[e.reason][e.name]||0)+e.pts;
+    } else {
+      if(!reasonMapSub[e.reason])reasonMapSub[e.reason]={};
+      reasonMapSub[e.reason][e.name]=(reasonMapSub[e.reason][e.name]||0)+Math.abs(e.pts);
+    }
+  });
+  csv+='\n== 额外积分排行（加分） ==\n';
+  Object.entries(reasonMapAdd).forEach(([r,m])=>{
+    csv+='\n原因：'+r+'\n姓名,累计加分\n';
+    Object.entries(m).sort((a,b)=>b[1]-a[1]).forEach(([n,p])=>csv+=n+',+'+p+'\n');
+  });
+  csv+='\n== 扣分排行 ==\n';
+  Object.entries(reasonMapSub).forEach(([r,m])=>{
+    csv+='\n原因：'+r+'\n姓名,累计扣分\n';
+    Object.entries(m).sort((a,b)=>b[1]-a[1]).forEach(([n,p])=>csv+=n+',-'+p+'\n');
+  });
+  csv+='\n== 积分流水明细 ==\n时间,学生,积分变动,原因\n';
+  [...log].sort((a,b)=>(b.time||0)-(a.time||0)).forEach(e=>{
+    const t=e.time?new Date(e.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+    csv+=t+','+e.name+','+(e.pts>0?'+':'')+e.pts+','+e.reason+'\n';
+  });
+
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=targetClass+'_完整数据_'+new Date().toLocaleDateString('zh-CN').replace(/\//g,'-')+'.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('✅ 已导出「'+targetClass+'」完整数据（'+students.length+'名学生 + 积分记录）');
+}
+
+// ══════════════════════════════════════════════════════════════
+// ★ 功能D：导入存档冲突检测 & 差异对比
+// ══════════════════════════════════════════════════════════════
+let _importData=null,_importConflicts=[],_importFresh=[],_importDecisions={};
+
+function importAllSaves(input){
+  const file=input.files&&input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      if(data.exportType!=='all'||!data.accounts||!data.saves){showToast('❌ 不是全量存档文件！');return;}
+      _importData=data;
+      const existAccounts=getAllAccounts();
+      const conflicts=[],fresh=[];
+      data.accounts.forEach(acc=>{
+        const dup=existAccounts.find(a=>a.name===acc.name&&a.classId===acc.classId);
+        if(dup){conflicts.push({acc,dup,existSave:loadAccSave(dup.id)||{},newSave:data.saves[acc.id]||{}});}
+        else{fresh.push(acc);}
+      });
+      _importConflicts=conflicts;_importFresh=fresh;
+      if(!conflicts.length){_doImportAllSaves();return;}
+      _showImportConflictModal();
+    }catch(err){showToast('❌ 存档解析失败，请确认文件格式');}
+    input.value='';
+  };
+  reader.readAsText(file);
+}
+
+function _showImportConflictModal(){
+  _importDecisions={};
+  _importConflicts.forEach(c=>{_importDecisions[c.acc.id]='keep';});
+  let ov=document.getElementById('import-conflict-ov');
+  if(!ov){ov=document.createElement('div');ov.id='import-conflict-ov';ov.className='overlay';document.body.appendChild(ov);}
+  const conflictHtml=_importConflicts.map(c=>{
+    const es=c.existSave,ns=c.newSave;
+    const diffs=[];
+    if((ns.level||1)!==(es.level||1))diffs.push({k:'等级',old:'Lv.'+(es.level||1),newv:'Lv.'+(ns.level||1),up:(ns.level||1)>(es.level||1)});
+    if((ns.score||0)!==(es.score||0))diffs.push({k:'积分',old:'⭐'+(es.score||0),newv:'⭐'+(ns.score||0),up:(ns.score||0)>(es.score||0)});
+    if((ns.coins||0)!==(es.coins||0))diffs.push({k:'金币',old:'🪙'+(es.coins||0),newv:'🪙'+(ns.coins||0),up:(ns.coins||0)>(es.coins||0)});
+    if((ns.totalCorrect||0)!==(es.totalCorrect||0))diffs.push({k:'答对',old:(es.totalCorrect||0)+'题',newv:(ns.totalCorrect||0)+'题',up:(ns.totalCorrect||0)>(es.totalCorrect||0)});
+    const diffHtml=diffs.length
+      ?diffs.map(d=>`<span style="font-size:.65rem;background:rgba(0,0,0,.04);border-radius:5px;padding:2px 7px;white-space:nowrap">${d.k}：${d.old}→<b style="color:${d.up?'var(--dgreen)':'var(--red)'}">${d.newv}${d.up?'↑':'↓'}</b></span>`).join(' ')
+      :'<span style="font-size:.65rem;color:var(--muted)">数据相同</span>';
+    return `<div id="icc-${c.acc.id}" style="border:2px solid var(--dgreen);border-radius:11px;padding:9px 11px;margin-bottom:7px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+        <span style="font-size:.78rem;font-weight:700;flex:1">${c.acc.name}<span style="font-size:.62rem;color:var(--muted);font-weight:400"> · ${c.acc.classId||''}</span></span>
+        <button onclick="window._setImpDecision('${c.acc.id}','keep')" id="icc-keep-${c.acc.id}" style="padding:3px 8px;border-radius:6px;border:2px solid var(--dgreen);background:var(--dgreen);color:#fff;font-size:.62rem;cursor:pointer;font-family:inherit">保留</button>
+        <button onclick="window._setImpDecision('${c.acc.id}','overwrite')" id="icc-ow-${c.acc.id}" style="padding:3px 8px;border-radius:6px;border:2px solid var(--border);background:transparent;color:var(--muted);font-size:.62rem;cursor:pointer;font-family:inherit">覆盖</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">${diffHtml}</div>
+    </div>`;
+  }).join('');
+  ov.innerHTML=`<div class="modal" style="max-height:90vh;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div class="mttl" style="margin-bottom:0">📥 导入存档 · 冲突处理</div>
+      <span onclick="closeOverlay('import-conflict-ov')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);padding:2px 6px">✕</span>
+    </div>
+    <div style="font-size:.68rem;color:var(--muted);background:rgba(232,160,32,.1);border-radius:8px;padding:8px 10px;margin-bottom:8px;line-height:1.6">
+      发现 <b style="color:var(--ink)">${_importConflicts.length}</b> 个账号与本设备重叠，另有 <b style="color:var(--dgreen)">${_importFresh.length}</b> 个全新账号直接导入。<br>
+      绿色↑更优，红色↓更差。请为每个账号选择「保留」或「覆盖」。
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button onclick="window._setAllImpDecision('keep')" style="flex:1;padding:6px;border-radius:8px;border:2px solid var(--dgreen);color:var(--dgreen);background:transparent;font-size:.7rem;cursor:pointer;font-family:inherit;font-weight:600">↩ 全部保留</button>
+      <button onclick="window._setAllImpDecision('overwrite')" style="flex:1;padding:6px;border-radius:8px;border:2px solid var(--red);color:var(--red);background:transparent;font-size:.7rem;cursor:pointer;font-family:inherit;font-weight:600">⬇ 全部覆盖</button>
+    </div>
+    <div style="flex:1;overflow-y:auto">${conflictHtml}</div>
+    <button onclick="_doImportAllSaves()" style="margin-top:10px;width:100%;padding:10px;border-radius:10px;border:none;background:var(--dgreen);color:#fff;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Noto Sans SC',sans-serif">✅ 确认导入</button>
+  </div>`;
+  openOverlay('import-conflict-ov');
+}
+window._setImpDecision=function(id,dec){
+  _importDecisions[id]=dec;
+  const keep=document.getElementById('icc-keep-'+id);
+  const ow=document.getElementById('icc-ow-'+id);
+  const card=document.getElementById('icc-'+id);
+  if(dec==='keep'){
+    if(keep){keep.style.background='var(--dgreen)';keep.style.color='#fff';keep.style.borderColor='var(--dgreen)';}
+    if(ow){ow.style.background='transparent';ow.style.color='var(--muted)';ow.style.borderColor='var(--border)';}
+    if(card)card.style.borderColor='var(--dgreen)';
+  }else{
+    if(ow){ow.style.background='var(--red)';ow.style.color='#fff';ow.style.borderColor='var(--red)';}
+    if(keep){keep.style.background='transparent';keep.style.color='var(--muted)';keep.style.borderColor='var(--border)';}
+    if(card)card.style.borderColor='var(--red)';
+  }
+};
+window._setAllImpDecision=function(dec){
+  _importConflicts.forEach(c=>{window._setImpDecision(c.acc.id,dec);});
+};
+function _doImportAllSaves(){
+  closeOverlay('import-conflict-ov');
+  if(!_importData)return;
+  const existAccounts=getAllAccounts();
+  let added=0,overwritten=0,kept=0;
+  _importConflicts.forEach(c=>{
+    if((_importDecisions[c.acc.id]||'keep')==='overwrite'){
+      const idx=existAccounts.findIndex(a=>a.id===c.dup.id);
+      if(idx>=0){
+        existAccounts[idx]={...c.acc,id:c.dup.id};
+        const sv=_importData.saves[c.acc.id];
+        if(sv)localStorage.setItem(getAccKey(c.dup.id),JSON.stringify(sv));
+      }
+      overwritten++;
+    }else{kept++;}
+  });
+  _importFresh.forEach(acc=>{
+    const newId='acc_imp_'+Date.now()+'_'+Math.random().toString(36).slice(2,5);
+    existAccounts.push({...acc,id:newId});
+    const sv=_importData.saves[acc.id];
+    if(sv)localStorage.setItem(getAccKey(newId),JSON.stringify(sv));
+    added++;
+  });
+  saveAllAccounts(existAccounts);
+  if(_importData.classData){
+    const curCd=getClassData();
+    Object.entries(_importData.classData).forEach(([cls,members])=>{
+      if(!curCd[cls])curCd[cls]=[];
+      members.forEach(m=>{
+        const ex=curCd[cls].find(x=>x.name===m.name);
+        if(!ex)curCd[cls].push(m);
+        else{
+          const mc=_importConflicts.find(c=>c.acc.name===m.name&&c.acc.classId===cls);
+          if(mc&&_importDecisions[mc.acc.id]==='overwrite')Object.assign(ex,m);
+        }
+      });
+    });
+    saveClassData(curCd);
+  }
+  renderLoginScreen();
+  const parts=[];
+  if(added)parts.push('新增'+added+'个账号');
+  if(overwritten)parts.push('覆盖更新'+overwritten+'个');
+  if(kept)parts.push('保留原有'+kept+'个');
+  showToast('✅ 导入完成！'+parts.join('，'));
+  _importData=null;
+}
+
+// ══════════════════════════════════════════════════════════════
+// ★ 积分条目双击调整 — 支持加分/减分/删除，显示调整历史
+// ══════════════════════════════════════════════════════════════
+
+function _getScoreAdjMap(classId){
+  try{return JSON.parse(localStorage.getItem('jbfarm_score_adj_'+(classId||S.classId||''))||'{}');}catch(e){return {};}
+}
+function _saveScoreAdjMap(classId,map){
+  try{localStorage.setItem('jbfarm_score_adj_'+(classId||S.classId||''),JSON.stringify(map));}catch(e){}
+}
+
+function openScoreEntryEdit(encName,encReason){
+  const name=decodeURIComponent(encName);
+  const reason=decodeURIComponent(encReason);
+  const classId=_esClassId||S.classId;
+  const isDeduct=reason.startsWith('📉 ');
+  const actualReason=isDeduct?reason.replace(/^📉\s*/,''):reason;
+  const prefix=isDeduct?'-':'+';
+  const color=isDeduct?'var(--red)':'var(--purple)';
+
+  // 原始总计
+  const map=isDeduct?(window._reasonMapSub_es||{}):(window._reasonMapAdd_es||{});
+  const baseTotal=(map[reason]||{})[name]||0;
+
+  // 已有的调整记录（仅显示当前周期内的调整）
+  const adjMap=_getScoreAdjMap(classId);
+  const adjKey=name+'||'+reason;
+  const _editPs=getPeriodStart(classId);
+  const adjs=(adjMap[adjKey]||[]).filter(a=>!_editPs||(a.time||0)>=_editPs);
+
+  let ov=document.getElementById('score-entry-edit-ov');
+  if(!ov){ov=document.createElement('div');ov.id='score-entry-edit-ov';ov.className='overlay';document.body.appendChild(ov);}
+
+  const adjHistHtml=adjs.length
+    ?'<div style="font-size:.66rem;color:var(--muted);margin-bottom:6px">已有调整：</div>'
+      +adjs.map((a,i)=>{
+        const dc=a.delta>0?'var(--dgreen)':'var(--red)';
+        const dt=a.time?new Date(a.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+        return '<div style="display:flex;align-items:center;gap:6px;font-size:.7rem;padding:4px 8px;background:rgba(0,0,0,.04);border-radius:6px;margin-bottom:3px">'
+          +'<span style="flex:1;color:'+dc+';font-weight:600">'+(a.delta>0?'+':'')+a.delta+'分</span>'
+          +'<span style="color:var(--muted)">'+dt+'</span>'
+          +'<button onclick="window._delScoreAdj(\''+encodeURIComponent(adjKey)+'\','+i+')" style="padding:2px 8px;border-radius:5px;border:1.5px solid var(--border);background:transparent;color:var(--red);font-size:.6rem;cursor:pointer;font-family:inherit">删除</button>'
+          +'</div>';
+      }).join('')
+    :'<div style="font-size:.66rem;color:var(--muted);margin-bottom:6px">暂无调整记录</div>';
+
+  ov.innerHTML=`<div class="modal">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="mttl" style="margin-bottom:0">✏️ 调整积分条目</div>
+      <span onclick="closeOverlay('score-entry-edit-ov')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);padding:2px 6px">✕</span>
+    </div>
+    <div style="background:rgba(0,0,0,.04);border-radius:9px;padding:10px 12px;margin-bottom:12px">
+      <div style="font-size:.8rem;font-weight:700;margin-bottom:2px">🎓 ${name}</div>
+      <div style="font-size:.7rem;color:var(--muted)">原因：${actualReason}</div>
+      <div style="font-size:.72rem;margin-top:4px">当前记录总计：<span style="color:${color};font-weight:700">${prefix}${baseTotal}</span></div>
+    </div>
+    <div id="score-adj-hist">${adjHistHtml}</div>
+    <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:6px">
+      <div style="font-size:.7rem;color:var(--muted);margin-bottom:7px">新增调整：<span style="font-size:.62rem">（正数=增加积分，负数=扣减积分）</span></div>
+      <div style="display:flex;gap:5px;align-items:center;margin-bottom:7px">
+        <div style="display:flex;border:1.5px solid var(--border);border-radius:8px;overflow:hidden;flex-shrink:0">
+          <div id="sadj-sign-pos" onclick="window._setAdjSign(1)" style="padding:5px 11px;font-size:.82rem;font-weight:700;cursor:pointer;background:var(--dgreen);color:#fff;transition:all .15s">＋</div>
+          <div id="sadj-sign-neg" onclick="window._setAdjSign(-1)" style="padding:5px 11px;font-size:.82rem;font-weight:700;cursor:pointer;background:var(--panel);color:var(--muted);transition:all .15s">－</div>
+        </div>
+        <button onclick="window._setAdjPreset(5)" style="padding:5px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--dgreen)">5</button>
+        <button onclick="window._setAdjPreset(10)" style="padding:5px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--dgreen)">10</button>
+        <button onclick="window._setAdjPreset(20)" style="padding:5px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;color:var(--dgreen)">20</button>
+        <input type="number" id="score-adj-inp" placeholder="自定义" style="flex:1;min-width:60px;padding:7px 8px;border-radius:8px;border:1.5px solid var(--border);background:var(--panel);font-size:.82rem;font-family:'Noto Sans SC',sans-serif;user-select:text">
+        <button onclick="window._applyScoreAdj('${encodeURIComponent(adjKey)}','${encodeURIComponent(name)}','${encodeURIComponent(actualReason)}',${isDeduct?1:0})"
+          style="padding:8px 14px;border-radius:8px;border:none;background:var(--dgreen);color:#fff;font-size:.78rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;white-space:nowrap;flex-shrink:0">确认</button>
+      </div>
+    </div>
+  </div>`;
+  openOverlay('score-entry-edit-ov');
+  setTimeout(()=>{
+    const inp=document.getElementById('score-adj-inp');if(inp)inp.focus();
+    // 初始化正负号状态
+    window._adjSign=1;
+  },200);
+}
+
+// 正负号切换
+window._setAdjSign=function(s){
+  window._adjSign=s;
+  const pos=document.getElementById('sadj-sign-pos');
+  const neg=document.getElementById('sadj-sign-neg');
+  if(pos){pos.style.background=s>0?'var(--dgreen)':'var(--panel)';pos.style.color=s>0?'#fff':'var(--muted)';}
+  if(neg){neg.style.background=s<0?'var(--red)':'var(--panel)';neg.style.color=s<0?'#fff':'var(--muted)';}
+  // 同步更新输入框里已有的数值
+  const inp=document.getElementById('score-adj-inp');
+  if(inp&&inp.value&&!isNaN(parseInt(inp.value))){
+    inp.value=Math.abs(parseInt(inp.value))*s;
+  }
+};
+// 快捷数值按钮
+window._setAdjPreset=function(v){
+  const inp=document.getElementById('score-adj-inp');
+  if(inp)inp.value=(window._adjSign||1)*v;
+};
+
+window._applyScoreAdj=function(encKey,encName,encActualReason,isDeductFlag){
+  const adjKey=decodeURIComponent(encKey);
+  const studentName=decodeURIComponent(encName);
+  const actualReason=decodeURIComponent(encActualReason);
+  const inp=document.getElementById('score-adj-inp');if(!inp)return;
+  const delta=parseInt(inp.value);
+  if(isNaN(delta)||delta===0){showToast('请输入有效数值（非零）');return;}
+  const classId=_esClassId||S.classId;
+  const adjMap=_getScoreAdjMap(classId);
+  if(!adjMap[adjKey])adjMap[adjKey]=[];
+  adjMap[adjKey].push({delta,time:Date.now()});
+  _saveScoreAdjMap(classId,adjMap);
+  // 同步学生实际积分（给分：delta > 0 时归还，delta < 0 时再扣）
+  // isDeductFlag=1 表示这是扣分条目，delta>0 是归还
+  // 正数=增加积分，负数=扣减积分，与正负号含义一致，不再区分条目类型
+  const scoreChange=delta;
+  const cd=getClassData();
+  const mem=cd[classId]&&cd[classId].find(m=>m.name===studentName);
+  if(mem){mem.score=Math.max(0,(mem.score||0)+scoreChange);saveClassData(cd);}
+  const accounts=getAllAccounts();
+  const acc=accounts.find(a=>a.name===studentName&&a.classId===classId);
+  if(acc){
+    acc.score=Math.max(0,(acc.score||0)+scoreChange);saveAllAccounts(accounts);
+    try{const sv=loadAccSave(acc.id);sv.score=Math.max(0,(sv.score||0)+scoreChange);localStorage.setItem(getAccKey(acc.id),JSON.stringify(sv));}catch(e){}
+  }
+  // 也把调整写入日志（方便导出时看到）
+  const log=getScoreLog(classId);
+  const adjLabel=actualReason+'（调整）';
+  log.push({name:studentName,pts:scoreChange,reason:adjLabel,time:Date.now(),op:'adjust'});
+  if(log.length>2000)log.splice(0,log.length-2000);
+  saveScoreLog(classId,log);
+  closeOverlay('score-entry-edit-ov');
+  _esRenderAll();
+  updateClassSection();
+  showToast(`✅ 已为「${studentName}」调整 ${delta>0?'+':''}${delta}，实际积分变动 ${scoreChange>0?'+':''}${scoreChange}`);
+};
+
+window._delScoreAdj=function(encKey,idx){
+  const adjKey=decodeURIComponent(encKey);
+  const classId=_esClassId||S.classId;
+  const adjMap=_getScoreAdjMap(classId);
+  if(!adjMap[adjKey]||!adjMap[adjKey][idx])return;
+  const adj=adjMap[adjKey][idx];
+  openConfirm('🗑️','删除此调整记录？\n分值：'+(adj.delta>0?'+':'')+adj.delta+'分\n\n注意：学生实际积分也会反向恢复。',function(){
+    // 反向恢复积分
+    const parts=adjKey.split('||');
+    const studentName=parts[0];
+    const reason=parts.slice(1).join('||');
+    const isDeduct=reason.startsWith('📉 ');
+    const scoreChange=isDeduct?-adj.delta:adj.delta;
+    const cd=getClassData();
+    const mem=cd[classId]&&cd[classId].find(m=>m.name===studentName);
+    if(mem){mem.score=Math.max(0,(mem.score||0)-scoreChange);saveClassData(cd);}
+    const accounts=getAllAccounts();
+    const acc=accounts.find(a=>a.name===studentName&&a.classId===classId);
+    if(acc){
+      acc.score=Math.max(0,(acc.score||0)-scoreChange);saveAllAccounts(accounts);
+      try{const sv=loadAccSave(acc.id);sv.score=Math.max(0,(sv.score||0)-scoreChange);localStorage.setItem(getAccKey(acc.id),JSON.stringify(sv));}catch(e){}
+    }
+    adjMap[adjKey].splice(idx,1);
+    if(!adjMap[adjKey].length)delete adjMap[adjKey];
+    _saveScoreAdjMap(classId,adjMap);
+    closeOverlay('score-entry-edit-ov');
+    _esRenderAll();
+    updateClassSection();
+    showToast('↩️ 已删除调整，积分已恢复');
+  });
+};

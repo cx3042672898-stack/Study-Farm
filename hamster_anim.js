@@ -8,40 +8,46 @@
 
   /* ─────────────────────────────────────────
      精灵阶段定义：哪些品种的哪些阶段使用精灵图
-     格式: { breed: [lv, lv, ...] }
+     ★ 优先从 pet_config.js（window.PET_CONFIG）读取，
+       这样只需修改 pet_config.js 即可，无需动这里。
   ───────────────────────────────────────── */
-  var SPRITE_STAGES = { hamster: [2, 3], claude: [1, 2, 3, 4, 5] };
+  var SPRITE_STAGES = (window.PET_CONFIG && window.PET_CONFIG.SPRITE_STAGES)
+    ? window.PET_CONFIG.SPRITE_STAGES
+    : { hamster: [2, 3], claude: [1, 2, 3, 4, 5] };
 
   /* ─────────────────────────────────────────
      皮肤数据
+     ★ 同上，优先从 pet_config.js 读取。
      图片路径规范：assets/{breed}/stage{lv}/{skinId}/{action}.jpg
      动作文件名：idle / eating / bathing / happy / sleeping / studying
      （所有图片均为 .jpg，studying 也用 .jpg）
      若某动作图片不存在，自动回退到 idle.jpg
   ───────────────────────────────────────── */
-  var SPRITE_SKINS = {
-    hamster: {
-      2: [
-        { id: 'orange', name: '橙棕色',   price: 0,  desc: '温暖橙棕，默认配色' },
-        { id: 'white',  name: '雪白色',   price: 30, desc: '纯洁雪白，清新可爱' },
-        { id: 'grey',   name: '银灰色',   price: 30, desc: '高雅银灰，低调百搭' },
-        { id: 'purple', name: '薰衣草紫', price: 30, desc: '梦幻淡紫，甜美浪漫' },
-        { id: 'black',  name: '墨黑色',   price: 30, desc: '神秘深黑，独特帅气' }
-      ],
-      3: [
-        { id: 'orange', name: '骑士橙',   price: 0,  desc: '默认骑士配色' },
-        { id: 'silver', name: '银甲色',   price: 50, desc: '闪亮银色铠甲' },
-        { id: 'gold',   name: '黄金骑士', price: 80, desc: '传说黄金骑士' }
-      ]
-    },
-    claude: {
-      1: [{ id: 'default', name: '默认形象', price: 0, desc: '刚启动的小Claude' }],
-      2: [{ id: 'default', name: '默认形象', price: 0, desc: 'Claude助手形态' }],
-      3: [{ id: 'default', name: '默认形象', price: 0, desc: 'Claude学者形态' }],
-      4: [{ id: 'default', name: '默认形象', price: 0, desc: 'Claude大师形态' }],
-      5: [{ id: 'default', name: '默认形象', price: 0, desc: 'Claude神明形态' }]
-    }
-  };
+  var SPRITE_SKINS = (window.PET_CONFIG && window.PET_CONFIG.SPRITE_SKINS)
+    ? window.PET_CONFIG.SPRITE_SKINS
+    : {
+        hamster: {
+          2: [
+            { id: 'orange', name: '橙棕色',   price: 0,  desc: '温暖橙棕，默认配色' },
+            { id: 'white',  name: '雪白色',   price: 30, desc: '纯洁雪白，清新可爱' },
+            { id: 'grey',   name: '银灰色',   price: 30, desc: '高雅银灰，低调百搭' },
+            { id: 'purple', name: '薰衣草紫', price: 30, desc: '梦幻淡紫，甜美浪漫' },
+            { id: 'black',  name: '墨黑色',   price: 30, desc: '神秘深黑，独特帅气' }
+          ],
+          3: [
+            { id: 'orange', name: '骑士橙',   price: 0,  desc: '默认骑士配色' },
+            { id: 'silver', name: '银甲色',   price: 50, desc: '闪亮银色铠甲' },
+            { id: 'gold',   name: '黄金骑士', price: 80, desc: '传说黄金骑士' }
+          ]
+        },
+        claude: {
+          1: [{ id: 'default', name: '默认形象', price: 0, desc: '刚启动的小Claude' }],
+          2: [{ id: 'default', name: '默认形象', price: 0, desc: 'Claude助手形态' }],
+          3: [{ id: 'default', name: '默认形象', price: 0, desc: 'Claude学者形态' }],
+          4: [{ id: 'default', name: '默认形象', price: 0, desc: 'Claude大师形态' }],
+          5: [{ id: 'default', name: '默认形象', price: 0, desc: 'Claude神明形态' }]
+        }
+      };
 
   /* ─────────────────────────────────────────
      文件名回退映射
@@ -167,11 +173,19 @@
      当前激活皮肤 key
   ───────────────────────────────────────── */
   function getActiveSkin(breed, lv) {
-    if (!window.S || !S.activePet) return 'orange';
+    // 每个品种的默认皮肤：取该品种该阶段皮肤列表的第一个（price:0），
+    // 若未配置则 hamster 用 'orange'，其余用 'default'
+    var defSkinId = 'default';
+    if (SPRITE_SKINS[breed] && SPRITE_SKINS[breed][lv] && SPRITE_SKINS[breed][lv][0]) {
+      defSkinId = SPRITE_SKINS[breed][lv][0].id;
+    } else if (breed === 'hamster') {
+      defSkinId = 'orange';
+    }
+    if (!window.S || !S.activePet) return defSkinId;
     var skins = S.petSpriteSkins;
-    if (!skins) return 'orange';
+    if (!skins) return defSkinId;
     var key = skins[S.activePet + '_' + breed + '_' + lv];
-    return key || 'orange';
+    return key || defSkinId;
   }
 
   /* ─────────────────────────────────────────
@@ -396,6 +410,8 @@
     preload:         preload,
     preloadSkin:     preloadSkin,
     isSpritedStage:  isSpritedStage,
+    _spLoad:         preloadSkin,       // exposed for drawPetBreed fallthrough
+    _spGet:          getCachedImg,      // synchronous sprite lookup
     getActiveSkin:   getActiveSkin,
     getCachedImg:    getCachedImg,
     setAction:       setAction,

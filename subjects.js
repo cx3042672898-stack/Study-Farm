@@ -22,28 +22,37 @@ window.SUBJECTS = [
     desc:'词汇·语法·旅行场景·文化礼仪', qbKey: 'QB_ENGLISH' },
 ];
 
-window.SUBJECT_MODULES = {
-
-  // ════════════════════════════════════════════════════════
   //  教师
-  // ════════════════════════════════════════════════════════
+window.SUBJECT_MODULES = {
   'teacher': {
     groups: [
       { label:'📚 教育学', modules:[
-        { id:'te_edu_b1', label:'教育本质·起源·历史',            qbKey:'QB_TE_EDU_B1' },
-        { id:'te_edu_b2', label:'教育基本规律（与社会·个体发展）',qbKey:'QB_TE_EDU_B2' },
-        { id:'te_edu_b3', label:'教育目的与课程论',               qbKey:'QB_TE_EDU_B3' },
-        { id:'te_edu_b4', label:'教学论（原则·方法·组织形式）',  qbKey:'QB_TE_EDU_B4' },
-        { id:'te_edu_b5', label:'德育论·班主任·班级管理',        qbKey:'QB_TE_EDU_B5' },
+        { id:'te_edu_b1', label:'教育与教育学', qbKey:'QB_TE_EDU_B1' },
+		{ id:'te_edu_b2', label:'教育与个体发展', qbKey:'QB_TE_EDU_B2' },
+		{ id:'te_edu_b3', label:'教育与社会发展', qbKey:'QB_TE_EDU_B3' },
+		{ id:'te_edu_b4', label:'教育目的', qbKey:'QB_TE_EDU_B4' },
+		{ id:'te_edu_b5', label:'教育制度', qbKey:'QB_TE_EDU_B5' },
+		{ id:'te_edu_b6', label:'学生与教师', qbKey:'QB_TE_EDU_B6' },
+		{ id:'te_edu_b7', label:'课程', qbKey:'QB_TE_EDU_B7' },
+		{ id:'te_edu_b8', label:'教学', qbKey:'QB_TE_EDU_B8' },
+		{ id:'te_edu_b9', label:'德育', qbKey:'QB_TE_EDU_B9' },
+		{ id:'te_edu_b10', label:'学校、班级管理与班主任工作', qbKey:'QB_TE_EDU_B10' },
+		{ id:'te_edu_b11', label:'教育研究', qbKey:'QB_TE_EDU_B11' },
       ]},
-      { label:'📚 普通心理学', modules:[
-        { id:'te_gpsy_b1', label:'认知过程（感知觉·记忆·思维·语言）',qbKey:'QB_TE_GPSY_B1' },
-        { id:'te_gpsy_b2', label:'情感·意志·个性（人格·能力）',      qbKey:'QB_TE_GPSY_B2' },
+    { label:'📚 普通心理学', modules:[
+	    { id:'te_gpsy_b1', label:'心理学概述',qbKey:'QB_TE_GPSY_B1' },
+	    { id:'te_gpsy_b2', label:'认知发展（感知觉·记忆·思维·语言）',qbKey:'QB_TE_GPSY_B2' },
+	    { id:'te_gpsy_b3', label:'情绪情感意志的发展',qbKey:'QB_TE_GPSY_B3' },
+	    { id:'te_gpsy_b4', label:'个性心理',qbKey:'QB_TE_GPSY_B4' },
+	    { id:'te_gpsy_b5', label:'社会心理学',qbKey:'QB_TE_GPSY_B5' },
       ]},
       { label:'📚 教育心理学', modules:[
-        { id:'te_epsy_b1', label:'学习理论（行为·认知·建构·人本）', qbKey:'QB_TE_EPSY_B1' },
-        { id:'te_epsy_b2', label:'学习心理（动机·迁移·学习策略）',  qbKey:'QB_TE_EPSY_B2' },
-        { id:'te_epsy_b3', label:'教学与评价心理',                   qbKey:'QB_TE_EPSY_B3' },
+        { id:'te_epsy_b1', label:'教育心理学概述', qbKey:'QB_TE_EPSY_B1' },
+        { id:'te_epsy_b2', label:'学生心理',  qbKey:'QB_TE_EPSY_B2' },
+        { id:'te_epsy_b3', label:'学习与学习理论',  qbKey:'QB_TE_EPSY_B3' },
+        { id:'te_epsy_b4', label:'学习心理',  qbKey:'QB_TE_EPSY_B4' },  
+        { id:'te_epsy_b5', label:'教师心理',  qbKey:'QB_TE_EPSY_B5' },  
+        { id:'te_epsy_b6', label:'教学心理',  qbKey:'QB_TE_EPSY_B6' },
       ]},
       { label:'📚 小三门', modules:[
         { id:'te_s3_b1', label:'新课程改革（课程论）', qbKey:'QB_TE_S3_B1' },

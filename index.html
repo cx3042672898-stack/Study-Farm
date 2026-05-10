@@ -161,8 +161,8 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
   .cttl{font-size:.95rem}
   .qtxt{font-size:.94rem}
   .opt{font-size:.86rem;padding:8px 11px}
-  /* 宠物画布桌面放大 */
-  #pet-canvas{width:180px!important;height:180px!important}
+  /* 宠物画布桌面初始大小（JS setPetDisplaySize 会动态覆盖，不用 !important） */
+  #pet-canvas{width:180px;height:180px}
   /* 缩放按钮显示 */
   #zoom-ctrl{display:flex!important}
 }
@@ -903,9 +903,9 @@ body[data-theme="custom"]{
       <span onclick="document.getElementById('add-score-ov').classList.remove('on')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);line-height:1;padding:2px 6px">✕</span>
     </div>
     <!-- 加减分切换 -->
-    <div style="display:flex;border:1.5px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:10px">
-      <div id="score-mode-add" onclick="setScoreMode('add')" style="flex:1;text-align:center;padding:7px;font-size:.78rem;cursor:pointer;background:var(--green);color:#fff;font-weight:600">⭐ 加分</div>
-      <div id="score-mode-sub" onclick="setScoreMode('sub')" style="flex:1;text-align:center;padding:7px;font-size:.78rem;cursor:pointer;background:var(--panel);color:var(--muted)">📉 减分</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <div id="score-mode-add" onclick="setScoreMode('add')" style="flex:1;text-align:center;padding:11px 8px;font-size:.88rem;cursor:pointer;background:var(--green);color:#fff;font-weight:700;border-radius:10px;border:2px solid var(--green);box-shadow:0 2px 8px rgba(100,160,100,.25);transition:all .18s;letter-spacing:.02em">⭐ 加分</div>
+      <div id="score-mode-sub" onclick="setScoreMode('sub')" style="flex:1;text-align:center;padding:11px 8px;font-size:.88rem;cursor:pointer;background:var(--panel);color:var(--muted);font-weight:600;border-radius:10px;border:2px solid var(--border);transition:all .18s;letter-spacing:.02em">📉 减分</div>
     </div>
     <!-- 分值 + 原因 -->
     <div style="margin-bottom:6px">
@@ -1094,11 +1094,14 @@ body[data-theme="custom"]{
               <div class="pet-lv-badge" id="pet-lv-badge">Lv.1 小豆丁</div><br>
               <canvas id="pet-canvas" width="150" height="150"></canvas>
               <!-- 宠物大小调节滑块（低调悬浮在画布右侧）-->
-              <div id="pet-size-wrap" style="position:absolute;right:-22px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:3px;opacity:.35;transition:opacity .2s" onmouseenter="this.style.opacity='.85'" onmouseleave="this.style.opacity='.35'" ontouchstart="this.style.opacity='.85'" ontouchend="setTimeout(()=>this.style.opacity='.35',1200)">
+              <div id="pet-size-wrap" style="position:absolute;right:-26px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:3px;opacity:.35;transition:opacity .2s" onmouseenter="this.style.opacity='.85'" onmouseleave="this.style.opacity='.35'" ontouchstart="this.style.opacity='.85'" ontouchend="setTimeout(()=>this.style.opacity='.35',1200)">
                 <span style="font-size:.5rem;color:var(--muted);writing-mode:vertical-rl;letter-spacing:.08em;user-select:none">大小</span>
-                <input id="pet-size-slider" type="range" min="100" max="240" value="150" step="5"
-                  style="writing-mode:vertical-lr;direction:rtl;width:18px;height:90px;cursor:pointer;accent-color:var(--green);opacity:.8"
-                  oninput="setPetDisplaySize(this.value)" onchange="setPetDisplaySize(this.value)">
+                <!-- 用 rotate(-90deg) 代替 writing-mode，兼容 Chrome 124+ 及桌面端 -->
+                <div style="width:18px;height:90px;display:flex;align-items:center;justify-content:center;overflow:visible">
+                  <input id="pet-size-slider" type="range" min="100" max="240" value="150" step="5"
+                    style="width:90px;height:16px;cursor:pointer;accent-color:var(--green);opacity:.8;transform:rotate(-90deg);transform-origin:center center;touch-action:none"
+                    oninput="setPetDisplaySize(this.value)" onchange="setPetDisplaySize(this.value)">
+                </div>
               </div>
               <div class="pet-ttl" id="pet-name">小饼干</div>
               <div class="pet-stage-name" id="pet-stage-name">仓鼠 · 普通形态</div>
@@ -1252,7 +1255,6 @@ body[data-theme="custom"]{
                   <div style="display:flex;gap:6px;flex-wrap:wrap">
                     <button onclick="toggleCloudSync()" id="cloud-sync-toggle-btn" style="padding:6px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.08);color:var(--dgreen);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">切换同步</button>
                     <button onclick="if(window.FBBridge)FBBridge.syncNow();else showToast('云同步未初始化')" style="padding:6px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🔄 立即同步</button>
-                    <button onclick="resetSyncChoice()" style="padding:6px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">重新选择</button>
                   </div>
                 </div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -1420,9 +1422,11 @@ body[data-theme="custom"]{
 <div class="overlay" id="cloth-adj-ov">
   <div class="modal" style="max-width:400px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div class="mttl" style="margin-bottom:0">👗 调整衣服大小与位置</div>
+      <div class="mttl" style="margin-bottom:0" id="cloth-adj-title">👗 调整衣服大小与位置</div>
       <span onclick="closeOverlay('cloth-adj-ov')" style="font-size:1.4rem;cursor:pointer;color:var(--muted);padding:2px 6px">✕</span>
     </div>
+    <!-- ★ 动作切换按钮：点一下预览不同姿势下衣服效果 -->
+    <div id="cloth-adj-action-btns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;justify-content:center"></div>
     <div style="text-align:center;margin:10px 0">
       <canvas id="cloth-adj-canvas" width="180" height="180" style="border-radius:14px;border:2px solid var(--border);background:linear-gradient(135deg,#d4f0d4,#b0d8b0);display:block;margin:0 auto 4px;cursor:move"></canvas>
       <div style="font-size:.6rem;color:var(--muted)">🖱️ 拖动预览区直接移动 · 或使用下方滑块</div>
@@ -1447,7 +1451,7 @@ body[data-theme="custom"]{
     </div>
     <div class="mbrow">
       <button class="mbtn mb-cancel" onclick="closeOverlay('cloth-adj-ov')">取消</button>
-      <button class="mbtn mb-ok on" onclick="confirmClothAdj()">✅ 保存调整</button>
+      <button class="mbtn mb-ok on" onclick="confirmClothAdj()">✅ 为当前动作保存</button>
     </div>
   </div>
 </div>
@@ -1557,6 +1561,7 @@ body[data-theme="custom"]{
 <div class="overlay" id="confirm-ov" style="z-index:2000"><div class="modal confirm-modal">
   <div class="confirm-ico" id="confirm-ico">❓</div>
   <div class="confirm-msg" id="confirm-msg"></div>
+  <div id="confirm-extra-html" style="display:none;text-align:left;margin:8px 0 4px"></div>
   <div class="mbrow">
     <button class="mbtn mb-cancel" onclick="confirmNo()">取消</button>
     <button class="mbtn mb-ok on" id="confirm-yes-btn" onclick="confirmYes()">确定</button>
@@ -1823,6 +1828,8 @@ body[data-theme="custom"]{
         style="flex:1;padding:5px;border-radius:8px;border:1.5px solid var(--border);background:var(--panel);color:var(--ink);font-size:.7rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">历史</button>
       <button id="es-reset-btn" onclick="_esResetPeriod()"
         style="padding:5px 8px;border-radius:8px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.66rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;display:none">重置当前</button>
+      <button id="es-clear-history-btn" onclick="_esClearAllHistory()"
+        style="padding:5px 8px;border-radius:8px;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:.66rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif;display:none">清空历史</button>
     </div>
     <!-- 积分来源分类 tabs -->
     <div id="extra-score-tabs" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px"></div>
@@ -1898,6 +1905,7 @@ body[data-theme="custom"]{
 </div>
 
 <script>/* questions.js optional */</script>
+<script src="pet_config.js"></script><!-- ★ 宠物配置须早于 gamedata.js 加载 -->
 <script src="gamedata.js"></script>
 <script src="subjects.js"></script>
 <script src="subject_english.js"></script>
@@ -2075,6 +2083,7 @@ body[data-theme="custom"]{
 <script src="subject_geoh_mod.js"></script>
 
 <script src="hamster_anim.js"></script>
+<script src="update_log.js"></script>
 <script src="game.js"></script>
 <script src="firebase-config.js"></script>
 <script src="firebase-bridge.js"></script>

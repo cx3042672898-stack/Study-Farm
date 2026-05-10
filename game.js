@@ -7817,6 +7817,8 @@ function switchTab(name){
   if(name==='shop')renderShop();
   if(name==='profile'){updateProfile();updateCloudSyncStatus();}
   if(name==='pet'){updatePetUI();if(!petAF)startPetAnim();drawPet();setTimeout(drawPet,50);setTimeout(drawPet,200);setTimeout(drawPet,800);}
+  // 每次切换页面都重新应用布局配置，防止切换后比例丢失
+  setTimeout(applyLayoutConfig,30);
 }
 
 // ─── EXPORT / IMPORT ──────────────────────────────

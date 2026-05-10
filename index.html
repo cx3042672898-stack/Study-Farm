@@ -152,7 +152,7 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
   /* 两栏布局 */
   .dtwo{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   /* 宠物页：左列固定宽度 */
-  .dpet{display:grid;grid-template-columns:var(--pet-col,280px) 1fr;gap:16px;align-items:start}
+  .dpet{display:grid;grid-template-columns:var(--pet-col,420px) 1fr;gap:16px;align-items:start}
   /* 商店三列 */
   .shop-grid{grid-template-columns:repeat(3,1fr)!important}
   /* 成就四列 */
@@ -525,7 +525,7 @@ html,body{height:100%;font-family:'Noto Sans SC',sans-serif;background:var(--bg)
 .resize-handle:hover,.resize-handle.dragging{background:rgba(100,160,100,.18)}
 .resize-handle-h{width:20px;top:0;bottom:0;transform:translateX(-50%)}
 .resize-handle-v{height:20px;left:0;right:0;cursor:row-resize;transform:translateY(-50%)}
-@media(min-width:900px){.resize-handle{display:block}}
+@media(min-width:900px){.layout-edit-mode .resize-handle{display:block}}
 /* 布局编辑模式：分隔线高亮 + 卡片可拖动提示 */
 .layout-edit-mode .resize-handle{background:rgba(100,160,100,.15);border:1.5px dashed rgba(100,160,100,.6)}
 .layout-edit-mode .resize-handle:hover{background:rgba(100,160,100,.3)}

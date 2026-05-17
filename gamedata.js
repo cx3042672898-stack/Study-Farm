@@ -182,6 +182,9 @@ window.DEFAULT_SAVE={
   warehouse:{}, petReachedLevels:{},
   playerAvatar:'',
   expBoostLeft:0, lastSaveTime:0, _classRank:99,
+  // 鱼塘系统
+  pondFish:[], fishEggs:[], fishAlmanac:[], fishCoins:0,
+  totalFishCaught:0, fishingRodLevel:1, dailyBossDefeated:false, lastBossDate:'', lastFishFeedTime:0, fishPondUnlocked:true,
 };
 
 window.PET_NAMES=['豆豆','团子','糯米','麻薯','奶茶','布丁','果冻','芝士','薯片','饼干','泡芙','可可','抹茶','芒果','桃子','草莓','蓝莓','樱桃','柠檬','西瓜','花花','朵朵','乐乐','萌萌','圆圆','毛毛','胖胖','懒懒','球球','泡泡'];

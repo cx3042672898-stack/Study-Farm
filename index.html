@@ -746,6 +746,102 @@ body[data-theme="custom"]{
   .class-card{margin-bottom:0}
 }
 
+/* ══ FISH POND 鱼塘 ══ */
+.fp-container{display:flex;flex-direction:column;gap:8px;padding:8px}
+.fp-canvas-wrap{position:relative;width:100%;border-radius:14px;overflow:hidden;
+  box-shadow:0 4px 20px rgba(0,80,120,.25);border:2px solid rgba(100,180,220,.3);height:360px}
+.fp-canvas-wrap canvas{width:100%;height:100%;display:block}
+
+/* ── 鱼/卵 信息卡片（横排三栏）── */
+.fi-card{display:flex;align-items:center;gap:12px;background:var(--panel);
+  border-radius:14px;border:1.5px solid var(--border);padding:10px 14px;
+  box-shadow:0 2px 12px var(--shadow);animation:fiSlideUp .25s ease-out}
+@keyframes fiSlideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.fi-preview{width:76px;height:76px;border-radius:12px;flex-shrink:0;
+  background:linear-gradient(135deg,rgba(100,180,220,.12),rgba(60,140,200,.08));
+  border:1.5px solid rgba(100,180,220,.2);overflow:hidden;position:relative}
+.fi-preview canvas{width:100%;height:100%}
+.fi-body{flex:1;min-width:0}
+.fi-top{display:flex;align-items:baseline;gap:6px;margin-bottom:4px}
+.fi-name{font-weight:700;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fi-tag{font-size:.56rem;font-weight:600;padding:1px 6px;border-radius:99px;white-space:nowrap}
+.fi-sub{font-size:.62rem;color:var(--muted);margin-bottom:5px}
+.fi-stats{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:5px}
+.fi-st{font-size:.6rem;padding:2px 7px;border-radius:6px;
+  background:rgba(100,160,100,.06);border:1px solid rgba(100,160,100,.12)}
+.fi-st.warn{background:rgba(224,85,85,.06);border-color:rgba(224,85,85,.2);color:var(--red)}
+.fi-bar{height:5px;background:rgba(0,0,0,.06);border-radius:99px;overflow:hidden}
+.fi-bar-fill{height:100%;border-radius:99px;transition:width .4s}
+.fi-btns{display:flex;flex-direction:column;gap:5px;flex-shrink:0}
+.fi-btn{width:56px;height:28px;border-radius:8px;border:1.5px solid var(--border);
+  background:var(--panel);font-size:.6rem;cursor:pointer;transition:all .15s;
+  display:flex;align-items:center;justify-content:center;gap:2px;
+  font-family:'Noto Sans SC',sans-serif}
+.fi-btn:hover{border-color:var(--green);background:rgba(100,160,100,.05)}
+.fi-btn:active{transform:scale(.92)}
+.fi-btn.danger{color:var(--red);border-color:rgba(224,85,85,.25)}
+.fi-btn.danger:hover{border-color:var(--red);background:rgba(224,85,85,.05)}
+.fi-btn.accent{color:#fff;background:var(--green);border-color:var(--green)}
+
+/* ── 自定义弹窗 ── */
+.fp-modal-mask{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.35);
+  display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);
+  animation:fpFadeIn .2s}
+@keyframes fpFadeIn{from{opacity:0}to{opacity:1}}
+.fp-modal{background:var(--panel);border-radius:16px;padding:20px 24px;
+  width:min(340px,88vw);box-shadow:0 8px 32px rgba(0,0,0,.2);
+  animation:fpPopIn .25s cubic-bezier(.34,1.56,.64,1)}
+@keyframes fpPopIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+.fp-modal-title{font-size:.9rem;font-weight:700;margin-bottom:4px;text-align:center}
+.fp-modal-desc{font-size:.68rem;color:var(--muted);text-align:center;margin-bottom:12px}
+.fp-modal-input{width:100%;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);
+  font-size:.82rem;font-family:'Noto Sans SC',sans-serif;background:var(--bg);
+  outline:none;transition:border .2s;box-sizing:border-box}
+.fp-modal-input:focus{border-color:var(--green)}
+.fp-modal-row{display:flex;gap:8px;margin-top:14px}
+.fp-modal-btn{flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--border);
+  font-size:.78rem;font-weight:600;cursor:pointer;transition:all .15s;
+  font-family:'Noto Sans SC',sans-serif;background:var(--panel)}
+.fp-modal-btn:active{transform:scale(.95)}
+.fp-modal-btn.primary{background:var(--green);color:#fff;border-color:var(--green)}
+
+.fp-stats-bar{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.fp-stat{font-size:.68rem;color:var(--muted);background:rgba(100,160,100,.07);
+  padding:3px 10px;border-radius:99px;border:1px solid var(--border)}
+
+.fp-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.fp-act{background:var(--panel);border-radius:12px;border:1.5px solid var(--border);
+  padding:10px 6px;text-align:center;cursor:pointer;transition:all .18s;
+  box-shadow:0 2px 8px var(--shadow)}
+.fp-act:hover{border-color:var(--green);background:rgba(100,160,100,.05)}
+.fp-act:active{transform:scale(.95)}
+.fp-act-ico{font-size:1.4rem;display:block;margin-bottom:2px}
+.fp-act-nm{font-size:.72rem;font-weight:600;margin-bottom:1px}
+.fp-act-desc{font-size:.56rem;color:var(--muted)}
+
+/* 图鉴 */
+.fa-wrap{padding:0}
+.fa-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 4px}
+.fa-title{font-family:'Ma Shan Zheng',cursive;font-size:1.2rem;color:var(--dgreen)}
+.fa-progress{font-size:.7rem;color:var(--muted);margin-left:auto}
+.fa-back{padding:4px 12px;border-radius:99px;border:1.5px solid var(--border);
+  background:var(--panel);font-size:.68rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif}
+.fa-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
+.fa-card{background:var(--panel);border-radius:12px;border:2px solid var(--border);
+  padding:12px 8px;text-align:center;transition:all .2s;box-shadow:0 2px 8px var(--shadow)}
+.fa-card.fa-locked{opacity:.5;filter:grayscale(0.6)}
+.fa-icon{font-size:1.6rem;margin-bottom:4px}
+.fa-name{font-size:.72rem;font-weight:600;margin-bottom:2px}
+.fa-rarity{font-size:.58rem;margin-bottom:2px}
+.fa-owned{font-size:.56rem;color:var(--muted)}
+
+@media(max-width:480px){
+  .fp-actions{grid-template-columns:repeat(2,1fr)}
+  .fp-canvas-wrap{height:280px}
+  .fi-card{gap:8px;padding:8px 10px}
+  .fi-preview{width:60px;height:60px}
+  .fi-btn{width:48px;height:26px;font-size:.55rem}
+}
 </style>
 </head>
 <body>
@@ -942,12 +1038,18 @@ body[data-theme="custom"]{
       <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:.8rem;pointer-events:none">🔍</span>
       <input class="ci" id="score-search-input" placeholder="搜索学生姓名…" oninput="onScoreSearch(this.value)" style="width:100%;padding:7px 10px 7px 28px;border-radius:10px;border:1.5px solid var(--border);background:var(--panel);font-size:.76rem;font-family:'Noto Sans SC',sans-serif;box-sizing:border-box;user-select:text">
     </div>
-    <!-- 全选控制栏 -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;padding:0 2px">
-      <div style="font-size:.68rem;color:var(--muted)" id="score-select-hint">点击选中，再次点击取消</div>
-      <button onclick="toggleSelectAllScore()" id="score-select-all-btn" style="padding:3px 10px;border-radius:7px;border:1.5px solid var(--border);background:transparent;font-size:.65rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">全选</button>
+    <!-- 全选控制栏 + 学生列表 + 拼音索引条 -->
+    <div style="display:flex;flex:1;min-height:0;align-items:stretch">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;min-height:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;padding:0 2px">
+          <div style="font-size:.68rem;color:var(--muted)" id="score-select-hint">点击选中，再次点击取消</div>
+          <button onclick="toggleSelectAllScore()" id="score-select-all-btn" style="padding:3px 10px;border-radius:7px;border:1.5px solid var(--border);background:transparent;font-size:.65rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">全选</button>
+        </div>
+        <div id="add-score-list" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:5px"></div>
+      </div>
+      <!-- 拼音快速索引条（由 game.js 动态填充） -->
+      <div id="pinyin-index-bar" style="display:none;flex-direction:column;align-items:center;justify-content:center;width:16px;flex-shrink:0;padding:4px 0;margin-left:4px;gap:0"></div>
     </div>
-    <div id="add-score-list" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:5px"></div>
     <!-- 底部确认 -->
     <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
       <button onclick="applyScoreBatch()" style="width:100%;padding:10px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:.82rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif" id="score-confirm-btn">✅ 确认给已选学生加分</button>
@@ -1001,6 +1103,7 @@ body[data-theme="custom"]{
     </div>
     <div class="sb-nav">
       <div class="sb-item on" onclick="switchTab('farm')"><span class="si-ico">🌾</span>农场<span class="si-badge" id="sbd-farm"></span></div>
+      <div class="sb-item" onclick="switchTab('fish')"><span class="si-ico">🐟</span>鱼塘</div>
       <div class="sb-item" onclick="switchTab('pet')"><span class="si-ico">🐾</span>宠物<span class="si-badge" id="sbd-pet"></span></div>
       <div class="sb-item" onclick="switchTab('shop')"><span class="si-ico">🛍️</span>商店</div>
       <div class="sb-item" onclick="switchTab('ach')"><span class="si-ico">🏆</span>成就<span class="si-badge" id="sbd-ach"></span></div>
@@ -1098,7 +1201,7 @@ body[data-theme="custom"]{
                 <span style="font-size:.5rem;color:var(--muted);writing-mode:vertical-rl;letter-spacing:.08em;user-select:none">大小</span>
                 <!-- 用 rotate(-90deg) 代替 writing-mode，兼容 Chrome 124+ 及桌面端 -->
                 <div style="width:18px;height:90px;display:flex;align-items:center;justify-content:center;overflow:visible">
-                  <input id="pet-size-slider" type="range" min="100" max="240" value="150" step="5"
+                  <input id="pet-size-slider" type="range" min="100" max="240" value="240" step="5"
                     style="width:90px;height:16px;cursor:pointer;accent-color:var(--green);opacity:.8;transform:rotate(-90deg);transform-origin:center center;touch-action:none"
                     oninput="setPetDisplaySize(this.value)" onchange="setPetDisplaySize(this.value)">
                 </div>
@@ -1290,11 +1393,21 @@ body[data-theme="custom"]{
 
       </div><!-- /profile-scroll-body -->
     </div>
+
+    <!-- FISH POND 鱼塘 -->
+    <div class="page" id="page-fish">
+      <div class="card" style="margin:8px;padding:6px 10px">
+        <div class="cttl">🐟 知识鱼塘 <span style="font-size:.6rem;color:var(--muted);margin-left:auto">学习驱动养鱼</span></div>
+      </div>
+      <div id="fishpond-main" style="padding:0 8px 12px"></div>
+    </div>
+
   </div><!-- /pages -->
 
   <!-- 手机底部Tab -->
   <div id="tabbar">
     <div class="tab on" id="tb-farm" onclick="switchTab('farm')"><span class="tico">🌾</span><span class="tlbl">农场</span><span class="tbadge" id="bd-farm"></span></div>
+    <div class="tab" id="tb-fish" onclick="switchTab('fish')"><span class="tico">🐟</span><span class="tlbl">鱼塘</span></div>
     <div class="tab" id="tb-pet" onclick="switchTab('pet')"><span class="tico">🐾</span><span class="tlbl">宠物</span><span class="tbadge" id="bd-pet"></span></div>
     <div class="tab" id="tb-shop" onclick="switchTab('shop')"><span class="tico">🛍️</span><span class="tlbl">商店</span></div>
     <div class="tab" id="tb-ach" onclick="switchTab('ach')"><span class="tico">🏆</span><span class="tlbl">成就</span><span class="tbadge" id="bd-ach"></span></div>
@@ -2084,6 +2197,7 @@ body[data-theme="custom"]{
 
 <script src="hamster_anim.js"></script>
 <script src="update_log.js"></script>
+<script src="fishpond.js"></script>
 <script src="game.js"></script>
 <script src="firebase-config.js"></script>
 <script src="firebase-bridge.js"></script>

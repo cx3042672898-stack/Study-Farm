@@ -239,7 +239,7 @@ function loadAccSave(id){
       if(!Array.isArray(s.ownedSkins))s.ownedSkins=[];
       if(!s.petSpriteSkins)s.petSpriteSkins={};
       if(!Array.isArray(s.ownedSpriteSkins))s.ownedSpriteSkins=[];
-      if(!s.petDisplaySize)s.petDisplaySize=150;
+      if(!s.petDisplaySize)s.petDisplaySize=240;
       if(!Array.isArray(s.pendingAchReward))s.pendingAchReward=[];
       if(!Array.isArray(s.claimedAchReward))s.claimedAchReward=[];
       // ── 旧存档迁移：已解锁但未被tracked为claimed/pending的成就 → 视为已领取
@@ -1744,6 +1744,9 @@ function submitAns() {
      const mult=S.expBoostLeft>0?2:1; gainExp(15*mult); 
      if(S.expBoostLeft>0){S.expBoostLeft--;updateTop();if(!S.expBoostLeft)showToast('📖 加成耗尽');else showToast(`学霸加成剩余 ${S.expBoostLeft} 题`);}
      spawnP(['⭐','✨','🌸']);
+     // 鱼塘联动：答对增加鱼成长 & 催化鱼卵
+     if(typeof onQuizCorrectForFish==='function')onQuizCorrectForFish();
+     if(typeof onQuizStreakForFish==='function'&&S.curStreak>=5)onQuizStreakForFish(S.curStreak);
   } else {
      if((S.streakShieldLeft||0)>0){S.streakShieldLeft--;showToast('🛡️连击护盾保住了！');}else{S.curStreak=0;}
      _recordWrong(curQ); // 记录错题
@@ -6686,13 +6689,16 @@ function _esRenderAll(){
     bodyEl.innerHTML='<div style="font-size:.74rem;color:var(--muted);padding:12px;text-align:center">当前周期暂无记录</div>';
     return;
   }
-  // 如果当前 _esActiveReason 不在新的 reasons 列表里，重置为第一个
-  if(!_esActiveReason||!reasons.includes(_esActiveReason))_esActiveReason=reasons[0];
+  // 如果当前 _esActiveReason 不在新的列表里，重置为综合
+  const _ES_ZONGHE='__综合__';
+  const allTabReasons=[_ES_ZONGHE,...reasons];
+  if(!_esActiveReason||(_esActiveReason!==_ES_ZONGHE&&!reasons.includes(_esActiveReason)))_esActiveReason=_ES_ZONGHE;
 
-  tabsEl.innerHTML=reasons.map(r=>{
+  tabsEl.innerHTML=allTabReasons.map(r=>{
     const aliases=_getReasonAliases(_esClassId);
-    const displayName=aliases[r]||r;
-    const canRename=isTeacher||isKdl;
+    const isZonghe=r===_ES_ZONGHE;
+    const displayName=isZonghe?'综合':(aliases[r]||r);
+    const canRename=!isZonghe&&(isTeacher||isKdl);
     const dblTitle=canRename?' title="双击重命名此标签"':'';
     const dblClick=canRename?`ondblclick="event.stopPropagation();openReasonRename('${encodeURIComponent(r)}')" `:'';
     return `<div onclick="_esSwitchTab('${encodeURIComponent(r)}')" ${dblClick}style="display:inline-flex;align-items:center;padding:4px 11px;border-radius:99px;border:1.5px solid ${r===_esActiveReason?'var(--purple)':'var(--border)'};background:${r===_esActiveReason?'var(--purple)':'var(--panel)'};color:${r===_esActiveReason?'#fff':'var(--ink)'};font-size:.68rem;cursor:pointer;white-space:nowrap;font-family:'Noto Sans SC',sans-serif;flex-shrink:0;user-select:none"${dblTitle}>${displayName}</div>`;
@@ -6705,6 +6711,38 @@ function _esRenderAll(){
 
 function _esRenderBody(){
   const bodyEl=document.getElementById('extra-score-body');if(!bodyEl)return;
+
+  // ── 综合视图：所有类别净积分汇总 ───────────────────────────
+  if(_esActiveReason==='__综合__'){
+    const addMap=window._reasonMapAdd_es||{};
+    const subMap=window._reasonMapSub_es||{};
+    const adjMap=_getScoreAdjMap(_esClassId);
+    const netMap={};
+    Object.values(addMap).forEach(students=>Object.entries(students).forEach(([n,p])=>{netMap[n]=(netMap[n]||0)+p;}));
+    Object.values(subMap).forEach(students=>Object.entries(students).forEach(([n,p])=>{netMap[n]=(netMap[n]||0)-p;}));
+    Object.entries(adjMap).forEach(([adjKey,adjs])=>{
+      const name=adjKey.split('||')[0];
+      if(!netMap.hasOwnProperty(name))return;
+      const _adjPs=getPeriodStart(_esClassId);
+      const filtered=adjs.filter(a=>_esView!=='current'||!_adjPs||(a.time||0)>=_adjPs);
+      const delta=filtered.reduce((s,a)=>s+(a.delta||0),0);
+      if(delta!==0)netMap[name]=(netMap[name]||0)+delta;
+    });
+    const sorted=Object.entries(netMap).sort((a,b)=>b[1]-a[1]);
+    if(!sorted.length){bodyEl.innerHTML='<div style="font-size:.74rem;color:var(--muted);padding:12px;text-align:center">暂无记录</div>';return;}
+    bodyEl.innerHTML='<div style="display:flex;flex-direction:column;gap:5px">'
+      +sorted.map(([name,net],i)=>{
+        const rankStyle=i===0?'background:#ffd700;color:#806000':i===1?'background:#c0c0c0;color:#505050':i===2?'background:#cd7f32;color:#503010':'background:rgba(160,122,208,.12);color:var(--purple)';
+        const netColor=net>=0?'var(--dgreen)':'var(--red)';
+        return `<div style="display:flex;align-items:center;gap:9px;padding:8px 10px;background:var(--panel);border-radius:9px;border:1px solid var(--border)">`
+          +`<div style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;${rankStyle};flex-shrink:0">${i+1}</div>`
+          +`<div style="flex:1;font-size:.78rem;font-weight:500">${name}</div>`
+          +`<span style="color:${netColor};font-weight:700;font-size:.76rem">${net>=0?'+':''}${net}</span>`
+          +'</div>';
+      }).join('')+'</div>';
+    return;
+  }
+
   const isDeduct=_esActiveReason.startsWith('\ud83d\udcc9 ');
   const map=isDeduct?(window._reasonMapSub_es||{}):(window._reasonMapAdd_es||{});
   const data=map[_esActiveReason]||{};
@@ -6730,9 +6768,12 @@ function _esRenderBody(){
       const baseDisplay=`<span style="color:${rankColor};font-weight:700">${prefix}${pts}</span>`;
       const adjDisplayParts=adjs.map(a=>{const c=(a.delta||0)>0?'var(--dgreen)':'var(--red)';return `<span style="color:${c};font-size:.68rem">${a.delta>0?'+':''}${a.delta}</span>`;}).join('');
       const dblAttr=canEdit?`ondblclick="openScoreEntryEdit('${encodeURIComponent(name)}','${encodeURIComponent(_esActiveReason)}')" title="双击调整"`:'';
+      // 实际净效果：加分条目=pts+adjTotal；减分条目pts为正绝对值，净效果=adjTotal-pts
+      const netActual=isDeduct?(adjTotal-pts):(pts+adjTotal);
+      const netSign=netActual>=0?'+':'-';
       const scoreCell='<div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px;cursor:'+(canEdit?'pointer':'default')+';user-select:none" '+dblAttr+'>'
         +'<div style="font-size:.75rem">'+baseDisplay+(adjDisplayParts?'<span style="font-size:.62rem;color:var(--muted);margin-left:2px">'+adjDisplayParts+'</span>':'')+('</div>')
-        +(adjTotal!==0?('<div style="font-size:.6rem;color:var(--muted)">实际：'+(pts+adjTotal>=0?prefix:'-')+Math.abs(pts+adjTotal)+'</div>'):'')
+        +(adjTotal!==0?('<div style="font-size:.6rem;color:var(--muted)">实际：'+netSign+Math.abs(netActual)+'</div>'):'')
         +'</div>';
       return `<div style="display:flex;align-items:center;gap:9px;padding:8px 10px;background:var(--panel);border-radius:9px;border:1px solid var(--border)">`
         +`<div style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;${rankStyle};flex-shrink:0">${i+1}</div>`
@@ -7059,19 +7100,23 @@ function openClassManage(){
   const body=document.getElementById('class-manage-body');if(!body)return;
   const admins=getClassAdmins();const asstAdmin=admins[S.classId];
   const cd=getClassData();const clsMembers=cd[S.classId]||[];
+  // 校验课代表账号是否仍在班级成员里，若已不存在则自动清除
+  const asstAdminValid=asstAdmin&&clsMembers.some(m=>m.name===asstAdmin.name&&!m.isTeacher);
+  if(asstAdmin&&!asstAdminValid){delete admins[S.classId];saveClassAdmins(admins);}
+  const effectiveAsstAdmin=asstAdminValid?asstAdmin:null;
   const isTeacher=S.isTeacher&&(S.managedClasses||[]).includes(S.classId);
-  const isKeDaiLong=!isTeacher&&asstAdmin&&asstAdmin.name===S.playerName; // 课代表（非教师）
+  const isKeDaiLong=!isTeacher&&effectiveAsstAdmin&&effectiveAsstAdmin.name===S.playerName; // 课代表（非教师）
   const teachers=clsMembers.filter(m=>m.isTeacher);
   const btnBase='width:100%;padding:9px;border-radius:10px;font-size:.78rem;cursor:pointer;font-family:\'Noto Sans SC\',sans-serif;margin-bottom:8px';
   let html='';
   // 班级教师信息
   if(teachers.length>0)html+=`<div style="font-size:.74rem;color:#a06000;font-weight:600;margin-bottom:8px">👨‍🏫 班级教师：${teachers.map(t=>t.name).join('、')}</div>`;
-  // 课代表信息
-  if(asstAdmin)html+=`<div style="font-size:.72rem;color:#2060a0;margin-bottom:10px">🎖️ 课代表：<b>${asstAdmin.name}</b></div>`;
+  // 课代表信息（仅在有效时显示）
+  if(effectiveAsstAdmin)html+=`<div style="font-size:.72rem;color:#2060a0;margin-bottom:10px">🎖️ 课代表：<b>${effectiveAsstAdmin.name}</b></div>`;
 
   if(isTeacher){
     // ── 教师视图 ──
-    if(!asstAdmin){
+    if(!effectiveAsstAdmin){
       html+=`<button onclick="openSetAsstAdmin()" style="${btnBase};border:1.5px solid #4a90d9;background:rgba(74,144,217,.06);color:#2060a0">🎖️ 设置课代表</button>`;
     } else {
       html+=`<button onclick="openSetAsstAdmin()" style="${btnBase};border:1.5px solid #4a90d9;background:rgba(74,144,217,.06);color:#2060a0">🎖️ 更换课代表</button>`;
@@ -7089,11 +7134,14 @@ function openClassManage(){
     html+=`<button onclick="openAddScorePanel()" style="${btnBase};border:none;background:var(--green);color:#fff">⭐ 给学生调整积分</button>`;
     html+=`<div style="font-size:.72rem;color:var(--muted);line-height:1.7;padding:8px;background:rgba(0,0,0,.03);border-radius:9px;text-align:center">课代表无权注销班级<br>如需解散请联系教师</div>`;
   } else {
-    // ── 普通学生视图 ──
-    if(!asstAdmin){
+    // ── 普通学生视图：班级无教师且无有效课代表时提示重新设置 ──
+    const hasAnyTeacher=teachers.length>0;
+    if(!hasAnyTeacher&&!effectiveAsstAdmin){
+      html+=`<div style="font-size:.76rem;color:var(--red);line-height:1.9;padding:10px 12px;background:rgba(224,85,85,.06);border-radius:10px;text-align:center;border:1px solid rgba(224,85,85,.2)">🏚️ 班级暂无教师/管理员<br>请在班级总览页面重新认领或联系原教师</div>`;
+    } else if(!effectiveAsstAdmin){
       html+=`<div style="font-size:.76rem;color:var(--muted);line-height:1.9;padding:10px 12px;background:rgba(0,0,0,.03);border-radius:10px;text-align:center">📭 暂未设置课代表<br>请联系教师进行设置</div>`;
     } else {
-      html+=`<div style="font-size:.76rem;color:var(--muted);line-height:1.9;padding:10px 12px;background:rgba(0,0,0,.03);border-radius:10px;text-align:center">🔒 暂无权限<br>请联系班级负责人（${asstAdmin.name}）设置</div>`;
+      html+=`<div style="font-size:.76rem;color:var(--muted);line-height:1.9;padding:10px 12px;background:rgba(0,0,0,.03);border-radius:10px;text-align:center">🔒 暂无权限<br>请联系课代表（${effectiveAsstAdmin.name}）或教师设置</div>`;
     }
   }
   body.innerHTML=html;
@@ -7200,11 +7248,27 @@ function openAddScorePanel(classId){
   openOverlay('add-score-ov'); // 用 openOverlay 确保 z-index 正确叠加，后续确认弹窗可覆盖在上层
 }
 
+// ── 拼音首字母检测 ──────────────────────────────────────────
+function _getPinyinInitial(name){
+  const ch=(name||'').charAt(0);
+  if(!ch)return '#';
+  if(/[a-zA-Z]/.test(ch))return ch.toUpperCase();
+  const bounds=[
+    ['Z','匝'],['Y','压'],['X','昔'],['W','挖'],['T','塌'],['S','撒'],
+    ['R','然'],['Q','期'],['P','啪'],['O','哦'],['N','拿'],['M','妈'],
+    ['L','垃'],['K','喀'],['J','击'],['H','哈'],['G','噶'],['F','发'],
+    ['E','鹅'],['D','搭'],['C','擦'],['B','芭'],['A','阿']
+  ];
+  for(const [letter,ref] of bounds){
+    if(ch.localeCompare(ref,'zh-CN',{sensitivity:'base'})>=0)return letter;
+  }
+  return '#';
+}
+
 function _renderScoreList(){
   const list=document.getElementById('add-score-list');
   if(!list)return;
   const cd=getClassData();
-  // 积分管理列表：默认按姓名首字母排序（不按积分，方便老师找学生）
   const allMembers=(cd[_scoreClassId]||[]).filter(function(m){return !m.isTeacher;});
   const members=[...allMembers].sort((a,b)=>(a.name||'').localeCompare(b.name||'','zh-CN',{sensitivity:'base'}));
   const q=(_scoreSearchQuery||'').trim();
@@ -7212,13 +7276,32 @@ function _renderScoreList(){
   list.innerHTML='';
   if(!visibleMembers.length){
     list.innerHTML='<div style="text-align:center;color:var(--muted);font-size:.74rem;padding:10px">'+(q?'未找到「'+q+'」，请换个关键字':'班级暂无学生')+'</div>';
-    _updateSelectAllBtn(members);return;
+    _updateSelectAllBtn(members);
+    _buildPinyinBar([]);
+    return;
   }
+
+  let lastLetter='';
+  const usedLetters=[];
   visibleMembers.forEach(function(s){
+    const letter=_getPinyinInitial(s.name);
+    // 非搜索状态插入字母分区标题
+    if(!q&&letter!==lastLetter){
+      lastLetter=letter;
+      usedLetters.push(letter);
+      const header=document.createElement('div');
+      header.id='pinyin-section-'+letter;
+      header.dataset.letter=letter;
+      // 轻盈的分区线：仅左侧小彩条 + 字母，与主题色融合
+      header.style.cssText='display:flex;align-items:center;gap:6px;padding:6px 0 2px;flex-shrink:0;user-select:none';
+      header.innerHTML='<span style="display:inline-block;width:3px;height:10px;border-radius:2px;background:var(--purple);opacity:.5;flex-shrink:0"></span>'
+        +'<span style="font-size:.58rem;font-weight:700;color:var(--purple);opacity:.75;letter-spacing:.08em">'+letter+'</span>';
+      list.appendChild(header);
+    }
     const sel=_scoreSelected.has(s.name);
     const d=document.createElement('div');
     d.dataset.name=s.name;
-    d.style.cssText='padding:9px 12px;border-radius:9px;border:2px solid '+(sel?'var(--green)':'var(--border)')+';background:'+(sel?'rgba(100,160,100,.1)':'var(--panel)')+';cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:all .15s';
+    d.style.cssText='padding:9px 12px;border-radius:9px;border:2px solid '+(sel?'var(--green)':'var(--border)')+';background:'+(sel?'rgba(100,160,100,.1)':'var(--panel)')+';cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:all .15s;flex-shrink:0';
     d.innerHTML='<div style="display:flex;align-items:center;gap:8px">'
       +'<div style="width:18px;height:18px;border-radius:5px;border:2px solid '+(sel?'var(--green)':'var(--border)')+';background:'+(sel?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;font-size:.7rem;color:#fff">'+(sel?'✓':'')+'</div>'
       +'<span style="font-size:.78rem;font-weight:'+(sel?'600':'400')+'">'+s.name+'</span></div>'
@@ -7232,6 +7315,68 @@ function _renderScoreList(){
     list.appendChild(d);
   });
   _updateSelectAllBtn();
+  _buildPinyinBar(q?[]:usedLetters);
+}
+
+// ── 拼音索引条（静态栏，由 index.html 预置，game.js 负责填充与同步）──
+function _buildPinyinBar(letters){
+  const bar=document.getElementById('pinyin-index-bar');
+  const list=document.getElementById('add-score-list');
+  if(!bar||!list)return;
+  if(!letters.length){bar.style.display='none';return;}
+  bar.style.display='flex';
+
+  // 渲染字母列表
+  bar.innerHTML=letters.map(l=>
+    `<div data-letter="${l}" style="font-size:.52rem;font-weight:700;line-height:1.8;padding:1px 2px;border-radius:3px;cursor:pointer;transition:background .1s,color .1s,opacity .1s;color:var(--purple);opacity:.65;text-align:center;width:14px;flex-shrink:0">${l}</div>`
+  ).join('');
+
+  // 点击 / 触摸事件
+  const els=bar.querySelectorAll('[data-letter]');
+  els.forEach(el=>{
+    el.addEventListener('touchstart',e=>{e.preventDefault();_jumpToPinyinSection(el.dataset.letter);},{passive:false});
+    el.addEventListener('click',()=>_jumpToPinyinSection(el.dataset.letter));
+  });
+
+  // 手指在索引条上滑动：实时跳转
+  bar.addEventListener('touchmove',e=>{
+    e.preventDefault();
+    const y=e.touches[0].clientY;
+    for(const el of els){
+      const r=el.getBoundingClientRect();
+      if(y>=r.top&&y<=r.bottom){_jumpToPinyinSection(el.dataset.letter);break;}
+    }
+  },{passive:false});
+
+  // 列表滚动 → 同步高亮索引条
+  list.onscroll=function(){
+    const headers=list.querySelectorAll('[data-letter]');
+    let active='';
+    for(const h of headers){
+      if(h.offsetTop<=list.scrollTop+12)active=h.dataset.letter;
+    }
+    _highlightPinyinLetter(active);
+  };
+}
+
+function _highlightPinyinLetter(letter){
+  const bar=document.getElementById('pinyin-index-bar');
+  if(!bar)return;
+  bar.querySelectorAll('[data-letter]').forEach(el=>{
+    const on=el.dataset.letter===letter;
+    el.style.color=on?'#fff':'var(--purple)';
+    el.style.background=on?'var(--purple)':'transparent';
+    el.style.opacity=on?'1':'0.65';
+  });
+}
+
+function _jumpToPinyinSection(letter){
+  const list=document.getElementById('add-score-list');
+  const section=document.getElementById('pinyin-section-'+letter);
+  if(section&&list){list.scrollTo({top:section.offsetTop-2,behavior:'smooth'});}
+  _highlightPinyinLetter(letter);
+  // 滚动完成后重新同步（避免 smooth scroll 延迟导致高亮不准）
+  setTimeout(()=>{if(list)list.dispatchEvent(new Event('scroll'));},350);
 }
 
 function _updateSelectAllBtn(membersOverride){
@@ -7539,7 +7684,7 @@ function updateProfile(){
   const pa=document.getElementById('prof-av');if(pa&&!pa.querySelector('img'))pa.textContent=_avo2;
   const acc2=S.totalAnswered>0?Math.round(S.totalCorrect/S.totalAnswered*100):0;
   const ps=document.getElementById('prof-stats');
-  if(ps)ps.innerHTML=`<div class="ps"><div class="psv">Lv.${S.level}</div><div class="psl">等级</div></div><div class="ps"><div class="psv">${S.totalCorrect}</div><div class="psl">答对</div></div><div class="ps"><div class="psv">${S.harvests}</div><div class="psl">收获</div></div><div class="ps"><div class="psv">${S.coins}</div><div class="psl">金币</div></div><div class="ps"><div class="psv">${S.unlockedAch.length}</div><div class="psl">成就</div></div><div class="ps"><div class="psv">${acc2}%</div><div class="psl">正确率</div></div>`;
+  if(ps)ps.innerHTML=`<div class="ps"><div class="psv">Lv.${S.level}</div><div class="psl">等级</div></div><div class="ps"><div class="psv">${S.totalCorrect}</div><div class="psl">答对</div></div><div class="ps"><div class="psv">${S.harvests}</div><div class="psl">收获</div></div><div class="ps"><div class="psv">${S.coins}</div><div class="psl">金币</div></div><div class="ps"><div class="psv">${S.unlockedAch.length}</div><div class="psl">成就</div></div><div class="ps"><div class="psv">${(S.pondFish||[]).length}🐟</div><div class="psl">鱼塘</div></div>`;
 
   // 学习统计：总答题、种类、累积经验、累积金币、宠物数量
   const ss=document.getElementById('study-stats');
@@ -7802,12 +7947,12 @@ function spawnP(emojis){for(let i=0;i<5;i++){setTimeout(()=>{const p=document.cr
 
 // ─── TAB ──────────────────────────────────────────
 function switchTab(name){
-  ['farm','pet','shop','ach','profile'].forEach(n=>{
+  ['farm','fish','pet','shop','ach','profile'].forEach(n=>{
     (document.getElementById('page-'+n)||{classList:{toggle:function(){}}}).classList.toggle('active',n===name);
     const tb=document.getElementById('tb-'+n);if(tb)tb.classList.toggle('on',n===name);
   });
   const sbn=document.querySelector('.sb-nav');
-  if(sbn){sbn.querySelectorAll('.sb-item').forEach((el,i)=>el.classList.toggle('on',['farm','pet','shop','ach','profile'][i]===name));}
+  if(sbn){sbn.querySelectorAll('.sb-item').forEach((el,i)=>el.classList.toggle('on',['farm','fish','pet','shop','ach','profile'][i]===name));}
   if(name==='ach'){
     switchAchTab(_achTab||'all');
     // Bug2 fix: 切换到成就页时清除 newAch 通知，并刷新红点
@@ -7817,6 +7962,8 @@ function switchTab(name){
   if(name==='shop')renderShop();
   if(name==='profile'){updateProfile();updateCloudSyncStatus();}
   if(name==='pet'){updatePetUI();if(!petAF)startPetAnim();drawPet();setTimeout(drawPet,50);setTimeout(drawPet,200);setTimeout(drawPet,800);}
+  if(name==='fish'){if(typeof initFishPond==='function')initFishPond();}
+  if(name!=='fish'){if(typeof stopFishPondLoop==='function')stopFishPondLoop();}
   // 每次切换页面都重新应用布局配置，防止切换后比例丢失
   setTimeout(applyLayoutConfig,30);
 }
@@ -9125,7 +9272,16 @@ function applyLayoutConfig(){
   const cfg=getLayoutConfig();
   const apply=(pageId,sel,val)=>{if(!val)return;const p=document.getElementById(pageId);if(!p)return;const g=p.querySelector(sel);if(g)g.style.gridTemplateColumns=val;};
   apply('page-farm','.farm-main-grid',cfg.farm);
-  apply('page-pet','.dpet',cfg.pet);
+  // 宠物页：有保存值用保存值，否则默认宽列（左侧占60%）
+  if(cfg.pet){
+    apply('page-pet','.dpet',cfg.pet);
+  } else {
+    const petGrid=document.querySelector('#page-pet .dpet');
+    if(petGrid){const w=petGrid.offsetWidth||900;petGrid.style.gridTemplateColumns=`${Math.round(w*0.6)}px 1fr`;}
+  }
+  // 同步 resize handle 位置
+  const petG=document.querySelector('#page-pet .dpet');
+  if(petG){const h=petG.querySelector('.resize-handle');if(h)_positionHandle(h,petG);}
   setTimeout(_restoreCardOrder,50);
 }
 
@@ -9745,8 +9901,8 @@ window._delScoreAdj=function(encKey,idx){
     const parts=adjKey.split('||');
     const studentName=parts[0];
     const reason=parts.slice(1).join('||');
-    const isDeduct=reason.startsWith('📉 ');
-    const scoreChange=isDeduct?-adj.delta:adj.delta;
+    // _applyScoreAdj 统一执行 score+=delta，撤销时统一执行 score-=delta
+    const scoreChange=adj.delta;
     const cd=getClassData();
     const mem=cd[classId]&&cd[classId].find(m=>m.name===studentName);
     if(mem){mem.score=Math.max(0,(mem.score||0)-scoreChange);saveClassData(cd);}

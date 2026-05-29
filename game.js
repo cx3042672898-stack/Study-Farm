@@ -3121,7 +3121,11 @@ function drawPetPreviewInCanvas(cvs,breed,level){
   const cx=Math.round(cvs.width/2),cy=Math.round(cvs.height/2)+4;
   // 精灵阶段（所有品种）：用 game.js 自建缓存
   if(window.HamsterAnim&&HamsterAnim.isSpritedStage(breed,level)){
-    const _defSkin2=breed==='hamster'?'orange':'default';
+    const _defSkin2=(()=>{
+      const _ss=window.PET_CONFIG&&PET_CONFIG.SPRITE_SKINS&&PET_CONFIG.SPRITE_SKINS[breed];
+      if(_ss){const _stage=level||1;const _skins=_ss[_stage];if(_skins&&_skins[0])return _skins[0].id;}
+      return breed==='hamster'?'orange':'default';
+    })();
     const _skinKey2=(S.activePet||'')+'_'+breed+'_'+level;
     const _skin=(S.petSpriteSkins&&S.petSpriteSkins[_skinKey2])||_defSkin2;
     _spLoad(breed,level,_skin,'idle');
@@ -4695,7 +4699,22 @@ function renderShop(){
     +'<div class="si-nm">'+item.name+'</div><div class="si-desc">'+item.desc+'</div>'
     +'<div class="si-price">'+(owned?(active?'✓当前宠物':'已拥有'):locked?'等级不足':'🪙'+item.price+(item.price===0?'（免费）':''))+'</div>'
     +(locked?'<div class="si-tag gold">🔒Lv.'+lvReq+'解锁</div>':'');
-  setTimeout(()=>{const cvs=document.getElementById(pid);if(cvs)drawPetPreviewInCanvas(cvs,item.breed,1);},30);
+  setTimeout(()=>{
+    const cvs=document.getElementById(pid);if(!cvs)return;
+    // 优先用用户上传的阶段1形象图
+    const _shopStageKey=getStageImgKey(item.id,1);
+    const _shopImgData=localStorage.getItem(_shopStageKey)||localStorage.getItem('jbfarm_petimg_'+item.id);
+    if(_shopImgData){
+      const _pi=new Image();_pi.onload=function(){
+        const _ctx=cvs.getContext('2d');_ctx.clearRect(0,0,cvs.width,cvs.height);
+        _ctx.save();const _r=Math.min(cvs.width,cvs.height)/2-2;
+        _ctx.beginPath();_ctx.arc(cvs.width/2,cvs.height/2,_r,0,Math.PI*2);_ctx.clip();
+        _ctx.drawImage(_pi,2,2,cvs.width-4,cvs.height-4);_ctx.restore();
+      };_pi.src=_shopImgData;
+    } else {
+      drawPetPreviewInCanvas(cvs,item.breed,1);
+    }
+  },30);
   d.onclick=()=>{
     if(locked){showToast('需要Lv.'+lvReq+'才能解锁！');return;}
     if(!owned){

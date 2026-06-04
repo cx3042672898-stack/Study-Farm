@@ -1,85 +1,49 @@
-// ╔══════════════════════════════════════════════════════╗
-// ║  🌾 学习农场 Service Worker                          ║
-// ║  GitHub 每次更新后，用户下次打开自动获取新版本        ║
-// ╚══════════════════════════════════════════════════════╝
+// EraQueenA+ Service Worker
+// 策略：网络优先（保证 GitHub 更新后自动同步），离线时回退缓存
+const CACHE_NAME = 'eraqueen-v1';
 
-// ⚡ 每次发布新版本，把这个版本号 +1，强制用户更新
-const CACHE_VERSION = 'v1';
-const CACHE_NAME = 'study-farm-' + CACHE_VERSION;
-
-// 首次安装时缓存的核心文件（离线也能打开）
-const CORE_FILES = [
-  './index.html',
-  './game.js',
-  './fishpond.js',
-  './gamedata.js',
-  './hamster_anim.js',
-  './pet_config.js',
-  './subjects.js',
-  './update_log.js',
-  './tcb-config.js',
-  './tcb-bridge.js',
-];
-
-// ── 安装：缓存核心文件 ────────────────────────────────────
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(CORE_FILES).catch(err => {
-        // 部分文件可能不存在，不阻断安装
-        console.warn('[SW] 部分文件缓存失败（不影响运行）:', err);
-      });
-    }).then(() => self.skipWaiting()) // 立即激活，不等旧版本
-  );
+// 安装时跳过等待，立即激活
+self.addEventListener('install', function(e) {
+  self.skipWaiting();
 });
 
-// ── 激活：删除旧缓存 ─────────────────────────────────────
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
-        keys.filter(k => k.startsWith('study-farm-') && k !== CACHE_NAME)
-            .map(k => caches.delete(k))
-      )
-    ).then(() => {
-      self.clients.claim(); // 立即接管所有标签页
-      // 通知所有打开的页面有新版本
-      self.clients.matchAll({ type: 'window' }).then(clients => {
-        clients.forEach(client => client.postMessage({ type: 'SW_UPDATED', version: CACHE_VERSION }));
-      });
+// 激活时清理旧缓存
+self.addEventListener('activate', function(e) {
+  e.waitUntil(
+    caches.keys().then(function(keys) {
+      return Promise.all(
+        keys
+          .filter(function(k) { return k !== CACHE_NAME; })
+          .map(function(k) { return caches.delete(k); })
+      );
+    }).then(function() {
+      return self.clients.claim();
     })
   );
 });
 
-// ── 请求拦截：网络优先，断网用缓存 ──────────────────────
-self.addEventListener('fetch', event => {
-  // 只处理 GET 请求，跳过 API/云端请求
-  if (event.request.method !== 'GET') return;
-  const url = new URL(event.request.url);
+// 请求拦截：网络优先，失败时用缓存
+self.addEventListener('fetch', function(e) {
+  // 只处理 GET 请求；跳过 API 调用（Anthropic API 等）
+  if (e.request.method !== 'GET') return;
+  var url = e.request.url;
+  if (url.includes('anthropic.com') || url.includes('api.')) return;
 
-  // 腾讯云、CDN 等外部请求直接走网络
-  if (!url.origin.includes(self.location.hostname) &&
-      !url.origin.includes('github.io')) return;
-
-  event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        // 网络请求成功，更新缓存
+  e.respondWith(
+    fetch(e.request)
+      .then(function(response) {
+        // 请求成功：更新缓存并返回
         if (response && response.status === 200) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+          var copy = response.clone();
+          caches.open(CACHE_NAME).then(function(cache) {
+            cache.put(e.request, copy);
+          });
         }
         return response;
       })
-      .catch(() => {
-        // 断网时从缓存读取
-        return caches.match(event.request).then(cached => {
-          if (cached) return cached;
-          // 连缓存也没有：返回 index.html（SPA 降级）
-          if (event.request.destination === 'document') {
-            return caches.match('./index.html');
-          }
-        });
+      .catch(function() {
+        // 网络失败：从缓存读取
+        return caches.match(e.request);
       })
   );
 });

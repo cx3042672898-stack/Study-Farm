@@ -6456,11 +6456,11 @@ function updateClassSection(){
 }
 
 let _rankExp=false;
-const _RANK_PAGE = 99999; // 展开时显示全部
+const _RANK_PAGE = 20; // 每页最多显示20人，避免大班级卡顿
 function renderRankList(members){
   const show=_rankExp||members.length<=5;
   // 展开时最多渲染 _RANK_PAGE 条，超出提示"共X人"
-  const list=show?members:members.slice(0,5);
+  const list=show?members.slice(0,_RANK_PAGE):members.slice(0,5);
   const admins=getClassAdmins();
   const asstAdmin=S.classId?admins[S.classId]:null;
   let html=list.map((m,i)=>{
@@ -6477,7 +6477,7 @@ function renderRankList(members){
       +'</div>';
   }).join('');
   if(members.length>5){
-    const _lbl=show?'▲ 收起':'▼ 展开全部（'+members.length+'人）';
+    const _lbl=show?(members.length>_RANK_PAGE?'▲ 收起（显示前'+_RANK_PAGE+'/'+members.length+'人）':'▲ 收起'):'▼ 展开全部（'+members.length+'人）';
     html+='<div onclick="_rankExp=!_rankExp;updateClassSection()" style="text-align:center;padding:8px;font-size:.75rem;color:var(--muted);cursor:pointer;border-top:1px solid var(--border);margin-top:4px">'+_lbl+'</div>';
   }
   return html;
@@ -7555,7 +7555,7 @@ function toggleCloudSync(){
   if(!window.FBBridge){showToast('云同步未初始化，请刷新页面');return;}
   const cur=FBBridge.isSyncEnabled();
   FBBridge.setSyncEnabled(!cur);
-  showToast(!cur?'☁️ 云同步已开启（腾讯云，无需梯子）':'☁️ 云同步已关闭');
+  showToast(!cur?'☁️ 云同步已开启（需要梯子）':'☁️ 云同步已关闭');
   updateCloudSyncStatus();
 }
 function resetSyncChoice(){

@@ -1,7 +1,26 @@
-
 <!DOCTYPE html>
 <html lang="zh">
 <head>
+  <!-- PWA：可安装为 APP，每次 GitHub 更新自动同步 -->
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2d6a2d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="学习农场">
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      console.log('[PWA] 注册成功');
+    });
+    // 监听新版本，提示用户刷新
+    navigator.serviceWorker.addEventListener('message', e => {
+      if (e.data && e.data.type === 'SW_UPDATED') {
+        if (typeof showToast === 'function') showToast('🌾 游戏已更新到最新版本！');
+      }
+    });
+  }
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>🌾 学习农场</title>
@@ -1361,7 +1380,7 @@ body[data-theme="custom"]{
                     <span style="font-size:.76rem;font-weight:600;color:var(--dgreen)">☁️ 云同步</span>
                     <span id="cloud-sync-status" style="font-size:.62rem;color:var(--muted)">检测中…</span>
                   </div>
-                  <div style="font-size:.65rem;color:var(--muted);margin-bottom:8px;line-height:1.6">需要梯子（访问境外服务器）。不同步时仅与同设备同学比较排名。</div>
+                  <div style="font-size:.65rem;color:var(--muted);margin-bottom:8px;line-height:1.6">腾讯云同步，无需梯子，国内直连。不同步时仅与同设备同学比较排名。</div>
                   <div style="display:flex;gap:6px;flex-wrap:wrap">
                     <button onclick="toggleCloudSync()" id="cloud-sync-toggle-btn" style="padding:6px 14px;border-radius:9px;border:1.5px solid var(--green);background:rgba(100,160,100,.08);color:var(--dgreen);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">切换同步</button>
                     <button onclick="if(window.FBBridge)FBBridge.syncNow();else showToast('云同步未初始化')" style="padding:6px 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--panel);font-size:.72rem;cursor:pointer;font-family:'Noto Sans SC',sans-serif">🔄 立即同步</button>
@@ -2206,9 +2225,8 @@ body[data-theme="custom"]{
 <script src="update_log.js"></script>
 <script src="fishpond.js"></script>
 <script src="game.js"></script>
-<script src="firebase-config.js"></script>
-<script src="firebase-bridge.js"></script>
-
+<script src="tcb-config.js"></script>
+<script src="tcb-bridge.js"></script>
 </body>
 </html>
 </html>
